@@ -1,0 +1,1024 @@
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  shell,
+  Tray,
+  Menu,
+  Notification,
+  nativeImage,
+  clipboard,
+} from "electron";
+import type { MenuItemConstructorOptions } from "electron";
+import { join, resolve, sep } from "path";
+import { homedir } from "os";
+import { promises as fs, readFileSync, writeFileSync, existsSync } from "fs";
+import { electronApp, optimizer, is } from "@electron-toolkit/utils";
+import windowStateKeeper from "electron-window-state";
+import { discoverMcpServers, getJetBrainsMcpConfigPaths } from "./mcpDiscovery";
+import { injectAllHooks, removeAllHooks, getHookStatus } from "./hookInjection";
+import { initSentry } from "./sentry";
+import { startHookHealthMonitor, stopHookHealthMonitor, getHookStatusLabel } from "./hookHealthMonitor";
+import { startUpdateChecker, stopUpdateChecker, getAvailableUpdate, openUpdateDownload } from "./updateChecker";
+import { showDebugWindow } from "./debugWindow";
+import { showServerRegistrationDialog } from "./mcpServerActionDialog";
+import { fetchUserRole, submitServerRequest, approveServerRequest } from "./mcpConfigActions";
+import { filterOutEdisonWatchServers } from "./mcpConfigMonitor";
+import { applyAppIntegrations } from "./mcpConfigWriter";
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import trayIconPath from "../../resources/icon.png?asset";
+
+let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
+let approvalWindow: BrowserWindow | null = null;
+
+// ── SSE state ───────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let eventSource: any = null;
+const pendingApprovals: Map<string, PendingApproval> = new Map();
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const RECONNECT_DELAY_MS = 1000;
+
+interface PendingApproval {
+  id: string;
+  sessionId: string;
+  kind: "tool" | "resource" | "prompt";
+  name: string;
+  reason?: string;
+  timestamp: number;
+}
+
+interface TrifectaEventData {
+  session_id: string;
+  kind: "tool" | "resource" | "prompt";
+  name: string;
+  reason?: string;
+  user_id?: string;
+}
+
+// ── Server status state ─────────────────────────────────────────────
+
+let isServerOnline = false;
+let serverStatusCheckInterval: ReturnType<typeof setInterval> | null = null;
+
+// ── Setup data persistence ──────────────────────────────────────────
+
+interface SetupData {
+  completed?: boolean;
+  userEmail?: string;
+  userId?: string;
+  serverAddress?: string;
+  mcpBaseUrl?: string;
+  apiBaseUrl?: string;
+  apiKey?: string;
+  edisonSecretKey?: string;
+}
+
+let setupCompleted: boolean | null = null;
+
+function getSetupFlagPath(): string {
+  return join(app.getPath("userData"), "setup.json");
+}
+
+function getSetupData(): SetupData {
+  try {
+    const raw = readFileSync(getSetupFlagPath(), "utf-8");
+    return JSON.parse(raw) as SetupData;
+  } catch {
+    return { completed: false };
+  }
+}
+
+function isSetupComplete(): boolean {
+  if (setupCompleted !== null) return setupCompleted;
+  const data = getSetupData();
+  setupCompleted = data.completed === true;
+  return setupCompleted;
+}
+
+function markSetupComplete(data?: Partial<SetupData>): void {
+  const existing = getSetupData();
+  const merged: SetupData = { ...existing, ...data, completed: true };
+  writeFileSync(getSetupFlagPath(), JSON.stringify(merged, null, 2), "utf-8");
+  setupCompleted = true;
+  app.setLoginItemSettings({ openAtLogin: true });
+}
+
+function markSetupIncomplete(): void {
+  writeFileSync(getSetupFlagPath(), JSON.stringify({ completed: false }), "utf-8");
+  setupCompleted = false;
+  app.setLoginItemSettings({ openAtLogin: false });
+}
+
+// ── URL helpers ─────────────────────────────────────────────────────
+
+function getApiBaseUrl(): string | null {
+  const setupData = getSetupData();
+  if (setupData.apiBaseUrl) return setupData.apiBaseUrl;
+  if (setupData.serverAddress) return `https://${setupData.serverAddress}`;
+  return null;
+}
+
+function getEventsUrl(apiKey: string): string | null {
+  const baseUrl = getApiBaseUrl();
+  if (!baseUrl) return null;
+  return `${baseUrl.replace(/\/$/, "")}/events?api_key=${encodeURIComponent(apiKey)}`;
+}
+
+function getApprovalUrl(): string | null {
+  const baseUrl = getApiBaseUrl();
+  if (!baseUrl) return null;
+  return `${baseUrl.replace(/\/$/, "")}/api/approve_or_deny`;
+}
+
+function getMcpUrl(): string | null {
+  const setupData = getSetupData();
+  if (setupData.mcpBaseUrl && setupData.apiKey) {
+    return `${setupData.mcpBaseUrl.replace(/\/$/, "")}/mcp/${setupData.apiKey}`;
+  }
+  return null;
+}
+
+// ── Server status checks ────────────────────────────────────────────
+
+async function checkServerStatus(): Promise<boolean> {
+  try {
+    const setupData = getSetupData();
+    const mcpUrl =
+      setupData.mcpBaseUrl ||
+      (setupData.serverAddress ? `http://${setupData.serverAddress}` : null);
+    if (!mcpUrl) return false;
+
+    const healthUrl = `${mcpUrl.replace(/\/$/, "")}/health`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+    try {
+      const response = await fetch(healthUrl, {
+        method: "GET",
+        signal: controller.signal,
+        headers: { Accept: "application/json" },
+      });
+      clearTimeout(timeoutId);
+      return response.ok;
+    } catch {
+      clearTimeout(timeoutId);
+      return false;
+    }
+  } catch {
+    return false;
+  }
+}
+
+function startServerStatusChecks(): void {
+  checkServerStatus().then((status) => {
+    isServerOnline = status;
+    updateTrayMenu();
+  });
+
+  if (serverStatusCheckInterval) clearInterval(serverStatusCheckInterval);
+  serverStatusCheckInterval = setInterval(async () => {
+    const status = await checkServerStatus();
+    if (status !== isServerOnline) {
+      isServerOnline = status;
+      updateTrayMenu();
+    }
+  }, 30000);
+}
+
+function stopServerStatusChecks(): void {
+  if (serverStatusCheckInterval) {
+    clearInterval(serverStatusCheckInterval);
+    serverStatusCheckInterval = null;
+  }
+}
+
+// ── SSE event subscription ──────────────────────────────────────────
+
+function startEventSubscription(): void {
+  const setupData = getSetupData();
+  const apiKey = setupData.apiKey;
+  const userId = setupData.userId;
+
+  if (!apiKey || !userId) {
+    console.warn("Cannot start event subscription: missing apiKey or userId");
+    return;
+  }
+
+  const eventsUrl = getEventsUrl(apiKey);
+  if (!eventsUrl) {
+    console.warn("Cannot start event subscription: cannot construct events URL");
+    return;
+  }
+
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
+  }
+
+  console.log(`Connecting to SSE endpoint: ${eventsUrl.replace(/api_key=[^&]+/, "api_key=***")}`);
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const EventSource = require("eventsource");
+    eventSource = new EventSource(eventsUrl);
+
+    eventSource.onmessage = (event: { data: string }) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "mcp_pre_block") {
+          handleTrifectaEvent(data);
+        }
+      } catch (err) {
+        console.error("Failed to parse SSE event:", err);
+      }
+    };
+
+    eventSource.onerror = () => {
+      handleReconnect();
+    };
+
+    eventSource.onopen = () => {
+      console.log("SSE connection established");
+      reconnectAttempts = 0;
+    };
+  } catch (err) {
+    console.error("Failed to create EventSource:", err);
+    handleReconnect();
+  }
+}
+
+function stopEventSubscription(): void {
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
+  }
+  reconnectAttempts = 0;
+}
+
+function handleReconnect(): void {
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    console.error("Max reconnect attempts reached, stopping SSE subscription");
+    return;
+  }
+
+  reconnectAttempts++;
+  const delay = RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts - 1);
+  console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+
+  setTimeout(() => {
+    startEventSubscription();
+  }, delay);
+}
+
+function handleTrifectaEvent(data: TrifectaEventData): void {
+  const { session_id, kind, name, reason } = data;
+  const approvalId = `${session_id}::${kind}::${name}::${Date.now()}`;
+
+  const pending: PendingApproval = {
+    id: approvalId,
+    sessionId: session_id,
+    kind,
+    name,
+    reason,
+    timestamp: Date.now(),
+  };
+  pendingApprovals.set(approvalId, pending);
+  updateTrayMenu();
+
+  // Notify approval window if open
+  if (approvalWindow && !approvalWindow.isDestroyed()) {
+    approvalWindow.webContents.send("approval:added", {
+      id: approvalId,
+      sessionId: session_id,
+      kind,
+      name,
+      reason,
+      timestamp: pending.timestamp,
+    });
+  }
+
+  // Show native notification
+  try {
+    if (!Notification.isSupported()) return;
+
+    const toolName = name.replace(/^agent_/, "").replace(/_/g, " ");
+    const readableName = toolName
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+
+    const notificationOptions: Electron.NotificationConstructorOptions = {
+      title: "Edison Watch - Security Block",
+      body: `${readableName} has been blocked.\nThis action requires your approval to proceed.`,
+      urgency: "normal",
+      ...(process.platform !== "darwin" && { icon: trayIconPath }),
+    };
+
+    if (process.platform === "darwin") {
+      notificationOptions.actions = [
+        { type: "button", text: "Approve" },
+        { type: "button", text: "Auto-Approve" },
+        { type: "button", text: "Deny" },
+      ];
+    }
+
+    const notification = new Notification(notificationOptions);
+
+    if (process.platform === "darwin") {
+      notification.on("action", (_event, index) => {
+        const commands: Array<"approve" | "approve_and_remember" | "deny"> = [
+          "approve",
+          "approve_and_remember",
+          "deny",
+        ];
+        const command = commands[index];
+        if (command) handleApproval(approvalId, command);
+      });
+    }
+
+    notification.on("click", () => {
+      showPendingApprovalsDialog();
+    });
+
+    notification.show();
+    setTimeout(() => notification.close(), 30000);
+  } catch (err) {
+    console.error("Failed to show notification:", err);
+  }
+}
+
+// ── Approval handling ───────────────────────────────────────────────
+
+async function handleApproval(
+  approvalId: string,
+  command: "approve" | "deny" | "approve_and_remember",
+): Promise<void> {
+  const pending = pendingApprovals.get(approvalId);
+  if (!pending) return;
+
+  const setupData = getSetupData();
+  const apiKey = setupData.apiKey;
+  if (!apiKey) return;
+
+  const approvalUrl = getApprovalUrl();
+  if (!approvalUrl) return;
+
+  try {
+    const response = await fetch(approvalUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        session_id: pending.sessionId,
+        kind: pending.kind,
+        name: pending.name,
+        command,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Approval failed: ${response.status} ${errorText}`);
+    }
+
+    pendingApprovals.delete(approvalId);
+    updateTrayMenu();
+
+    if (approvalWindow && !approvalWindow.isDestroyed()) {
+      approvalWindow.webContents.send("approval:removed", approvalId);
+      if (pendingApprovals.size === 0) {
+        setTimeout(() => {
+          if (approvalWindow && !approvalWindow.isDestroyed()) approvalWindow.close();
+        }, 500);
+      }
+    }
+  } catch (err) {
+    console.error(`Failed to ${command} ${pending.kind} '${pending.name}':`, err);
+  }
+}
+
+// ── Pending approvals dialog ────────────────────────────────────────
+
+function showPendingApprovalsDialog(): void {
+  const approvals = Array.from(pendingApprovals.values());
+  if (approvals.length === 0) return;
+
+  if (approvalWindow && !approvalWindow.isDestroyed()) {
+    approvalWindow.focus();
+    return;
+  }
+
+  approvalWindow = new BrowserWindow({
+    width: 500,
+    height: Math.min(600, 200 + approvals.length * 80),
+    show: false,
+    autoHideMenuBar: true,
+    resizable: true,
+    minimizable: false,
+    maximizable: false,
+    parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
+    modal: false,
+    webPreferences: {
+      sandbox: false,
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+  });
+
+  const approvalsHtml = approvals
+    .map((a) => {
+      const toolName = a.name.replace(/^agent_/, "").replace(/_/g, " ");
+      const readableName = toolName
+        .split(" ")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+      return `
+        <div class="approval-item" data-approval-id="${a.id}">
+          <div class="approval-header">
+            <strong>${readableName}</strong>
+            <span class="approval-kind">${a.kind}</span>
+          </div>
+          <div class="approval-session">Session: ${a.sessionId.substring(0, 8)}...</div>
+          <div class="approval-timestamp" data-timestamp="${a.timestamp}"></div>
+          <div class="approval-actions">
+            <button class="button button-approve" data-command="approve">Approve</button>
+            <button class="button button-approve-remember" data-command="approve_and_remember">Auto-Approve</button>
+            <button class="button button-deny" data-command="deny">Deny</button>
+          </div>
+        </div>`;
+    })
+    .join("");
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Pending Approvals</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0b0c10;--card:#111318;--border:#1f2430;--text:#e6e6e6;--muted:#a0a7b4}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);padding:20px}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+h1{font-size:20px}
+.header-actions{display:flex;gap:8px}
+.approval-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;overflow:hidden;transition:all .4s cubic-bezier(.4,0,.2,1)}
+.approval-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.approval-header strong{font-size:16px}
+.approval-kind{font-size:12px;color:var(--muted);text-transform:uppercase}
+.approval-session{font-size:12px;color:var(--muted);margin-bottom:4px}
+.approval-timestamp{font-size:11px;color:var(--muted);margin-bottom:12px}
+.approval-actions{display:flex;gap:8px}
+.button{border:1px solid var(--border);background:var(--card);color:var(--text);padding:6px 10px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;transition:filter .2s}
+.button:hover{filter:brightness(1.05)}
+.button:disabled{opacity:.5;cursor:not-allowed}
+.button-approve{background:#22c55e!important;color:#fff!important;border-color:#22c55e!important}
+.button-approve-remember{background:#2563eb!important;color:#fff!important;border-color:#2563eb!important}
+.button-deny{background:rgba(239,68,68,.1)!important;border-color:var(--border)!important}
+.button-approve-all{background:#22c55e!important;color:#fff!important;border-color:#22c55e!important}
+.button-deny-all{background:rgba(239,68,68,.1)!important;border-color:var(--border)!important}
+</style></head>
+<body>
+<div class="header">
+  <h1>Pending Approvals (${approvals.length})</h1>
+  <div class="header-actions">
+    <button class="button button-approve-all" id="approve-all">Approve All</button>
+    <button class="button button-deny-all" id="deny-all">Deny All</button>
+  </div>
+</div>
+<div id="approvals">${approvalsHtml}</div>
+<script>
+const{ipcRenderer}=require('electron');
+function updateHeaderCount(){const r=document.querySelectorAll('.approval-item').length;const h=document.querySelector('h1');if(h)h.textContent='Pending Approvals ('+r+')'}
+function formatTimestamp(ts){const d=new Date(ts),now=new Date(),diff=Math.floor((now-d)/1000);const ds=d.toLocaleDateString('en-US',{month:'short',day:'numeric'});const ts2=d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});let rel='';if(diff<60)rel=diff+' second'+(diff!==1?'s':'')+' ago';else if(diff<3600){const m=Math.floor(diff/60);rel=m+' minute'+(m!==1?'s':'')+' ago'}else if(diff<86400){const h=Math.floor(diff/3600);rel=h+' hour'+(h!==1?'s':'')+' ago'}else{const dy=Math.floor(diff/86400);rel=dy+' day'+(dy!==1?'s':'')+' ago'}return ds+', '+ts2+' ('+rel+')'}
+function updateTimestamps(){document.querySelectorAll('.approval-timestamp').forEach(el=>{const t=parseInt(el.getAttribute('data-timestamp'));if(t)el.textContent=formatTimestamp(t)})}
+setInterval(updateTimestamps,1000);updateTimestamps();
+function removeApprovalItem(id){const item=document.querySelector('[data-approval-id="'+id+'"]');if(!item)return;item.style.transition='all .4s cubic-bezier(.4,0,.2,1)';item.style.transform='translateX(-100%)';item.style.opacity='0';item.style.maxHeight=item.offsetHeight+'px';setTimeout(()=>{item.style.maxHeight='0';item.style.marginBottom='0';item.style.paddingTop='0';item.style.paddingBottom='0';item.style.borderWidth='0'},100);setTimeout(()=>{item.remove();updateHeaderCount();if(document.querySelectorAll('.approval-item').length===0)setTimeout(()=>window.close(),300)},400)}
+document.addEventListener('click',e=>{const btn=e.target.closest('button');if(!btn)return;const item=btn.closest('.approval-item');if(!item)return;const aId=item.dataset.approvalId,cmd=btn.dataset.command;if(aId&&cmd){item.querySelectorAll('button').forEach(b=>{b.disabled=true;b.style.opacity='0.5'});const ch=cmd==='approve_and_remember'?'approval:approve-remember':'approval:'+cmd;ipcRenderer.invoke(ch,aId).catch(err=>{alert('Failed: '+(err.message||String(err)));item.querySelectorAll('button').forEach(b=>{b.disabled=false;b.style.opacity='1'})})}});
+function escapeHtml(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+function addApprovalItem(a){const c=document.getElementById('approvals');if(!c)return;const tn=(a.name||'').replace(/^agent_/,'').replace(/_/g,' ');const rn=tn.split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');const item=document.createElement('div');item.className='approval-item';item.setAttribute('data-approval-id',a.id);item.style.opacity='0';item.style.transform='translateY(-20px)';item.innerHTML='<div class="approval-header"><strong>'+escapeHtml(rn)+'</strong><span class="approval-kind">'+escapeHtml(a.kind)+'</span></div><div class="approval-session">Session: '+escapeHtml((a.sessionId||'').substring(0,8))+'...</div><div class="approval-timestamp" data-timestamp="'+escapeHtml(a.timestamp)+'"></div><div class="approval-actions"><button class="button button-approve" data-command="approve">Approve</button><button class="button button-approve-remember" data-command="approve_and_remember">Auto-Approve</button><button class="button button-deny" data-command="deny">Deny</button></div>';c.appendChild(item);setTimeout(()=>{item.style.transition='all .3s cubic-bezier(.4,0,.2,1)';item.style.opacity='1';item.style.transform='translateY(0)'},10);const tel=item.querySelector('.approval-timestamp');if(tel)tel.textContent=formatTimestamp(a.timestamp);updateHeaderCount()}
+ipcRenderer.on('approval:removed',(_e,id)=>removeApprovalItem(id));
+ipcRenderer.on('approval:added',(_e,a)=>addApprovalItem(a));
+document.getElementById('approve-all')?.addEventListener('click',()=>{document.querySelectorAll('.approval-item').forEach(item=>{const b=item.querySelector('.button-approve');if(b&&!b.disabled)b.click()})});
+document.getElementById('deny-all')?.addEventListener('click',()=>{document.querySelectorAll('.approval-item').forEach(item=>{const b=item.querySelector('.button-deny');if(b&&!b.disabled)b.click()})});
+</script></body></html>`;
+
+  approvalWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  approvalWindow.once("ready-to-show", () => approvalWindow?.show());
+  approvalWindow.on("closed", () => { approvalWindow = null; });
+}
+
+// ── Tray ────────────────────────────────────────────────────────────
+
+function buildTrayMenu(): Menu {
+  const setupData = getSetupData();
+  const pendingCount = pendingApprovals.size;
+  const userDisplayName = setupData.userEmail || "Not signed in";
+
+  const items: MenuItemConstructorOptions[] = [
+    { label: "Enabled", type: "checkbox", checked: true, click: () => {} },
+    { label: isServerOnline ? "Connected" : "Disconnected", enabled: false },
+    { label: userDisplayName, enabled: false },
+    { type: "separator" },
+    {
+      label: pendingCount > 0 ? `Pending Approvals (${pendingCount})` : "No Pending Approvals",
+      enabled: pendingCount > 0,
+      click: pendingCount > 0 ? () => showPendingApprovalsDialog() : undefined,
+    },
+    {
+      label: "Register MCP Servers",
+      enabled: Boolean(setupData.apiKey && (setupData.apiBaseUrl || setupData.serverAddress)),
+      click: async () => {
+        let isAdminOrOwner = false;
+        const apiBaseUrl = getApiBaseUrl();
+        if (apiBaseUrl && setupData.apiKey) {
+          const role = await fetchUserRole(apiBaseUrl, setupData.apiKey);
+          isAdminOrOwner = role === "admin" || role === "owner";
+        }
+        showServerRegistrationDialog(mainWindow ?? undefined, isAdminOrOwner);
+      },
+    },
+    {
+      label: "Open Dashboard",
+      enabled: Boolean(setupData.apiBaseUrl || setupData.serverAddress),
+      click: () => {
+        const dashboardUrl =
+          setupData.apiBaseUrl ||
+          (setupData.serverAddress ? `https://${setupData.serverAddress}` : null);
+        if (dashboardUrl) shell.openExternal(dashboardUrl);
+      },
+    },
+    { type: "separator" },
+    {
+      label: "Copy MCP URL to clipboard",
+      enabled: Boolean((setupData.mcpBaseUrl || setupData.serverAddress) && setupData.apiKey),
+      click: () => {
+        const mcpUrl = getMcpUrl();
+        if (mcpUrl) {
+          clipboard.writeText(mcpUrl);
+          if (Notification.isSupported()) {
+            const n = new Notification({
+              title: "Edison Watch",
+              body: "MCP URL copied to clipboard",
+              ...(process.platform !== "darwin" && { icon: trayIconPath }),
+            });
+            n.show();
+          }
+        }
+      },
+    },
+    { type: "separator" },
+    { label: getHookStatusLabel(), enabled: false },
+  ];
+
+  const availableUpdate = getAvailableUpdate();
+  if (availableUpdate) {
+    items.push({
+      label: `Update available: v${availableUpdate.version}`,
+      click: () => openUpdateDownload(),
+    });
+  }
+
+  items.push(
+    { type: "separator" },
+    {
+      label: "Debug Window",
+      click: () => showDebugWindow(mainWindow ?? undefined),
+    },
+    { type: "separator" },
+    {
+      label: "Sign Out",
+      click: () => handleLogoutAndRestart(),
+    },
+    {
+      label: "Quit",
+      click: () => app.quit(),
+    },
+  );
+
+  return Menu.buildFromTemplate(items);
+}
+
+function createTray(): void {
+  let trayIconToUse: string | Electron.NativeImage = trayIconPath;
+  if (process.platform === "win32") {
+    const img = nativeImage.createFromPath(trayIconPath);
+    trayIconToUse = img.resize({ width: 16, height: 16 });
+  }
+  tray = new Tray(trayIconToUse);
+  tray.setToolTip("Edison Watch");
+
+  const showMenu = (): void => {
+    if (!tray) return;
+    tray.popUpContextMenu(buildTrayMenu());
+  };
+
+  tray.on("click", showMenu);
+  tray.on("right-click", showMenu);
+
+  startServerStatusChecks();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (process.platform === "darwin" && (app as any).dock?.setMenu) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (app as any).dock.setMenu(buildTrayMenu());
+  }
+}
+
+function updateTrayMenu(): void {
+  if (!tray) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (process.platform === "darwin" && (app as any).dock?.setMenu) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (app as any).dock.setMenu(buildTrayMenu());
+  }
+}
+
+// ── Logout / re-run wizard ──────────────────────────────────────────
+
+function rerunWizard(): void {
+  markSetupIncomplete();
+  createWindow();
+}
+
+async function handleLogoutAndRestart(): Promise<void> {
+  console.log("[Logout] Signing out...");
+  stopServerStatusChecks();
+  stopUpdateChecker();
+  stopEventSubscription();
+  stopHookHealthMonitor();
+  pendingApprovals.clear();
+  markSetupIncomplete();
+  isServerOnline = false;
+  updateTrayMenu();
+  rerunWizard();
+}
+
+// ── Window creation ─────────────────────────────────────────────────
+
+function createWindow(): void {
+  const mainWindowState = windowStateKeeper({
+    defaultWidth: 1024,
+    defaultHeight: 768,
+  });
+
+  mainWindow = new BrowserWindow({
+    x: mainWindowState.x,
+    y: mainWindowState.y,
+    width: mainWindowState.width,
+    height: mainWindowState.height,
+    show: false,
+    autoHideMenuBar: true,
+    ...(process.platform === "linux"
+      ? { icon: join(__dirname, "../../build/icon.png") }
+      : {}),
+    webPreferences: {
+      preload: join(__dirname, "../preload/index.js"),
+      contextIsolation: true,
+      sandbox: true,
+    },
+  });
+
+  mainWindowState.manage(mainWindow);
+
+  mainWindow.on("ready-to-show", () => {
+    mainWindow?.show();
+  });
+
+  mainWindow.webContents.setWindowOpenHandler((details) => {
+    shell.openExternal(details.url);
+    return { action: "deny" };
+  });
+
+  mainWindow.webContents.on("will-navigate", (event, navigationUrl) => {
+    if (
+      navigationUrl.includes("/auth/callback") ||
+      navigationUrl.includes("code=")
+    ) {
+      event.preventDefault();
+      mainWindow?.webContents.send("auth:callback", navigationUrl);
+    }
+  });
+
+  if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
+    mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
+  } else {
+    mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+  }
+}
+
+// ── IPC handlers ────────────────────────────────────────────────────
+
+function registerIpcHandlers(): void {
+  // Auth: open SAML/SSO URL in a separate BrowserWindow
+  ipcMain.on("auth:open-saml", (_event, samlUrl: string) => {
+    const authWindow = new BrowserWindow({
+      width: 500,
+      height: 700,
+      show: true,
+      modal: true,
+      parent: mainWindow || undefined,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    });
+
+    authWindow.loadURL(samlUrl);
+
+    authWindow.webContents.on("did-finish-load", () => {
+      const currentUrl = authWindow.webContents.getURL();
+      if (currentUrl.includes("access_token=") || currentUrl.includes("code=")) {
+        mainWindow?.webContents.send("auth:callback", currentUrl);
+        authWindow.close();
+      }
+    });
+
+    authWindow.webContents.on("will-navigate", (_event, url) => {
+      if (url.startsWith("edison-watch://")) {
+        mainWindow?.webContents.send("auth:callback", url);
+        authWindow.close();
+      }
+    });
+
+    authWindow.webContents.on("will-redirect", (_event, url) => {
+      if (url.startsWith("edison-watch://")) {
+        mainWindow?.webContents.send("auth:callback", url);
+        authWindow.close();
+      }
+    });
+  });
+
+  // Setup: get persisted setup data
+  ipcMain.handle("setup:getData", () => {
+    return getSetupData();
+  });
+
+  // Setup lifecycle
+  ipcMain.on("setup:reached-final", () => {
+    createTray();
+  });
+
+  ipcMain.on("setup:complete", (_event, data: Partial<SetupData>) => {
+    markSetupComplete(data);
+    console.log("[setup:complete] Setup data saved");
+
+    // Start background services
+    startEventSubscription();
+    startHookHealthMonitor();
+    startUpdateChecker();
+
+    mainWindow?.close();
+  });
+
+  ipcMain.handle("setup:reset", () => {
+    markSetupIncomplete();
+    return { ok: true };
+  });
+
+  // Approval IPC from approval window
+  ipcMain.handle("approval:approve", async (_event, approvalId: string) => {
+    await handleApproval(approvalId, "approve");
+  });
+
+  ipcMain.handle("approval:deny", async (_event, approvalId: string) => {
+    await handleApproval(approvalId, "deny");
+  });
+
+  ipcMain.handle("approval:approve-remember", async (_event, approvalId: string) => {
+    await handleApproval(approvalId, "approve_and_remember");
+  });
+
+  // Server health check
+  ipcMain.handle("menu:check-health", async () => {
+    return isServerOnline;
+  });
+
+  // Shell operations
+  ipcMain.handle("shell:openExternal", async (_event, url: string) => {
+    await shell.openExternal(url);
+  });
+
+  // MCP: Discover installed clients
+  ipcMain.handle("mcp:detectClients", async () => {
+    const clients: Array<{ id: string; name: string; configPath: string }> = [];
+    const checks = [
+      { id: "vscode", name: "VS Code", getPath: () => import("./mcpDiscovery").then(m => m.getVscodeUserMcpPath()) },
+      { id: "vscode-insiders", name: "VS Code Insiders", getPath: () => import("./mcpDiscovery").then(m => m.getVscodeInsidersUserMcpPath()) },
+      { id: "cursor", name: "Cursor", getPath: () => import("./mcpDiscovery").then(m => m.getCursorConfigPath()) },
+      { id: "claude-code", name: "Claude Code", getPath: () => import("./mcpDiscovery").then(m => m.getClaudeCodeUserSettingsPath()) },
+      { id: "windsurf", name: "Windsurf", getPath: () => import("./mcpDiscovery").then(m => m.getWindsurfConfigPath()) },
+      { id: "zed", name: "Zed", getPath: () => import("./mcpDiscovery").then(m => m.getZedConfigPath()) },
+      { id: "claude-desktop", name: "Claude Desktop", getPath: () => import("./mcpDiscovery").then(m => m.getClaudeDesktopConfigPath()) },
+      { id: "antigravity", name: "Antigravity", getPath: () => import("./mcpDiscovery").then(m => m.getAntigravityConfigPath()) },
+    ];
+
+    for (const check of checks) {
+      try {
+        const configPath = await check.getPath();
+        const dir = configPath.substring(0, configPath.lastIndexOf("/"));
+        await fs.access(dir);
+        clients.push({ id: check.id, name: check.name, configPath });
+      } catch {
+        // Client not installed
+      }
+    }
+
+    // JetBrains IDEs: scan for installed instances
+    try {
+      const jbPaths = await getJetBrainsMcpConfigPaths();
+      const nameMap: Record<string, string> = { intellij: "IntelliJ IDEA", pycharm: "PyCharm", webstorm: "WebStorm" };
+      for (const { client, path } of jbPaths) {
+        clients.push({ id: client, name: nameMap[client] ?? client, configPath: path });
+      }
+    } catch {
+      // JetBrains not installed
+    }
+
+    return clients;
+  });
+
+  ipcMain.handle("mcp:discover", async () => {
+    return await discoverMcpServers();
+  });
+
+  ipcMain.handle("mcp:readConfig", async (_event, configPath: string) => {
+    try {
+      return await fs.readFile(configPath, "utf-8");
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle("mcp:applyAppIntegrations", async (_event, args: {
+    serverAddress: string;
+    mcpBaseUrl: string;
+    apiKey: string;
+    edisonSecretKey?: string;
+    apps: string[];
+  }) => {
+    console.log("[mcp:applyAppIntegrations]", args.apps);
+    return await applyAppIntegrations(args);
+  });
+
+  // Revert app integrations: restore config files from setup backups
+  ipcMain.handle("mcp:revertAppIntegrations", async (_event, args: {
+    configs: Array<{ configPath: string; backupPath: string }>;
+  }): Promise<{ reverted: number; errors: string[] }> => {
+    const { configs } = args;
+    let reverted = 0;
+    const errors: string[] = [];
+    const allowedDirs = [homedir(), app.getPath("userData")];
+    const isAllowedPath = (p: string): boolean =>
+      allowedDirs.some((dir) => resolve(p).startsWith(dir + sep));
+
+    for (const { configPath, backupPath } of configs) {
+      try {
+        if (!isAllowedPath(configPath) || !isAllowedPath(backupPath)) {
+          errors.push(`Path not allowed: ${configPath}`);
+          continue;
+        }
+        if (!backupPath || !existsSync(backupPath)) {
+          errors.push(`No backup found for ${configPath}`);
+          continue;
+        }
+        await fs.copyFile(backupPath, configPath);
+        reverted++;
+        console.log(`[MCP Revert] Restored ${configPath} from ${backupPath}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`${configPath}: ${msg}`);
+        console.warn("[MCP Revert] Failed to restore", configPath, err);
+      }
+    }
+    return { reverted, errors };
+  });
+
+  // Submit all discovered MCP servers for approval
+  ipcMain.handle("mcp:submitAllDiscovered", async (_event, params?: {
+    apiKey?: string;
+    apiBaseUrl?: string;
+    userId?: string;
+  }): Promise<{
+    submitted: number;
+    autoApproved: number;
+    skipped: number;
+    total: number;
+    error?: string;
+    errors?: string[];
+  }> => {
+    const setup = getSetupData();
+    const apiKey = params?.apiKey || setup.apiKey;
+    const apiBaseUrl = params?.apiBaseUrl || setup.apiBaseUrl;
+    const userId = params?.userId || setup.userId;
+
+    if (!apiKey || !apiBaseUrl) {
+      return { submitted: 0, autoApproved: 0, skipped: 0, total: 0,
+        error: "Not signed in or server URL not configured." };
+    }
+
+    const all = await discoverMcpServers();
+    const servers = filterOutEdisonWatchServers(all);
+    let submitted = 0;
+    let autoApproved = 0;
+    const errors: string[] = [];
+
+    const role = await fetchUserRole(apiBaseUrl, apiKey);
+    const canAutoApprove = role === "admin" || role === "owner";
+
+    for (const server of servers) {
+      try {
+        const { request_id } = await submitServerRequest(server, apiBaseUrl, apiKey, userId);
+        submitted++;
+        if (canAutoApprove) {
+          try {
+            await approveServerRequest(request_id, apiBaseUrl, apiKey);
+            autoApproved++;
+          } catch (approveErr) {
+            const msg = approveErr instanceof Error ? approveErr.message : String(approveErr);
+            errors.push(`${server.name}: auto-approval failed — ${msg}`);
+            console.error(`[mcp:submitAllDiscovered] Auto-approval failed for "${server.name}":`, approveErr);
+          }
+        }
+      } catch (e) {
+        const msg = server.name + ": " + (e instanceof Error ? e.message : String(e));
+        errors.push(msg);
+        console.error("[mcp:submitAllDiscovered]", msg);
+      }
+    }
+    return {
+      submitted,
+      autoApproved,
+      skipped: servers.length - submitted,
+      total: servers.length,
+      errors: errors.length > 0 ? errors : undefined,
+    };
+  });
+
+  ipcMain.handle("mcp:injectHooks", async () => {
+    return await injectAllHooks();
+  });
+
+  ipcMain.handle("mcp:removeHooks", async () => {
+    return await removeAllHooks();
+  });
+
+  ipcMain.handle("mcp:getHookStatus", async () => {
+    return await getHookStatus();
+  });
+}
+
+// ── Deep link protocol ──────────────────────────────────────────────
+
+app.on("open-url", (_event, url) => {
+  if (url.startsWith("edison-watch://")) {
+    mainWindow?.webContents.send("auth:callback", url);
+  }
+});
+
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient("edison-watch", process.execPath, [
+      process.argv[1],
+    ]);
+  }
+} else {
+  app.setAsDefaultProtocolClient("edison-watch");
+}
+
+// ── App lifecycle ───────────────────────────────────────────────────
+
+app.whenReady().then(() => {
+  initSentry();
+  electronApp.setAppUserModelId("com.edisonwatch.desktop");
+
+  app.on("browser-window-created", (_, window) => {
+    optimizer.watchWindowShortcuts(window);
+  });
+
+  registerIpcHandlers();
+
+  if (isSetupComplete()) {
+    console.log("[main] Setup already complete — launching in tray mode");
+    createTray();
+    startEventSubscription();
+    startHookHealthMonitor();
+    startUpdateChecker();
+  }
+
+  createWindow();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
+});

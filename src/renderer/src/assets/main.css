@@ -1,0 +1,23 @@
+@import "tailwindcss";
+@import "@edison/shared/theme/tokens.css";
+
+body {
+  margin: 0;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    sans-serif;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Prevent text selection and drag on Electron UI */
+*:not(input):not(textarea) {
+  user-select: none;
+  -webkit-user-drag: none;
+}

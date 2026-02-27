@@ -1,0 +1,51 @@
+{
+  "name": "edison-watch-client-2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Edison Watch Desktop Client v2 — Electron + React 19",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "npm run typecheck && electron-vite build",
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:win": "npm run build && electron-builder --win",
+    "build:linux": "npm run build && electron-builder --linux",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "npx playwright test --config playwright.config.ts"
+  },
+  "dependencies": {
+    "@edison/shared": "*",
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^3.0.0",
+    "@sentry/electron": "^7.8.0",
+    "chokidar": "^4.0.3",
+    "electron-updater": "^6.3.9",
+    "electron-window-state": "^5.0.0",
+    "eventsource": "^3.0.7",
+    "jsonc-parser": "^3.3.1"
+  },
+  "devDependencies": {
+    "@electron-toolkit/tsconfig": "^1.0.1",
+    "@playwright/test": "^1.58.2",
+    "@tailwindcss/vite": "^4.1.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.5.2",
+    "electron": "^38.1.2",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^4.0.1",
+    "jsdom": "^28.1.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router": "^7.13.1",
+    "tailwindcss": "^4.1.0",
+    "typescript": "~5.7.0",
+    "vitest": "^4.0.18"
+  }
+}

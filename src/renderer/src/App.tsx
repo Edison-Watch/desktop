@@ -1,0 +1,108 @@
+import { useState, useEffect } from "react";
+import WizardLayout from "./components/WizardLayout";
+import WelcomeStep from "./components/WelcomeStep";
+import AppsStep from "./components/AppsStep";
+import type { ModifiedConfig } from "./components/AppsStep";
+import FinishStep from "./components/FinishStep";
+import useAuth from "./hooks/useAuth";
+
+export default function App(): React.ReactNode {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [setupDone, setSetupDone] = useState<boolean | null>(null);
+  const [modifiedConfigs, setModifiedConfigs] = useState<ModifiedConfig[]>([]);
+  const [edisonSecretKey, setEdisonSecretKey] = useState("");
+  const auth = useAuth();
+
+  // Check if setup was already completed on mount
+  useEffect(() => {
+    (async () => {
+      const data = await window.api.setup.getData();
+      if (data?.completed) {
+        setSetupDone(true);
+      } else {
+        setSetupDone(false);
+      }
+    })();
+  }, []);
+
+  const handleNext = () => {
+    if (currentStep === 0 && auth.signedIn) {
+      setCurrentStep(1);
+    } else if (currentStep === 1) {
+      window.api.setup.reachedFinal();
+      setCurrentStep(2);
+    }
+  };
+
+  const handleApplyResult = (configs: ModifiedConfig[], secretKey: string) => {
+    setModifiedConfigs(configs);
+    setEdisonSecretKey(secretKey);
+  };
+
+  const handleRestart = () => {
+    setModifiedConfigs([]);
+    setEdisonSecretKey("");
+    setCurrentStep(1);
+  };
+
+  const handleComplete = () => {
+    // Main process handles persisting setup data and closing window
+    setSetupDone(true);
+  };
+
+  // Loading: checking if setup was previously completed
+  if (setupDone === null) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[var(--bg-base)]">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+      </div>
+    );
+  }
+
+  // Setup already complete — show "already configured" message
+  if (setupDone === true) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-[var(--bg-base)] p-8 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)]/10 text-xl">
+          &#10003;
+        </div>
+        <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+          Edison Watch is running
+        </h2>
+        <p className="text-sm text-[var(--text-secondary)]">
+          Setup is complete. Edison Watch is monitoring your MCP connections in the background.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <WizardLayout currentStep={currentStep} locked={currentStep === 2}>
+      {currentStep === 0 && <WelcomeStep auth={auth} onNext={handleNext} />}
+      {currentStep === 1 && (
+        <AppsStep
+          mcpBaseUrl={auth.mcpBaseUrl}
+          apiBaseUrl={auth.apiBaseUrl}
+          apiKey={auth.apiKey}
+          userId={auth.userId}
+          onNext={handleNext}
+          onApplyResult={handleApplyResult}
+        />
+      )}
+      {currentStep === 2 && (
+        <FinishStep
+          email={auth.email}
+          userId={auth.userId}
+          apiKey={auth.apiKey}
+          mcpBaseUrl={auth.mcpBaseUrl}
+          apiBaseUrl={auth.apiBaseUrl}
+          serverStatus={auth.serverStatus}
+          modifiedConfigs={modifiedConfigs}
+          edisonSecretKey={edisonSecretKey}
+          onComplete={handleComplete}
+          onRestart={handleRestart}
+        />
+      )}
+    </WizardLayout>
+  );
+}
