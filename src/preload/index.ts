@@ -27,6 +27,8 @@ const api = {
       ipcRenderer.on("auth:callback", handler);
       return () => ipcRenderer.removeListener("auth:callback", handler);
     },
+    getDevCallbackUrl: (): Promise<string | null> =>
+      ipcRenderer.invoke("auth:getDevCallbackUrl"),
   },
 
   /** Server health */
@@ -74,6 +76,12 @@ const api = {
     injectHooks: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:injectHooks"),
     removeHooks: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:removeHooks"),
     getHookStatus: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:getHookStatus"),
+  },
+
+  /** Config: effective base URLs (respects debug env override) */
+  config: {
+    getEffectiveBaseUrls: (): Promise<{ mcpBaseUrl: string | null; apiBaseUrl: string | null }> =>
+      ipcRenderer.invoke("config:getEffectiveBaseUrls"),
   },
 
   /** App version */

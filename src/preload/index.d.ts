@@ -11,6 +11,7 @@ interface EdisonAPI {
   auth: {
     openSaml: (url: string) => void;
     onCallback: (callback: (url: string) => void) => () => void;
+    getDevCallbackUrl: () => Promise<string | null>;
   };
   health: {
     check: () => Promise<boolean>;
@@ -47,6 +48,9 @@ interface EdisonAPI {
     injectHooks: () => Promise<unknown[]>;
     removeHooks: () => Promise<unknown[]>;
     getHookStatus: () => Promise<unknown[]>;
+  };
+  config: {
+    getEffectiveBaseUrls: () => Promise<{ mcpBaseUrl: string | null; apiBaseUrl: string | null }>;
   };
   getVersion: () => string;
 }

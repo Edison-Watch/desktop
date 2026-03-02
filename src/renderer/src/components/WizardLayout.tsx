@@ -1,4 +1,5 @@
 import StepIndicator from "./StepIndicator";
+import logoDark from "../assets/logo-dark.png";
 
 interface WizardLayoutProps {
   currentStep: number;
@@ -11,17 +12,12 @@ export default function WizardLayout({ currentStep, locked, children }: WizardLa
     <div className="flex min-h-screen flex-col items-center bg-[var(--bg-base)]">
       {/* Header with branding */}
       <header className="flex w-full flex-col items-center gap-4 px-6 pt-10 pb-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-muted)]">
-            <span className="text-lg font-bold text-[var(--bg-base)]">E</span>
-          </div>
-          <h1 className="text-xl font-semibold text-[var(--text-primary)]">Edison Watch</h1>
-        </div>
+        <img src={logoDark} alt="Edison Watch" className="h-8 w-auto" />
         <StepIndicator currentStep={currentStep} locked={locked} />
       </header>
 
       {/* Content area */}
-      <main className="flex w-full max-w-md flex-1 flex-col px-6 pb-10">
+      <main className="flex w-full max-w-lg flex-1 flex-col px-6 pb-10">
         {children}
       </main>
     </div>

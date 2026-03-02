@@ -45,7 +45,11 @@ export default function FinishStep({
   const [reverting, setReverting] = useState(false);
 
   const handleOpenDashboard = async () => {
-    const dashUrl = apiBaseUrl.replace(/\/$/, "");
+    let dashUrl = apiBaseUrl.replace(/\/$/, "");
+    if (dashUrl && !/^https?:\/\//i.test(dashUrl)) {
+      dashUrl = `https://${dashUrl}`;
+    }
+    if (!dashUrl) return;
     await window.api.shell.openExternal(dashUrl);
   };
 

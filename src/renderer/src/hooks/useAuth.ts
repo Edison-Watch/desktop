@@ -1,8 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase, fetchApiKey } from "@edison/shared/auth";
 
-const DOMAIN_INFO_URL =
+const DOMAIN_INFO_URL_FALLBACK: string =
   import.meta.env.VITE_DOMAIN_INFO_API_URL || "https://demo-dashboard.edison.watch";
+
+async function getDomainInfoBaseUrl(): Promise<string> {
+  try {
+    const effective = await window.api.config.getEffectiveBaseUrls();
+    if (effective.apiBaseUrl) return effective.apiBaseUrl;
+  } catch {
+    // Not available — use fallback
+  }
+  return DOMAIN_INFO_URL_FALLBACK;
+}
 
 export interface AuthState {
   signedIn: boolean;
@@ -70,11 +80,23 @@ export default function useAuth() {
       return false;
     }
 
-    const mcpBaseUrl = result.backend_base_url || "";
-    const apiBaseUrl = result.backend_base_url || "";
+    // Get effective URLs from main process (respects debug env override for dev mode)
+    const normalizeUrl = (url: string) =>
+      url && !/^https?:\/\//i.test(url) ? `https://${url}` : url;
+    let mcpBaseUrl = normalizeUrl(result.backend_base_url || "");
+    let apiBaseUrl = normalizeUrl(result.backend_base_url || "");
+    try {
+      const effective = await window.api.config.getEffectiveBaseUrls();
+      if (effective.mcpBaseUrl) mcpBaseUrl = normalizeUrl(effective.mcpBaseUrl);
+      if (effective.apiBaseUrl) apiBaseUrl = normalizeUrl(effective.apiBaseUrl);
+    } catch {
+      // Not available — use URLs from fetchApiKey
+    }
 
     update({
       apiKey: result.api_key,
+      userId: result.user_id,
+      email: result.user_email,
       mcpBaseUrl,
       apiBaseUrl,
       signedIn: true,
@@ -112,15 +134,28 @@ export default function useAuth() {
     return true;
   }, [checkHealth, update]);
 
+  // Resolve the OAuth redirect URL: use dev localhost server in dev mode,
+  // fall back to the custom protocol for production/packaged builds.
+  const getRedirectTo = useCallback(async (): Promise<string> => {
+    try {
+      const devUrl = await window.api.auth.getDevCallbackUrl();
+      if (devUrl) return devUrl;
+    } catch {
+      // Not available (production build) — fall through
+    }
+    return "edison-watch://auth/callback";
+  }, []);
+
   // SSO sign-in
   const signInWithSSO = useCallback(async (email: string) => {
     update({ loading: true, error: "" });
     const domain = email.split("@")[1];
+    const redirectTo = await getRedirectTo();
 
     const { data, error } = await supabase.auth.signInWithSSO({
       domain,
       options: {
-        redirectTo: "edison-watch://auth/callback",
+        redirectTo,
         skipBrowserRedirect: true,
       },
     });
@@ -133,16 +168,17 @@ export default function useAuth() {
     if (data?.url) {
       window.api.shell.openExternal(data.url);
     }
-  }, [update]);
+  }, [getRedirectTo, update]);
 
   // Google OAuth
   const signInWithGoogle = useCallback(async () => {
     update({ loading: true, error: "" });
+    const redirectTo = await getRedirectTo();
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: "edison-watch://auth/callback",
+        redirectTo,
         skipBrowserRedirect: true,
         queryParams: { access_type: "offline", prompt: "consent" },
       },
@@ -156,7 +192,7 @@ export default function useAuth() {
     if (data?.url) {
       window.api.shell.openExternal(data.url);
     }
-  }, [update]);
+  }, [getRedirectTo, update]);
 
   // Password sign-in
   const signInWithPassword = useCallback(async (email: string, password: string) => {
@@ -165,7 +201,8 @@ export default function useAuth() {
     // Check SSO-only domain first
     const domain = email.split("@")[1];
     try {
-      const res = await fetch(`${DOMAIN_INFO_URL}/api/auth/domain-info?domain=${domain}`);
+      const domainInfoBase = await getDomainInfoBaseUrl();
+      const res = await fetch(`${domainInfoBase}/api/auth/domain-info?domain=${domain}`);
       if (res.ok) {
         const info = await res.json();
         if (info?.sso_only) {
@@ -198,7 +235,8 @@ export default function useAuth() {
 
     domainTimeout.current = setTimeout(async () => {
       try {
-        const res = await fetch(`${DOMAIN_INFO_URL}/api/auth/domain-info?domain=${domain}`);
+        const domainInfoBase = await getDomainInfoBaseUrl();
+        const res = await fetch(`${domainInfoBase}/api/auth/domain-info?domain=${domain}`);
         if (res.ok) {
           const info = await res.json();
           update({ ssoOnly: info?.sso_only ?? false });
@@ -217,28 +255,44 @@ export default function useAuth() {
       const normalized = url.replace("edison-watch://", "http://");
       const parsed = new URL(normalized);
 
-      // Check hash first (SAML tokens)
+      // Helper to set session from access+refresh tokens
+      const setSessionFromTokens = async (accessToken: string, refreshToken: string): Promise<boolean> => {
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (error) {
+          update({ loading: false, error: error.message });
+          return false;
+        }
+        const { data: { user } } = await supabase.auth.getUser();
+        update({ email: user?.email || "", userId: user?.id || "" });
+        await fetchServerUrls();
+        return true;
+      };
+
+      // 1. Tokens forwarded as query params by the dev auth server (from_hash=1 case)
+      const accessTokenInQuery = parsed.searchParams.get("access_token");
+      if (accessTokenInQuery) {
+        await setSessionFromTokens(
+          accessTokenInQuery,
+          parsed.searchParams.get("refresh_token") || "",
+        );
+        return;
+      }
+
+      // 2. Tokens in URL hash (direct SAML/OAuth deep link via protocol handler)
       const hash = parsed.hash.substring(1);
       if (hash) {
         const params = new URLSearchParams(hash);
         const accessToken = params.get("access_token");
         if (accessToken) {
-          const { error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: params.get("refresh_token") || "",
-          });
-          if (error) {
-            update({ loading: false, error: error.message });
-            return;
-          }
-          const { data: { user } } = await supabase.auth.getUser();
-          update({ email: user?.email || "", userId: user?.id || "" });
-          await fetchServerUrls();
+          await setSessionFromTokens(accessToken, params.get("refresh_token") || "");
           return;
         }
       }
 
-      // Check code in query (PKCE flow)
+      // 3. Authorization code (PKCE flow)
       const code = parsed.searchParams.get("code");
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);

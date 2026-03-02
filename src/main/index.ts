@@ -10,9 +10,11 @@ import {
   clipboard,
 } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
-import { join, resolve, sep } from "path";
+import { join, resolve, sep, dirname } from "path";
 import { homedir } from "os";
-import { promises as fs, readFileSync, writeFileSync, existsSync } from "fs";
+import { promises as fs, readFileSync, writeFileSync, existsSync, unlinkSync } from "fs";
+import { createServer, type IncomingMessage, type ServerResponse } from "http";
+import type { AddressInfo } from "net";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import windowStateKeeper from "electron-window-state";
 import { discoverMcpServers, getJetBrainsMcpConfigPaths } from "./mcpDiscovery";
@@ -27,11 +29,56 @@ import { filterOutEdisonWatchServers } from "./mcpConfigMonitor";
 import { applyAppIntegrations } from "./mcpConfigWriter";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-import trayIconPath from "../../resources/icon.png?asset";
+import appIconPath from "../../resources/icon.png?asset";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import trayIconPath from "../../resources/icon_tray.png?asset";
+
+// ── Debug environment switcher ───────────────────────────────────────
+
+const DEBUG_ENV_NAMES = ["demo", "release", "dev"] as const;
+type DebugEnvName = (typeof DEBUG_ENV_NAMES)[number];
+
+// "dev" = localhost backend (make dev / make demo_server) + demo Supabase auth
+const DEV_MCP_BASE_URL = "http://localhost:3000";
+const DEV_API_BASE_URL = "http://localhost:3001";
+
+function getDebugEnvOverridePath(): string {
+  return join(app.getPath("userData"), "edison_debug_env.json");
+}
+
+function getDebugEnvOverride(): DebugEnvName | null {
+  try {
+    const p = getDebugEnvOverridePath();
+    if (!existsSync(p)) return null;
+    const raw = readFileSync(p, "utf-8");
+    const data = JSON.parse(raw) as { env?: string };
+    if (data.env === "demo" || data.env === "release" || data.env === "dev") return data.env;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function setDebugEnvOverride(env: DebugEnvName | null): void {
+  try {
+    const p = getDebugEnvOverridePath();
+    if (env === null) {
+      if (existsSync(p)) unlinkSync(p);
+      return;
+    }
+    writeFileSync(p, JSON.stringify({ env }), "utf-8");
+  } catch {
+    // best effort only
+  }
+}
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let approvalWindow: BrowserWindow | null = null;
+
+// ── Dev auth server (localhost OAuth callback for unpackaged dev builds) ─
+let devAuthServer: ReturnType<typeof createServer> | null = null;
+let devAuthCallbackUrl: string | null = null;
 
 // ── SSE state ───────────────────────────────────────────────────────
 
@@ -116,6 +163,7 @@ function markSetupIncomplete(): void {
 // ── URL helpers ─────────────────────────────────────────────────────
 
 function getApiBaseUrl(): string | null {
+  if (is.dev || getDebugEnvOverride() === "dev") return DEV_API_BASE_URL;
   const setupData = getSetupData();
   if (setupData.apiBaseUrl) return setupData.apiBaseUrl;
   if (setupData.serverAddress) return `https://${setupData.serverAddress}`;
@@ -148,8 +196,9 @@ async function checkServerStatus(): Promise<boolean> {
   try {
     const setupData = getSetupData();
     const mcpUrl =
+      (is.dev || getDebugEnvOverride() === "dev" ? DEV_MCP_BASE_URL : null) ||
       setupData.mcpBaseUrl ||
-      (setupData.serverAddress ? `http://${setupData.serverAddress}` : null);
+      (setupData.serverAddress ? `https://${setupData.serverAddress}` : null);
     if (!mcpUrl) return false;
 
     const healthUrl = `${mcpUrl.replace(/\/$/, "")}/health`;
@@ -223,7 +272,7 @@ function startEventSubscription(): void {
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const EventSource = require("eventsource");
+    const { EventSource } = require("eventsource");
     eventSource = new EventSource(eventsUrl);
 
     eventSource.onmessage = (event: { data: string }) => {
@@ -390,6 +439,22 @@ async function handleApproval(
     pendingApprovals.delete(approvalId);
     updateTrayMenu();
 
+    // Show success notification
+    if (Notification.isSupported()) {
+      const actionLabel =
+        command === "approve"
+          ? "approved"
+          : command === "approve_and_remember"
+            ? "approved and remembered"
+            : "denied";
+      const n = new Notification({
+        title: "Edison Watch",
+        body: `Successfully ${actionLabel} ${pending.kind} '${pending.name}'`,
+        ...(process.platform !== "darwin" && { icon: trayIconPath }),
+      });
+      n.show();
+    }
+
     if (approvalWindow && !approvalWindow.isDestroyed()) {
       approvalWindow.webContents.send("approval:removed", approvalId);
       if (pendingApprovals.size === 0) {
@@ -512,7 +577,7 @@ document.getElementById('deny-all')?.addEventListener('click',()=>{document.quer
 
 // ── Tray ────────────────────────────────────────────────────────────
 
-function buildTrayMenu(): Menu {
+function buildTrayMenu(showDebugItems = false): Menu {
   const setupData = getSetupData();
   const pendingCount = pendingApprovals.size;
   const userDisplayName = setupData.userEmail || "Not signed in";
@@ -581,13 +646,41 @@ function buildTrayMenu(): Menu {
     });
   }
 
+  const currentEnv = getDebugEnvOverride();
+  const envSubmenu: MenuItemConstructorOptions[] = DEBUG_ENV_NAMES.map((name) => ({
+    label: name === "dev" ? "dev (localhost)" : name,
+    type: "radio" as const,
+    checked: currentEnv === name,
+    click: () => {
+      setDebugEnvOverride(name);
+      updateTrayMenu();
+      if (Notification.isSupported()) {
+        const n = new Notification({
+          title: "Edison Watch",
+          body: `Environment set to ${name === "dev" ? "dev (localhost backend, demo auth)" : name}.`,
+          ...(process.platform !== "darwin" && { icon: trayIconPath }),
+        });
+        n.show();
+      }
+    },
+  }));
+
   items.push(
     { type: "separator" },
-    {
-      label: "Debug Window",
-      click: () => showDebugWindow(mainWindow ?? undefined),
-    },
-    { type: "separator" },
+    ...(showDebugItems
+      ? ([
+          {
+            label: "Debug Window",
+            click: () => showDebugWindow(mainWindow ?? undefined),
+          },
+          { label: "Switch Environment", submenu: envSubmenu },
+          { type: "separator" },
+          {
+            label: "Re-run Setup Wizard",
+            click: () => rerunWizard(),
+          },
+        ] as MenuItemConstructorOptions[])
+      : []),
     {
       label: "Sign Out",
       click: () => handleLogoutAndRestart(),
@@ -602,17 +695,19 @@ function buildTrayMenu(): Menu {
 }
 
 function createTray(): void {
+  // macOS/Linux: use the dedicated tray icon (transparent, works with light+dark menu bars)
+  // Windows: resize the main app icon (transparent icons look bad on Windows system tray)
   let trayIconToUse: string | Electron.NativeImage = trayIconPath;
   if (process.platform === "win32") {
-    const img = nativeImage.createFromPath(trayIconPath);
+    const img = nativeImage.createFromPath(appIconPath);
     trayIconToUse = img.resize({ width: 16, height: 16 });
   }
   tray = new Tray(trayIconToUse);
   tray.setToolTip("Edison Watch");
 
-  const showMenu = (): void => {
+  const showMenu = (event: Electron.KeyboardEvent): void => {
     if (!tray) return;
-    tray.popUpContextMenu(buildTrayMenu());
+    tray.popUpContextMenu(buildTrayMenu(event.altKey));
   };
 
   tray.on("click", showMenu);
@@ -751,6 +846,18 @@ function registerIpcHandlers(): void {
     });
   });
 
+  // Auth: expose dev localhost callback URL (null in production)
+  ipcMain.handle("auth:getDevCallbackUrl", () => devAuthCallbackUrl);
+
+  // Config: effective base URLs (respects debug env override)
+  ipcMain.handle("config:getEffectiveBaseUrls", () => {
+    const devMode = is.dev || getDebugEnvOverride() === "dev";
+    return {
+      mcpBaseUrl: devMode ? DEV_MCP_BASE_URL : null,
+      apiBaseUrl: getApiBaseUrl(),
+    };
+  });
+
   // Setup: get persisted setup data
   ipcMain.handle("setup:getData", () => {
     return getSetupData();
@@ -818,8 +925,7 @@ function registerIpcHandlers(): void {
     for (const check of checks) {
       try {
         const configPath = await check.getPath();
-        const dir = configPath.substring(0, configPath.lastIndexOf("/"));
-        await fs.access(dir);
+        await fs.access(dirname(configPath));
         clients.push({ id: check.id, name: check.name, configPath });
       } catch {
         // Client not installed
@@ -911,7 +1017,7 @@ function registerIpcHandlers(): void {
   }> => {
     const setup = getSetupData();
     const apiKey = params?.apiKey || setup.apiKey;
-    const apiBaseUrl = params?.apiBaseUrl || setup.apiBaseUrl;
+    const apiBaseUrl = getApiBaseUrl() || params?.apiBaseUrl || setup.apiBaseUrl;
     const userId = params?.userId || setup.userId;
 
     if (!apiKey || !apiBaseUrl) {
@@ -970,11 +1076,85 @@ function registerIpcHandlers(): void {
   });
 }
 
+// ── Dev auth server (localhost OAuth callback for unpackaged dev builds) ─
+
+/**
+ * Start a tiny localhost HTTP server that receives OAuth callbacks in dev mode.
+ * The server listens on a random available port. When the OAuth provider
+ * redirects to http://127.0.0.1:<port>/auth/callback, the server extracts the
+ * query string / hash and forwards the full URL to the renderer via IPC, exactly
+ * like the protocol handler does in production.
+ */
+function startDevAuthServer(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const handler = (req: IncomingMessage, res: ServerResponse): void => {
+      const reqUrl = req.url ?? "/";
+      if (!reqUrl.startsWith("/auth/callback")) {
+        res.writeHead(404);
+        res.end("Not found");
+        return;
+      }
+
+      const port = (devAuthServer!.address() as AddressInfo).port;
+      const fullUrl = `http://127.0.0.1:${port}${reqUrl}`;
+      console.log("[DevAuthServer] Received OAuth callback:", fullUrl);
+
+      const parsedUrl = new URL(fullUrl);
+      const hasCode = parsedUrl.searchParams.has("code");
+      const hasToken = parsedUrl.searchParams.has("access_token");
+
+      if ((hasCode || hasToken) && mainWindow) {
+        mainWindow.webContents.send("auth:callback", fullUrl);
+      }
+
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(`<!DOCTYPE html>
+<html>
+<body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1C1C1C;color:#C3FFFD">
+  <div style="text-align:center">
+    <h2>Authentication successful</h2>
+    <p>You can close this tab and return to Edison Watch.</p>
+  </div>
+  <script>
+    if (window.location.hash && window.location.hash.length > 1) {
+      fetch('/auth/callback?from_hash=1&' + window.location.hash.substring(1))
+    }
+  </script>
+</body>
+</html>`);
+    };
+
+    devAuthServer = createServer(handler);
+    devAuthServer.listen(0, "127.0.0.1", () => {
+      const port = (devAuthServer!.address() as AddressInfo).port;
+      devAuthCallbackUrl = `http://127.0.0.1:${port}/auth/callback`;
+      console.log(`[DevAuthServer] Listening at ${devAuthCallbackUrl}`);
+      resolve();
+    });
+    devAuthServer.on("error", (err) => {
+      console.error("[DevAuthServer] Failed to start:", err);
+      reject(err);
+    });
+  });
+}
+
 // ── Deep link protocol ──────────────────────────────────────────────
 
 app.on("open-url", (_event, url) => {
   if (url.startsWith("edison-watch://")) {
     mainWindow?.webContents.send("auth:callback", url);
+  }
+});
+
+// Handle deep link callback on Windows/Linux (second instance)
+app.on("second-instance", (_event, commandLine) => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+  const url = commandLine.find((arg) => arg.startsWith("edison-watch://"));
+  if (url && mainWindow) {
+    mainWindow.webContents.send("auth:callback", url);
   }
 });
 
@@ -990,9 +1170,19 @@ if (process.defaultApp) {
 
 // ── App lifecycle ───────────────────────────────────────────────────
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   initSentry();
   electronApp.setAppUserModelId("com.edisonwatch.desktop");
+
+  // Start localhost auth callback server in dev mode (custom protocol is unreliable
+  // for unpackaged apps, so we receive OAuth callbacks over HTTP instead).
+  if (is.dev) {
+    try {
+      await startDevAuthServer();
+    } catch (err) {
+      console.error("[App] Failed to start dev auth server, falling back to protocol handler:", err);
+    }
+  }
 
   app.on("browser-window-created", (_, window) => {
     optimizer.watchWindowShortcuts(window);

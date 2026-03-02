@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Button, Card, Switch, Badge, Input } from "@edison/shared/ui";
+import { Button, Card, Badge, Input } from "@edison/shared/ui";
+import { AppLogo } from "./AppLogo";
 
 interface DetectedClient {
   id: string;
@@ -96,8 +97,9 @@ export default function AppsStep({
     setApplying(true);
     try {
       const selectedApps = clients.filter((c) => c.enabled).map((c) => c.id);
+      const serverAddress = mcpBaseUrl ? new URL(mcpBaseUrl).host : "";
       const result = await window.api.mcp.applyAppIntegrations({
-        serverAddress: new URL(mcpBaseUrl).host,
+        serverAddress,
         mcpBaseUrl,
         apiKey,
         edisonSecretKey: edisonSecretKey || undefined,
@@ -156,45 +158,70 @@ export default function AppsStep({
           </p>
         </Card>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           {clients.map((client) => (
-            <Card key={client.id}>
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--bg-input)] text-sm font-medium text-[var(--text-secondary)]">
-                  {client.name[0]}
+            <div
+              key={client.id}
+              className="rounded-lg border border-[var(--border)] overflow-hidden"
+              style={{
+                borderTopColor: client.enabled ? "var(--accent-dim)" : "var(--border)",
+                background: "linear-gradient(180deg, var(--bg-overlay) 0%, var(--bg-raised) 48px)",
+              }}
+            >
+              {/* Clickable row — toggles selection */}
+              <button
+                type="button"
+                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--bg-input)]/40 transition-colors"
+                onClick={() => toggleClient(client.id)}
+              >
+                {/* Checkbox indicator */}
+                <div
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition-colors ${
+                    client.enabled
+                      ? "border-[var(--accent)] bg-[var(--accent)]"
+                      : "border-[var(--border)]"
+                  }`}
+                >
+                  {client.enabled && (
+                    <svg viewBox="0 0 12 12" fill="none" className="h-3 w-3" aria-hidden="true">
+                      <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
                 </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
+
+                {/* App logo */}
+                <AppLogo id={client.id} name={client.name} />
+
+                {/* Name + path */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-[var(--text-primary)]">
                       {client.name}
                     </span>
                     <Badge variant="success" size="sm">Detected</Badge>
                   </div>
-                  <p className="text-xs text-[var(--text-muted)] truncate max-w-[220px]">
+                  <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">
                     {client.configPath}
                   </p>
                 </div>
-                <Switch
-                  checked={client.enabled}
-                  onChange={() => toggleClient(client.id)}
-                />
-              </div>
-
-              {/* Config preview toggle */}
-              <button
-                type="button"
-                className="mt-2 text-xs text-[var(--accent-muted)] hover:text-[var(--accent)]"
-                onClick={() => toggleExpanded(client.id)}
-              >
-                {client.expanded ? "Hide config" : "Show config"}
               </button>
 
+              {/* Config preview toggle */}
               {client.expanded && (
-                <pre className="mt-2 max-h-40 overflow-auto rounded-md bg-[var(--bg-input)] p-3 text-xs text-[var(--text-secondary)]">
+                <pre className="mx-4 mb-3 max-h-40 overflow-auto rounded-md bg-[var(--bg-input)] p-3 text-xs text-[var(--text-secondary)]">
                   {client.configPreview ?? "Loading..."}
                 </pre>
               )}
-            </Card>
+              <div className="px-4 pb-2">
+                <button
+                  type="button"
+                  className="text-xs text-[var(--accent-muted)] hover:text-[var(--accent)] transition-colors"
+                  onClick={() => toggleExpanded(client.id)}
+                >
+                  {client.expanded ? "Hide config" : "Show config"}
+                </button>
+              </div>
+            </div>
           ))}
         </div>
       )}
