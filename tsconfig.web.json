@@ -8,6 +8,7 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "strict": true,
+    "moduleResolution": "bundler",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "baseUrl": ".",
     "paths": {
