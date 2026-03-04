@@ -1178,7 +1178,15 @@ app.whenReady().then(async () => {
   // for unpackaged apps, so we receive OAuth callbacks over HTTP instead).
   if (is.dev) {
     try {
-      await startDevAuthServer();
+      // Timeout guards against environments (e.g. Docker E2E) where the TCP
+      // listen on 127.0.0.1:0 never completes, which would otherwise hang
+      // the entire whenReady handler and prevent createWindow() from running.
+      await Promise.race([
+        startDevAuthServer(),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error("DevAuthServer listen timeout")), 5_000),
+        ),
+      ]);
     } catch (err) {
       console.error("[App] Failed to start dev auth server, falling back to protocol handler:", err);
     }
