@@ -50,7 +50,9 @@ for (const story of stories) {
   test(title, async ({ page }) => {
     const params = new URLSearchParams({ id: story.id, viewMode: "story" });
     await page.goto(`/iframe.html?${params.toString()}`);
-    await page.waitForSelector("#storybook-root");
+    // Wait for the story to actually render (not just the root element to exist),
+    // so the video recording captures the rendered UI rather than the loading spinner.
+    await page.waitForSelector("#storybook-root > *");
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(SETTLE_DELAY_MS);
 

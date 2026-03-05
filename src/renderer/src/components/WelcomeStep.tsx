@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button, Input, Badge } from "@edison/shared/ui";
 import type { AuthState } from "../hooks/useAuth";
 
@@ -39,6 +39,19 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authMode, setAuthMode] = useState<"sso" | "password">("sso");
+
+  // Keep a stable ref to onNext so the timer below isn't reset on every re-render
+  const onNextRef = useRef(onNext);
+  onNextRef.current = onNext;
+
+  // Auto-advance to next step shortly after sign-in succeeds.
+  // Only depends on signedIn — using a ref for onNext avoids resetting
+  // the timer when App re-renders (e.g. server-status health check).
+  useEffect(() => {
+    if (!auth.signedIn) return;
+    const timer = setTimeout(() => onNextRef.current(), 1200);
+    return () => clearTimeout(timer);
+  }, [auth.signedIn]);
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;

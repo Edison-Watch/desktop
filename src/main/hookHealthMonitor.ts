@@ -36,9 +36,9 @@ export function getHookStatusLabel(): string {
   if (s.length === 0) return 'Hooks: -'
   const withHooks = s.filter((e) => e.hasHook).length
   const total = s.length
-  if (withHooks === total) return 'Hooks: installed and healthy'
-  if (withHooks === 0) return 'Hooks: not installed'
-  return `Hooks: ${withHooks}/${total} installed`
+  if (withHooks === total) return 'All MCP clients have Edison installed'
+  if (withHooks === 0) return '0 MCP clients have Edison installed'
+  return `${withHooks}/${total} MCP clients have Edison installed`
 }
 
 /**

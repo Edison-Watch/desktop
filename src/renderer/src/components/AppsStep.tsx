@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button, Card, Badge, Input } from "@edison/shared/ui";
 import { AppLogo } from "./AppLogo";
 
@@ -36,7 +36,9 @@ export default function AppsStep({
 }: AppsStepProps): React.ReactNode {
   const [clients, setClients] = useState<DetectedClient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState("");
   const [edisonSecretKey, setEdisonSecretKey] = useState("");
 
   // Scan & submit state
@@ -46,29 +48,47 @@ export default function AppsStep({
     autoApproved: number;
     skipped: number;
     total: number;
+    servers?: Array<{ name: string; client: string; source: string }>;
     error?: string;
     errors?: string[];
   } | null>(null);
+  const [showScanServers, setShowScanServers] = useState(false);
+
+  const detectClients = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    try {
+      const detected = await window.api.mcp.detectClients();
+      setClients((prev) => {
+        // Preserve enabled/expanded state for existing clients
+        const prevMap = new Map(prev.map((c) => [c.id, c]));
+        return detected.map((c) => {
+          const existing = prevMap.get(c.id);
+          return {
+            ...c,
+            enabled: existing ? existing.enabled : true,
+            configPreview: existing ? existing.configPreview : null,
+            expanded: existing ? existing.expanded : false,
+          };
+        });
+      });
+    } catch {
+      // Discovery failed
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   // Detect installed MCP clients on mount
   useEffect(() => {
-    (async () => {
-      try {
-        const detected = await window.api.mcp.detectClients();
-        const withState = detected.map((c) => ({
-          ...c,
-          enabled: true,
-          configPreview: null,
-          expanded: false,
-        }));
-        setClients(withState);
-      } catch {
-        // Discovery failed
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+    detectClients(false);
+  }, [detectClients]);
+
+  // Auto-refresh every 30 seconds to pick up newly installed clients
+  useEffect(() => {
+    const interval = setInterval(() => detectClients(true), 30000);
+    return () => clearInterval(interval);
+  }, [detectClients]);
 
   const toggleClient = (id: string) => {
     setClients((prev) =>
@@ -84,7 +104,7 @@ export default function AppsStep({
           // Load config preview on first expand
           window.api.mcp.readConfig(c.configPath).then((content) => {
             setClients((curr) =>
-              curr.map((cc) => (cc.id === id ? { ...cc, configPreview: content } : cc)),
+              curr.map((cc) => (cc.id === id ? { ...cc, configPreview: content ?? "(No config file yet)" } : cc)),
             );
           });
         }
@@ -95,6 +115,7 @@ export default function AppsStep({
 
   const handleApply = async () => {
     setApplying(true);
+    setApplyError("");
     try {
       const selectedApps = clients.filter((c) => c.enabled).map((c) => c.id);
       const serverAddress = mcpBaseUrl ? new URL(mcpBaseUrl).host : "";
@@ -107,8 +128,8 @@ export default function AppsStep({
       });
       onApplyResult(result.modifiedConfigs, edisonSecretKey);
       onNext();
-    } catch {
-      // Apply failed
+    } catch (err) {
+      setApplyError(err instanceof Error ? err.message : "Failed to apply configuration");
     } finally {
       setApplying(false);
     }
@@ -117,6 +138,7 @@ export default function AppsStep({
   const handleScanAndSubmit = async () => {
     setScanning(true);
     setScanResult(null);
+    setShowScanServers(false);
     try {
       const result = await window.api.mcp.submitAllDiscovered({
         apiKey,
@@ -153,12 +175,34 @@ export default function AppsStep({
 
       {clients.length === 0 ? (
         <Card>
-          <p className="py-4 text-center text-sm text-[var(--text-muted)]">
-            No MCP clients detected. You can configure them manually later.
-          </p>
+          <div className="flex items-center justify-between py-2">
+            <p className="text-sm text-[var(--text-muted)]">
+              No MCP clients detected. You can configure them manually later.
+            </p>
+            <button
+              type="button"
+              onClick={() => detectClients(true)}
+              disabled={refreshing}
+              className="ml-3 shrink-0 text-xs text-[var(--accent-muted)] hover:text-[var(--accent)] transition-colors disabled:opacity-50"
+            >
+              {refreshing ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
         </Card>
       ) : (
         <div className="flex flex-col gap-2">
+          {/* Refresh row */}
+          <div className="flex items-center justify-end">
+            <button
+              type="button"
+              onClick={() => detectClients(true)}
+              disabled={refreshing}
+              className="text-xs text-[var(--accent-muted)] hover:text-[var(--accent)] transition-colors disabled:opacity-50"
+            >
+              {refreshing ? "Refreshing…" : "↻ Refresh"}
+            </button>
+          </div>
+
           {clients.map((client) => (
             <div
               key={client.id}
@@ -209,7 +253,7 @@ export default function AppsStep({
               {/* Config preview toggle */}
               {client.expanded && (
                 <pre className="mx-4 mb-3 max-h-40 overflow-auto rounded-md bg-[var(--bg-input)] p-3 text-xs text-[var(--text-secondary)]">
-                  {client.configPreview ?? "Loading..."}
+                  {client.configPreview ?? "Loading config..."}
                 </pre>
               )}
               <div className="px-4 pb-2">
@@ -281,6 +325,30 @@ export default function AppsStep({
                   {scanResult.submitted === 0 && scanResult.total > 0 && (
                     <span className="text-[var(--text-muted)]">{scanResult.skipped} server(s) skipped.</span>
                   )}
+
+                  {/* Discovered servers list */}
+                  {scanResult.servers && scanResult.servers.length > 0 && (
+                    <div className="mt-1">
+                      <button
+                        type="button"
+                        className="text-[var(--accent-muted)] hover:text-[var(--accent)] transition-colors"
+                        onClick={() => setShowScanServers((v) => !v)}
+                      >
+                        {showScanServers ? "Hide" : "Show"} {scanResult.servers.length} found server(s)
+                      </button>
+                      {showScanServers && (
+                        <div className="mt-2 flex flex-col gap-1 max-h-32 overflow-y-auto">
+                          {scanResult.servers.map((s) => (
+                            <div key={s.client + ":" + s.name} className="flex items-center gap-2">
+                              <span className="text-[var(--text-primary)] font-medium truncate">{s.name}</span>
+                              <span className="text-[var(--text-muted)] shrink-0">{s.client}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {scanResult.errors && scanResult.errors.length > 0 && (
                     <div className="mt-1 text-[var(--danger)]">
                       {scanResult.errors.slice(0, 3).map((e, i) => (
@@ -304,6 +372,9 @@ export default function AppsStep({
         </div>
       </Card>
 
+      {applyError && (
+        <p className="text-sm text-[var(--danger)]">{applyError}</p>
+      )}
       <Button
         variant="primary"
         onClick={handleApply}

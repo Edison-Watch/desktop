@@ -70,6 +70,7 @@ const api = {
       autoApproved: number;
       skipped: number;
       total: number;
+      servers?: Array<{ name: string; client: string; source: string }>;
       error?: string;
       errors?: string[];
     }> => ipcRenderer.invoke("mcp:submitAllDiscovered", params),

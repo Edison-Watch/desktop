@@ -42,7 +42,10 @@ export default function FinishStep({
 }: FinishStepProps): React.ReactNode {
   const [completing, setCompleting] = useState(false);
   const [showConfigDetails, setShowConfigDetails] = useState(false);
-  const [reverting, setReverting] = useState(false);
+  const [revertingAll, setRevertingAll] = useState(false);
+  // Track which individual configs have been reverted (by configPath)
+  const [revertedPaths, setRevertedPaths] = useState<Set<string>>(new Set());
+  const [revertingPaths, setRevertingPaths] = useState<Set<string>>(new Set());
 
   const handleOpenDashboard = async () => {
     let dashUrl = apiBaseUrl.replace(/\/$/, "");
@@ -73,12 +76,39 @@ export default function FinishStep({
     }
   };
 
-  const handleUndo = async () => {
-    if (reverting || modifiedConfigs.length === 0) return;
-    setReverting(true);
+  const handleUndoOne = async (configPath: string, backupPath: string) => {
+    if (revertingPaths.has(configPath) || revertedPaths.has(configPath)) return;
+    setRevertingPaths((prev) => new Set(prev).add(configPath));
     try {
       const result = await window.api.mcp.revertAppIntegrations({
-        configs: modifiedConfigs.map((c) => ({
+        configs: [{ configPath, backupPath }],
+      });
+      if (result.reverted > 0) {
+        setRevertedPaths((prev) => new Set(prev).add(configPath));
+      }
+      if (result.errors?.length) {
+        console.warn("Revert errors:", result.errors);
+      }
+    } catch {
+      // Revert failed
+    } finally {
+      setRevertingPaths((prev) => {
+        const next = new Set(prev);
+        next.delete(configPath);
+        return next;
+      });
+    }
+  };
+
+  const handleUndoAll = async () => {
+    const remaining = modifiedConfigs.filter(
+      (c) => !revertedPaths.has(c.configPath) && !revertingPaths.has(c.configPath),
+    );
+    if (revertingAll || remaining.length === 0) return;
+    setRevertingAll(true);
+    try {
+      const result = await window.api.mcp.revertAppIntegrations({
+        configs: remaining.map((c) => ({
           configPath: c.configPath,
           backupPath: c.backupPath,
         })),
@@ -86,13 +116,17 @@ export default function FinishStep({
       if (result.errors?.length) {
         console.warn("Revert errors:", result.errors);
       }
-      onRestart();
+      if (result.reverted > 0) {
+        onRestart();
+      }
     } catch {
       // Revert failed
     } finally {
-      setReverting(false);
+      setRevertingAll(false);
     }
   };
+
+  const activeConfigs = modifiedConfigs.filter((c) => !revertedPaths.has(c.configPath));
 
   return (
     <div className="flex flex-col gap-6">
@@ -131,29 +165,45 @@ export default function FinishStep({
           <div className="flex items-center justify-between">
             <span className="text-xs text-[var(--text-muted)]">API Key</span>
             <span className="text-sm font-mono text-[var(--text-secondary)]">
-              {apiKey.slice(0, 8)}...{apiKey.slice(-4)}
+              {apiKey.length >= 12 ? `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}` : apiKey}
             </span>
           </div>
         </div>
       </Card>
 
-      {/* Modified configs summary */}
+      {/* Modified configs summary with per-client undo */}
       {modifiedConfigs.length > 0 && (
         <Card>
           <p className="text-xs text-[var(--text-muted)] mb-2">
             Configuration changes applied:
           </p>
-          <div className="flex flex-col gap-1">
-            {modifiedConfigs.map((entry) => (
-              <div key={entry.configPath} className="flex items-center gap-2 text-sm">
-                <span className="text-[var(--text-primary)] shrink-0">
-                  {APP_ID_TO_NAME[entry.appId] ?? entry.appId}
-                </span>
-                <code className="text-xs text-[var(--text-muted)] truncate">
-                  {entry.configPath}
-                </code>
-              </div>
-            ))}
+          <div className="flex flex-col gap-2">
+            {modifiedConfigs.map((entry) => {
+              const reverted = revertedPaths.has(entry.configPath);
+              const reverting = revertingPaths.has(entry.configPath);
+              return (
+                <div key={entry.configPath} className="flex items-center gap-2 text-sm">
+                  <div className="flex-1 min-w-0">
+                    <span className={`text-[var(--text-primary)] shrink-0 ${reverted ? "line-through opacity-50" : ""}`}>
+                      {APP_ID_TO_NAME[entry.appId] ?? entry.appId}
+                    </span>
+                    {reverted && (
+                      <span className="ml-2 text-xs text-[var(--text-muted)]">reverted</span>
+                    )}
+                  </div>
+                  {!reverted && entry.backupPath && (
+                    <button
+                      type="button"
+                      disabled={reverting}
+                      onClick={() => handleUndoOne(entry.configPath, entry.backupPath)}
+                      className="shrink-0 text-xs text-[var(--danger)]/70 hover:text-[var(--danger)] transition-colors disabled:opacity-50"
+                    >
+                      {reverting ? "Undoing…" : "Undo"}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <button
             type="button"
@@ -185,29 +235,32 @@ export default function FinishStep({
       )}
 
       <div className="flex flex-col gap-2">
+        {/* Primary action: finish setup (close window) */}
         <Button
           variant="primary"
-          onClick={handleOpenDashboard}
-          className="w-full"
-        >
-          Open Dashboard
-        </Button>
-        <Button
-          variant="ghost"
           onClick={handleComplete}
           loading={completing}
           className="w-full"
         >
           Finish Setup
         </Button>
-        {modifiedConfigs.length > 0 && (
+        {/* Secondary: open dashboard in browser */}
+        <Button
+          variant="ghost"
+          onClick={handleOpenDashboard}
+          className="w-full"
+        >
+          Open Dashboard
+        </Button>
+        {/* Undo all remaining configs */}
+        {activeConfigs.length > 0 && (
           <Button
             variant="ghost"
-            onClick={handleUndo}
-            loading={reverting}
+            onClick={handleUndoAll}
+            loading={revertingAll}
             className="w-full text-[var(--danger)]"
           >
-            Undo Configuration Changes
+            Undo All Configuration Changes
           </Button>
         )}
       </div>

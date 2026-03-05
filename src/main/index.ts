@@ -755,8 +755,8 @@ async function handleLogoutAndRestart(): Promise<void> {
 
 function createWindow(): void {
   const mainWindowState = windowStateKeeper({
-    defaultWidth: 1024,
-    defaultHeight: 768,
+    defaultWidth: 540,
+    defaultHeight: 760,
   });
 
   mainWindow = new BrowserWindow({
@@ -764,6 +764,8 @@ function createWindow(): void {
     y: mainWindowState.y,
     width: mainWindowState.width,
     height: mainWindowState.height,
+    minWidth: 480,
+    minHeight: 600,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === "linux"
@@ -911,9 +913,22 @@ function registerIpcHandlers(): void {
   // MCP: Discover installed clients
   ipcMain.handle("mcp:detectClients", async () => {
     const clients: Array<{ id: string; name: string; configPath: string }> = [];
-    const checks = [
+    const checks: Array<{
+      id: string;
+      name: string;
+      getPath: () => Promise<string>;
+      // Override detection dir (defaults to dirname of configPath).
+      // VS Code Insiders: check Code - Insiders/ app data dir, not User/ subdir,
+      // since the User/ folder only exists after first launch.
+      detectDir?: (configPath: string) => string;
+    }> = [
       { id: "vscode", name: "VS Code", getPath: () => import("./mcpDiscovery").then(m => m.getVscodeUserMcpPath()) },
-      { id: "vscode-insiders", name: "VS Code Insiders", getPath: () => import("./mcpDiscovery").then(m => m.getVscodeInsidersUserMcpPath()) },
+      {
+        id: "vscode-insiders",
+        name: "VS Code Insiders",
+        getPath: () => import("./mcpDiscovery").then(m => m.getVscodeInsidersUserMcpPath()),
+        detectDir: (configPath) => dirname(dirname(configPath)), // ~/Library/Application Support/Code - Insiders/
+      },
       { id: "cursor", name: "Cursor", getPath: () => import("./mcpDiscovery").then(m => m.getCursorConfigPath()) },
       { id: "claude-code", name: "Claude Code", getPath: () => import("./mcpDiscovery").then(m => m.getClaudeCodeUserSettingsPath()) },
       { id: "windsurf", name: "Windsurf", getPath: () => import("./mcpDiscovery").then(m => m.getWindsurfConfigPath()) },
@@ -925,7 +940,8 @@ function registerIpcHandlers(): void {
     for (const check of checks) {
       try {
         const configPath = await check.getPath();
-        await fs.access(dirname(configPath));
+        const checkDir = check.detectDir ? check.detectDir(configPath) : dirname(configPath);
+        await fs.access(checkDir);
         clients.push({ id: check.id, name: check.name, configPath });
       } catch {
         // Client not installed
@@ -1012,6 +1028,7 @@ function registerIpcHandlers(): void {
     autoApproved: number;
     skipped: number;
     total: number;
+    servers?: Array<{ name: string; client: string; source: string }>;
     error?: string;
     errors?: string[];
   }> => {
@@ -1027,6 +1044,7 @@ function registerIpcHandlers(): void {
 
     const all = await discoverMcpServers();
     const servers = filterOutEdisonWatchServers(all);
+    const serverList = servers.map((s) => ({ name: s.name, client: s.client, source: s.source }));
     let submitted = 0;
     let autoApproved = 0;
     const errors: string[] = [];
@@ -1059,6 +1077,7 @@ function registerIpcHandlers(): void {
       autoApproved,
       skipped: servers.length - submitted,
       total: servers.length,
+      servers: serverList,
       errors: errors.length > 0 ? errors : undefined,
     };
   });

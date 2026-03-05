@@ -46,6 +46,7 @@ export default function useAuth() {
   const [state, setState] = useState<AuthState>(initialState);
   const healthInterval = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const domainTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const domainAbort = useRef<AbortController | null>(null);
 
   const update = useCallback((patch: Partial<AuthState>) => {
     setState((prev) => ({ ...prev, ...patch }));
@@ -220,7 +221,7 @@ export default function useAuth() {
       return;
     }
 
-    update({ email, userId: "" });
+    update({ email });
     const ok = await fetchServerUrls();
     if (!ok) {
       update({ loading: false });
@@ -230,19 +231,24 @@ export default function useAuth() {
   // Check domain for SSO-only (debounced)
   const checkDomain = useCallback((email: string) => {
     if (domainTimeout.current) clearTimeout(domainTimeout.current);
+    domainAbort.current?.abort();
     const domain = email.split("@")[1];
     if (!domain || !domain.includes(".")) return;
 
     domainTimeout.current = setTimeout(async () => {
+      const controller = new AbortController();
+      domainAbort.current = controller;
       try {
         const domainInfoBase = await getDomainInfoBaseUrl();
-        const res = await fetch(`${domainInfoBase}/api/auth/domain-info?domain=${domain}`);
+        const res = await fetch(`${domainInfoBase}/api/auth/domain-info?domain=${domain}`, {
+          signal: controller.signal,
+        });
         if (res.ok) {
           const info = await res.json();
           update({ ssoOnly: info?.sso_only ?? false });
         }
       } catch {
-        // Ignore domain check errors
+        // Ignore domain check errors (including AbortError)
       }
     }, 400);
   }, [update]);
@@ -313,6 +319,7 @@ export default function useAuth() {
       unsubscribe();
       if (healthInterval.current) clearInterval(healthInterval.current);
       if (domainTimeout.current) clearTimeout(domainTimeout.current);
+      domainAbort.current?.abort();
     };
   }, [fetchServerUrls, update]);
 
