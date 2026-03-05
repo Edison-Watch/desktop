@@ -39,3 +39,19 @@ export function captureError(error: unknown, context?: Record<string, unknown>):
     console.error('[sentry] Error captured:', error, context)
   }
 }
+
+/**
+ * Submit user-provided feedback to Sentry.
+ * In dev mode, logs to console instead (Sentry is disabled when unpackaged).
+ */
+export function submitUserFeedback(comments: string, email?: string): void {
+  if (!SENTRY_ENABLED) {
+    console.log('[Sentry] User feedback (dev):', comments)
+    return
+  }
+  Sentry.captureFeedback({
+    message: comments,
+    name: email ?? 'Edison Watch User',
+    email: email ?? 'unknown@edisonwatch.app',
+  })
+}

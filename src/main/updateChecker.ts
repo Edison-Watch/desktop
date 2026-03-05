@@ -112,15 +112,15 @@ async function fetchLatestVersion(): Promise<UpdateInfo | null> {
  * version is first discovered, fires the callback and shows a native
  * notification.
  */
-async function runCheck(trayIconPath?: string): Promise<void> {
+async function runCheck(trayIconPath?: string): Promise<boolean> {
   const remote = await fetchLatestVersion()
-  if (!remote) return
+  if (!remote) return false
 
   const currentVersion = app.getVersion()
   if (!isNewerVersion(currentVersion, remote.version)) {
     // We're up to date (or ahead, e.g. dev builds).
     latestUpdateInfo = null
-    return
+    return true
   }
 
   const previousVersion = latestUpdateInfo?.version ?? null
@@ -146,6 +146,7 @@ async function runCheck(trayIconPath?: string): Promise<void> {
 
     onUpdateAvailableCallback?.()
   }
+  return true
 }
 
 // ---------------------------------------------------------------------------
@@ -208,4 +209,15 @@ export function getAvailableUpdate(): UpdateInfo | null {
 export function openUpdateDownload(): void {
   const url = latestUpdateInfo?.downloadUrl ?? RELEASES_BASE_URL
   shell.openExternal(url)
+}
+
+/**
+ * Trigger an immediate update check outside the normal polling schedule.
+ * Returns the update info if a newer version was found, or `null` if up to date.
+ * Throws if the network request failed (so callers can distinguish "no update" from "check failed").
+ */
+export async function checkForUpdateNow(trayIconPath?: string): Promise<UpdateInfo | null> {
+  const ok = await runCheck(trayIconPath)
+  if (!ok) throw new Error('Update check failed')
+  return latestUpdateInfo
 }

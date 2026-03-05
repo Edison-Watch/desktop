@@ -21,8 +21,9 @@ import { discoverMcpServers, getJetBrainsMcpConfigPaths } from "./mcpDiscovery";
 import { injectAllHooks, removeAllHooks, getHookStatus } from "./hookInjection";
 import { initSentry } from "./sentry";
 import { startHookHealthMonitor, stopHookHealthMonitor, getHookStatusLabel } from "./hookHealthMonitor";
-import { startUpdateChecker, stopUpdateChecker, getAvailableUpdate, openUpdateDownload } from "./updateChecker";
+import { startUpdateChecker, stopUpdateChecker, getAvailableUpdate, openUpdateDownload, checkForUpdateNow } from "./updateChecker";
 import { showDebugWindow } from "./debugWindow";
+import { showFeedbackWindow } from "./feedbackWindow";
 import { showServerRegistrationDialog } from "./mcpServerActionDialog";
 import { fetchUserRole, submitServerRequest, approveServerRequest } from "./mcpConfigActions";
 import { filterOutEdisonWatchServers } from "./mcpConfigMonitor";
@@ -644,6 +645,31 @@ function buildTrayMenu(showDebugItems = false): Menu {
       label: `Update available: v${availableUpdate.version}`,
       click: () => openUpdateDownload(),
     });
+  } else {
+    items.push({
+      label: "Check for Updates",
+      click: async () => {
+        try {
+          const update = await checkForUpdateNow(trayIconPath);
+          if (!update && Notification.isSupported()) {
+            new Notification({
+              title: "Edison Watch",
+              body: "You're up to date.",
+              ...(process.platform !== "darwin" && { icon: trayIconPath }),
+            }).show();
+          }
+        } catch {
+          if (Notification.isSupported()) {
+            new Notification({
+              title: "Edison Watch",
+              body: "Update check failed. Please check your connection.",
+              ...(process.platform !== "darwin" && { icon: trayIconPath }),
+            }).show();
+          }
+        }
+        updateTrayMenu();
+      },
+    });
   }
 
   const currentEnv = getDebugEnvOverride();
@@ -681,6 +707,10 @@ function buildTrayMenu(showDebugItems = false): Menu {
           },
         ] as MenuItemConstructorOptions[])
       : []),
+    {
+      label: "Send Feedback",
+      click: () => showFeedbackWindow(),
+    },
     {
       label: "Sign Out",
       click: () => handleLogoutAndRestart(),
