@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Button, Card, Badge, Input } from "@edison/shared/ui";
+import { Button, Card } from "@edison/shared/ui";
 import { AppLogo } from "./AppLogo";
 
 interface DetectedClient {
@@ -17,42 +17,28 @@ export interface ModifiedConfig {
   backupPath: string;
 }
 
+export interface DiscoveredServer {
+  name: string;
+  client: string;
+  source: string;
+}
+
 interface AppsStepProps {
-  mcpBaseUrl: string;
-  apiBaseUrl: string;
-  apiKey: string;
-  userId: string;
-  onNext: () => void;
-  onApplyResult: (configs: ModifiedConfig[], secretKey: string) => void;
+  onNext: (selectedApps: string[], discoveredServers: DiscoveredServer[]) => void;
 }
 
 export default function AppsStep({
-  mcpBaseUrl,
-  apiBaseUrl,
-  apiKey,
-  userId,
   onNext,
-  onApplyResult,
 }: AppsStepProps): React.ReactNode {
   const [clients, setClients] = useState<DetectedClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [applying, setApplying] = useState(false);
-  const [applyError, setApplyError] = useState("");
-  const [edisonSecretKey, setEdisonSecretKey] = useState("");
 
-  // Scan & submit state
+  // Scan state
   const [scanning, setScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<{
-    submitted: number;
-    autoApproved: number;
-    skipped: number;
-    total: number;
-    servers?: Array<{ name: string; client: string; source: string }>;
-    error?: string;
-    errors?: string[];
-  } | null>(null);
-  const [showScanServers, setShowScanServers] = useState(false);
+  const [discoveredServers, setDiscoveredServers] = useState<DiscoveredServer[]>([]);
+  const [scanned, setScanned] = useState(false);
+  const [showServers, setShowServers] = useState(false);
 
   const detectClients = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -113,39 +99,13 @@ export default function AppsStep({
     );
   };
 
-  const handleApply = async () => {
-    setApplying(true);
-    setApplyError("");
-    try {
-      const selectedApps = clients.filter((c) => c.enabled).map((c) => c.id);
-      const serverAddress = mcpBaseUrl ? new URL(mcpBaseUrl).host : "";
-      const result = await window.api.mcp.applyAppIntegrations({
-        serverAddress,
-        mcpBaseUrl,
-        apiKey,
-        edisonSecretKey: edisonSecretKey || undefined,
-        apps: selectedApps,
-      });
-      onApplyResult(result.modifiedConfigs, edisonSecretKey);
-      onNext();
-    } catch (err) {
-      setApplyError(err instanceof Error ? err.message : "Failed to apply configuration");
-    } finally {
-      setApplying(false);
-    }
-  };
-
-  const handleScanAndSubmit = async () => {
+  const handleScan = async () => {
     setScanning(true);
-    setScanResult(null);
-    setShowScanServers(false);
     try {
-      const result = await window.api.mcp.submitAllDiscovered({
-        apiKey,
-        apiBaseUrl,
-        userId,
-      });
-      setScanResult(result);
+      const all = await window.api.mcp.discover() as Array<{ name: string; client: string; source: string }>;
+      console.log("[AppsStep] Discovered", all.length, "MCP servers");
+      setDiscoveredServers(all);
+      setScanned(true);
     } catch {
       // Scan failed
     } finally {
@@ -206,12 +166,16 @@ export default function AppsStep({
           {clients.map((client) => (
             <div
               key={client.id}
-              className="rounded-lg border border-[var(--border)] overflow-hidden"
+              className="relative rounded-lg border border-[var(--border)] overflow-hidden"
               style={{
                 borderTopColor: client.enabled ? "var(--accent-dim)" : "var(--border)",
                 background: "linear-gradient(180deg, var(--bg-overlay) 0%, var(--bg-raised) 48px)",
+                boxShadow: client.enabled ? "0 0 12px 0 rgba(125, 255, 246, 0.1)" : "none",
               }}
             >
+              <span className="absolute top-1.5 right-2 text-[9px] font-medium text-emerald-400/80">
+                Detected
+              </span>
               {/* Clickable row — toggles selection */}
               <button
                 type="button"
@@ -222,13 +186,13 @@ export default function AppsStep({
                 <div
                   className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition-colors ${
                     client.enabled
-                      ? "border-[var(--accent)] bg-[var(--accent)]"
+                      ? "border-[var(--accent)]"
                       : "border-[var(--border)]"
                   }`}
                 >
                   {client.enabled && (
                     <svg viewBox="0 0 12 12" fill="none" className="h-3 w-3" aria-hidden="true">
-                      <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M2 6l3 3 5-5" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   )}
                 </div>
@@ -242,7 +206,6 @@ export default function AppsStep({
                     <span className="text-sm font-medium text-[var(--text-primary)]">
                       {client.name}
                     </span>
-                    <Badge variant="success" size="sm">Detected</Badge>
                   </div>
                   <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">
                     {client.configPath}
@@ -270,101 +233,56 @@ export default function AppsStep({
         </div>
       )}
 
-      {/* Edison Secret Key (optional) */}
-      <Card>
-        <Input
-          type="password"
-          label="Encryption Key (optional)"
-          description="Paste your edison_secret_key to enable encrypted credential decryption. You can add it later in the dashboard."
-          placeholder="e.g. 3ecmKtPUBi4KFhYcxo43Hy..."
-          value={edisonSecretKey}
-          onChange={(e) => setEdisonSecretKey(e.target.value)}
-        />
-      </Card>
-
-      {/* Scan & Submit MCP Servers */}
+      {/* Discovered MCP Servers */}
       <Card>
         <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
+          <button
+            type="button"
+            className="flex items-center justify-between w-full text-left"
+            onClick={() => {
+              if (!scanned) handleScan();
+              else setShowServers((v) => !v);
+            }}
+          >
             <div>
               <p className="text-sm font-medium text-[var(--text-primary)]">
-                Register MCP Servers
+                Discovered MCP servers
+                {scanned && discoveredServers.length > 0 && (
+                  <span className="ml-1.5 text-xs text-[var(--text-muted)] font-normal">
+                    ({discoveredServers.length})
+                  </span>
+                )}
               </p>
               <p className="text-xs text-[var(--text-muted)]">
-                Discover MCP servers in your clients and register them with Edison Watch.
+                MCP servers configured in your clients.
               </p>
             </div>
-            <Button
-              variant="ghost"
-              onClick={handleScanAndSubmit}
-              loading={scanning}
-            >
-              {scanning ? "Scanning..." : "Scan & Submit"}
-            </Button>
-          </div>
+            {scanning ? (
+              <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+            ) : (
+              <svg
+                viewBox="0 0 12 12"
+                fill="none"
+                className={`h-4 w-4 shrink-0 text-[var(--text-muted)] transition-transform ${scanned && showServers ? "rotate-180" : ""}`}
+                aria-hidden="true"
+              >
+                <path d="M3 4.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </button>
 
-          {scanResult && (
+          {scanned && showServers && (
             <div className="mt-2 rounded-md bg-[var(--bg-input)] p-3 text-xs">
-              {scanResult.error ? (
-                <span className="text-[var(--danger)]">{scanResult.error}</span>
+              {discoveredServers.length === 0 ? (
+                <span className="text-[var(--text-muted)]">No MCP servers found.</span>
               ) : (
-                <div className="flex flex-col gap-1">
-                  {scanResult.autoApproved > 0 && (
-                    <span className="text-green-400">
-                      {scanResult.autoApproved} server(s) auto-approved.
-                    </span>
-                  )}
-                  {scanResult.submitted > scanResult.autoApproved && (
-                    <span className="text-[var(--text-secondary)]">
-                      {scanResult.submitted - scanResult.autoApproved} server(s) pending approval.
-                    </span>
-                  )}
-                  {scanResult.submitted === 0 && scanResult.total === 0 && (
-                    <span className="text-[var(--text-muted)]">No MCP servers found to register.</span>
-                  )}
-                  {scanResult.submitted === 0 && scanResult.total > 0 && (
-                    <span className="text-[var(--text-muted)]">{scanResult.skipped} server(s) skipped.</span>
-                  )}
-
-                  {/* Discovered servers list */}
-                  {scanResult.servers && scanResult.servers.length > 0 && (
-                    <div className="mt-1">
-                      <button
-                        type="button"
-                        className="text-[var(--accent-muted)] hover:text-[var(--accent)] transition-colors"
-                        onClick={() => setShowScanServers((v) => !v)}
-                      >
-                        {showScanServers ? "Hide" : "Show"} {scanResult.servers.length} found server(s)
-                      </button>
-                      {showScanServers && (
-                        <div className="mt-2 flex flex-col gap-1 max-h-32 overflow-y-auto">
-                          {scanResult.servers.map((s) => (
-                            <div key={s.client + ":" + s.name} className="flex items-center gap-2">
-                              <span className="text-[var(--text-primary)] font-medium truncate">{s.name}</span>
-                              <span className="text-[var(--text-muted)] shrink-0">{s.client}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
+                  {discoveredServers.map((s) => (
+                    <div key={s.client + ":" + s.name} className="flex items-center gap-2">
+                      <span className="text-[var(--text-primary)] font-medium truncate">{s.name}</span>
+                      <span className="text-[var(--text-muted)] shrink-0">{s.client}</span>
                     </div>
-                  )}
-
-                  {scanResult.errors && scanResult.errors.length > 0 && (
-                    <div className="mt-1 text-[var(--danger)]">
-                      {scanResult.errors.slice(0, 3).map((e, i) => (
-                        <div key={i}>{e}</div>
-                      ))}
-                    </div>
-                  )}
-                  {scanResult.submitted > scanResult.autoApproved && (
-                    <button
-                      type="button"
-                      className="mt-1 text-[var(--accent)] hover:underline text-left"
-                      onClick={() => window.api.shell.openExternal(apiBaseUrl)}
-                    >
-                      Open Dashboard to approve
-                    </button>
-                  )}
+                  ))}
                 </div>
               )}
             </div>
@@ -372,17 +290,13 @@ export default function AppsStep({
         </div>
       </Card>
 
-      {applyError && (
-        <p className="text-sm text-[var(--danger)]">{applyError}</p>
-      )}
       <Button
         variant="primary"
-        onClick={handleApply}
-        loading={applying}
+        onClick={() => onNext(clients.filter((c) => c.enabled).map((c) => c.id), discoveredServers)}
         className="w-full"
       >
         {selectedCount > 0
-          ? `Configure ${selectedCount} App${selectedCount === 1 ? "" : "s"}`
+          ? `Continue with ${selectedCount} App${selectedCount === 1 ? "" : "s"}`
           : "Skip"}
       </Button>
     </div>

@@ -16,11 +16,16 @@ export default defineConfig({
   },
   renderer: {
     plugins: [react(), tailwindcss()],
+    envDir: resolve(projectRoot, "frontend"),
     resolve: {
       alias: {
         "@": resolve(__dirname, "src/renderer/src"),
         "@edison/shared": resolve(projectRoot, "packages/shared/src"),
       },
+      dedupe: ["@supabase/supabase-js"],
+    },
+    optimizeDeps: {
+      include: ["@supabase/supabase-js"],
     },
     server: {
       fs: {

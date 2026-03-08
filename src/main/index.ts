@@ -34,6 +34,51 @@ import appIconPath from "../../resources/icon.png?asset";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import trayIconPath from "../../resources/icon_tray.png?asset";
 
+// ── Server deduplication ─────────────────────────────────────────────
+
+import type { DiscoveredMcpServer, McpServerConfig } from "./mcpDiscovery";
+
+/** Compare two McpServerConfig objects for structural equality (ignoring key order). */
+function configsEqual(a: McpServerConfig, b: McpServerConfig): boolean {
+  return JSON.stringify(a, Object.keys(a).sort()) === JSON.stringify(b, Object.keys(b).sort());
+}
+
+/**
+ * Deduplicate discovered servers that share the same name across clients.
+ * - Identical configs → keep the first one (single submission).
+ * - Different configs → rename both to `name_client` (e.g. sqlite_vscode, sqlite_cursor).
+ */
+function deduplicateServers(servers: DiscoveredMcpServer[]): DiscoveredMcpServer[] {
+  // Group by server name
+  const byName = new Map<string, DiscoveredMcpServer[]>();
+  for (const s of servers) {
+    const group = byName.get(s.name);
+    if (group) group.push(s);
+    else byName.set(s.name, [s]);
+  }
+
+  const result: DiscoveredMcpServer[] = [];
+  for (const [, group] of byName) {
+    if (group.length === 1) {
+      result.push(group[0]);
+      continue;
+    }
+
+    // Check if all configs in the group are identical
+    const allSame = group.every((s) => configsEqual(s.config, group[0].config));
+    if (allSame) {
+      // Keep just the first one — they're all the same server
+      result.push(group[0]);
+    } else {
+      // Configs differ — prefix each with its client name
+      for (const s of group) {
+        result.push({ ...s, name: `${s.name}_${s.client}` });
+      }
+    }
+  }
+  return result;
+}
+
 // ── Debug environment switcher ───────────────────────────────────────
 
 const DEBUG_ENV_NAMES = ["demo", "release", "dev"] as const;
@@ -993,7 +1038,9 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle("mcp:discover", async () => {
-    return await discoverMcpServers();
+    const servers = await discoverMcpServers();
+    console.log("[mcp:discover] Found", servers.length, "servers");
+    return servers;
   });
 
   ipcMain.handle("mcp:readConfig", async (_event, configPath: string) => {
@@ -1073,7 +1120,12 @@ function registerIpcHandlers(): void {
     }
 
     const all = await discoverMcpServers();
-    const servers = filterOutEdisonWatchServers(all);
+    const filtered = filterOutEdisonWatchServers(all);
+
+    // Deduplicate servers with the same name across different clients.
+    // If configs are identical → keep one. If configs differ → prefix both with client name.
+    const servers = deduplicateServers(filtered);
+
     const serverList = servers.map((s) => ({ name: s.name, client: s.client, source: s.source }));
     let submitted = 0;
     let autoApproved = 0;

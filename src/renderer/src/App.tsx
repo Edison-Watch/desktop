@@ -2,13 +2,16 @@ import { useState, useEffect } from "react";
 import WizardLayout from "./components/WizardLayout";
 import WelcomeStep from "./components/WelcomeStep";
 import AppsStep from "./components/AppsStep";
-import type { ModifiedConfig } from "./components/AppsStep";
+import type { ModifiedConfig, DiscoveredServer } from "./components/AppsStep";
+import EncryptionStep from "./components/EncryptionStep";
 import FinishStep from "./components/FinishStep";
 import useAuth from "./hooks/useAuth";
 
 export default function App(): React.ReactNode {
   const [currentStep, setCurrentStep] = useState(0);
   const [setupDone, setSetupDone] = useState<boolean | null>(null);
+  const [selectedApps, setSelectedApps] = useState<string[]>([]);
+  const [discoveredServers, setDiscoveredServers] = useState<DiscoveredServer[]>([]);
   const [modifiedConfigs, setModifiedConfigs] = useState<ModifiedConfig[]>([]);
   const [edisonSecretKey, setEdisonSecretKey] = useState("");
   const auth = useAuth();
@@ -16,37 +19,41 @@ export default function App(): React.ReactNode {
   // Check if setup was already completed on mount
   useEffect(() => {
     (async () => {
-      const data = await window.api.setup.getData();
-      if (data?.completed) {
-        setSetupDone(true);
-      } else {
+      try {
+        const data = await window.api.setup.getData();
+        setSetupDone(data?.completed ? true : false);
+      } catch (err) {
+        console.error("[App] Failed to check setup state:", err);
         setSetupDone(false);
       }
     })();
   }, []);
 
-  const handleNext = () => {
-    if (currentStep === 0 && auth.signedIn) {
-      setCurrentStep(1);
-    } else if (currentStep === 1) {
-      window.api.setup.reachedFinal();
-      setCurrentStep(2);
-    }
+  const handleWelcomeNext = () => {
+    if (auth.signedIn) setCurrentStep(1);
   };
 
-  const handleApplyResult = (configs: ModifiedConfig[], secretKey: string) => {
+  const handleAppsNext = (apps: string[], servers: DiscoveredServer[]) => {
+    setSelectedApps(apps);
+    setDiscoveredServers(servers);
+    setCurrentStep(2);
+  };
+
+  const handleEncryptionNext = (compositeKey: string, configs: ModifiedConfig[]) => {
+    setEdisonSecretKey(compositeKey);
     setModifiedConfigs(configs);
-    setEdisonSecretKey(secretKey);
+    window.api.setup.reachedFinal();
+    setCurrentStep(3);
   };
 
   const handleRestart = () => {
     setModifiedConfigs([]);
     setEdisonSecretKey("");
+    setSelectedApps([]);
     setCurrentStep(1);
   };
 
   const handleComplete = () => {
-    // Main process handles persisting setup data and closing window
     setSetupDone(true);
   };
 
@@ -77,19 +84,23 @@ export default function App(): React.ReactNode {
   }
 
   return (
-    <WizardLayout currentStep={currentStep} locked={currentStep === 2}>
-      {currentStep === 0 && <WelcomeStep auth={auth} onNext={handleNext} />}
+    <WizardLayout currentStep={currentStep} locked={currentStep === 3}>
+      {currentStep === 0 && <WelcomeStep auth={auth} onNext={handleWelcomeNext} />}
       {currentStep === 1 && (
-        <AppsStep
+        <AppsStep onNext={handleAppsNext} />
+      )}
+      {currentStep === 2 && (
+        <EncryptionStep
           mcpBaseUrl={auth.mcpBaseUrl}
           apiBaseUrl={auth.apiBaseUrl}
           apiKey={auth.apiKey}
           userId={auth.userId}
-          onNext={handleNext}
-          onApplyResult={handleApplyResult}
+          selectedApps={selectedApps}
+          discoveredServers={discoveredServers}
+          onNext={handleEncryptionNext}
         />
       )}
-      {currentStep === 2 && (
+      {currentStep === 3 && (
         <FinishStep
           email={auth.email}
           userId={auth.userId}

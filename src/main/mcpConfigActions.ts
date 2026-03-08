@@ -3,6 +3,7 @@ import { existsSync } from 'fs'
 import { dirname, basename, join } from 'path'
 import * as jsonc from 'jsonc-parser'
 import type { DiscoveredMcpServer, McpServerConfig, McpClientId } from './mcpDiscovery'
+import { detectSecrets } from './secretDetection'
 
 /**
  * Structure for the disabled/quarantined servers file.
@@ -313,7 +314,7 @@ export async function submitServerRequest(
   apiBaseUrl: string,
   apiKey: string,
   userId?: string
-): Promise<{ request_id: number }> {
+): Promise<{ request_id: number; secretValues?: Record<string, string> }> {
   const serverConfig = server.config
 
   // Validate that server has either command (stdio) or url (HTTP/SSE).
@@ -340,6 +341,9 @@ export async function submitServerRequest(
     )
   }
 
+  // Detect secrets and produce templatized config + template_fields
+  const { config: templatizedConfig, templateFields, secretValues } = detectSecrets(server)
+
   // Build request payload
   const payload: Record<string, unknown> = {
     name: server.name,
@@ -349,15 +353,31 @@ export async function submitServerRequest(
     user_id: userId
   }
 
-  // Add config details. Align with backend: we never send env when submitting
-  // (backend uses request.env when approving; client-originated requests have none).
+  // Add config details with secrets replaced by {PLACEHOLDER} variables.
+  // Include template_fields so the backend knows the schema of required secrets.
   if (hasCommand) {
-    payload.command = serverConfig.command
-    payload.args = serverConfig.args
-    // Don't send env vars for security (they may contain secrets)
+    payload.command = (templatizedConfig as { command: string }).command
+    payload.args = (templatizedConfig as { args?: string[] }).args
+    // Send templatized env (with {PLACEHOLDERS}) so backend knows env var names
+    const tEnv = (templatizedConfig as { env?: Record<string, string> }).env
+    if (tEnv && Object.keys(tEnv).length > 0) {
+      payload.env = tEnv
+    }
   } else if (hasUrl) {
-    payload.url = serverConfig.url
-    payload.type = serverConfig.type
+    payload.url = (templatizedConfig as { url: string }).url
+    payload.type = (templatizedConfig as { type: string }).type
+    const tHeaders = (templatizedConfig as { headers?: Record<string, string> }).headers
+    if (tHeaders && Object.keys(tHeaders).length > 0) {
+      payload.headers = tHeaders
+    }
+  }
+
+  // Include template_fields if any secrets were detected
+  if (
+    (templateFields.args && Object.keys(templateFields.args).length > 0) ||
+    (templateFields.env && Object.keys(templateFields.env).length > 0)
+  ) {
+    payload.template_fields = templateFields
   }
 
   const requestUrl = `${apiBaseUrl.replace(/\/$/, '')}/api/mcp-requests`
@@ -377,8 +397,15 @@ export async function submitServerRequest(
   }
 
   const responseData = (await response.json()) as { request_id: number }
-  console.log(`[MCP Config] Submitted server request for "${server.name}" (id: ${responseData.request_id})`)
-  return { request_id: responseData.request_id }
+  const hasSecrets = Object.keys(secretValues).length > 0
+  console.log(
+    `[MCP Config] Submitted server request for "${server.name}" (id: ${responseData.request_id})` +
+      (hasSecrets ? ` with ${Object.keys(secretValues).length} template_fields` : '')
+  )
+  return {
+    request_id: responseData.request_id,
+    ...(hasSecrets && { secretValues })
+  }
 }
 
 /**

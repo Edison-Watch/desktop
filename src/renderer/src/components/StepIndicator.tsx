@@ -1,4 +1,4 @@
-const steps = ["Welcome", "Apps", "Finish"];
+const steps = ["Welcome", "Apps", "Encrypt & Submit", "Finish"];
 
 interface StepIndicatorProps {
   currentStep: number;
