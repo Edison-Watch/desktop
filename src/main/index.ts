@@ -36,7 +36,7 @@ import trayIconPath from "../../resources/icon_tray.png?asset";
 
 // ── Server deduplication ─────────────────────────────────────────────
 
-import type { DiscoveredMcpServer, McpServerConfig } from "./mcpDiscovery";
+import type { DiscoveredMcpServer, McpClientId, McpServerConfig } from "./mcpDiscovery";
 
 /** Compare two McpServerConfig objects for structural equality (ignoring key order). */
 function configsEqual(a: McpServerConfig, b: McpServerConfig): boolean {
@@ -78,6 +78,12 @@ function deduplicateServers(servers: DiscoveredMcpServer[]): DiscoveredMcpServer
   }
   return result;
 }
+
+// ── Dry-run mode ────────────────────────────────────────────────────
+
+/** When true, onboarding runs normally but config files are not written. */
+const DRY_RUN = process.env.EDISON_DRY_RUN === "1";
+if (DRY_RUN) console.log("[dry-run] Dry-run mode enabled — config files will not be modified");
 
 // ── Debug environment switcher ───────────────────────────────────────
 
@@ -1058,8 +1064,8 @@ function registerIpcHandlers(): void {
     edisonSecretKey?: string;
     apps: string[];
   }) => {
-    console.log("[mcp:applyAppIntegrations]", args.apps);
-    return await applyAppIntegrations(args);
+    console.log("[mcp:applyAppIntegrations]", args.apps, DRY_RUN ? "(dry-run)" : "");
+    return await applyAppIntegrations({ ...args, dryRun: DRY_RUN });
   });
 
   // Revert app integrations: restore config files from setup backups
@@ -1162,6 +1168,57 @@ function registerIpcHandlers(): void {
       servers: serverList,
       errors: errors.length > 0 ? errors : undefined,
     };
+  });
+
+  // Handle individual server actions from the registration/quarantine dialogs
+  ipcMain.handle("mcp:handleServerAction", async (_event, params: {
+    fingerprint: string;
+    serverName: string;
+    sourceApp: string;
+    action: string;
+    config: Record<string, unknown>;
+    configPath: string;
+  }) => {
+    // Only submit for registration/request actions — skip dismissed/skipped servers
+    if (params.action !== "registered" && params.action !== "requested") {
+      return { action: params.action };
+    }
+
+    const setup = getSetupData();
+    const apiKey = setup.apiKey;
+    const apiBaseUrl = getApiBaseUrl();
+
+    if (!apiKey || !apiBaseUrl) {
+      throw new Error("Not signed in or server URL not configured.");
+    }
+
+    const server: DiscoveredMcpServer = {
+      name: params.serverName,
+      client: params.sourceApp as McpClientId,
+      source: "user",
+      path: params.configPath,
+      config: params.config as McpServerConfig,
+    };
+
+    const { request_id } = await submitServerRequest(server, apiBaseUrl, apiKey, setup.userId);
+
+    // Auto-approve if user is admin/owner and action is "registered"
+    let autoApproved = false;
+    let approveError: string | undefined;
+    if (params.action === "registered") {
+      const role = await fetchUserRole(apiBaseUrl, apiKey);
+      if (role === "admin" || role === "owner") {
+        try {
+          await approveServerRequest(request_id, apiBaseUrl, apiKey);
+          autoApproved = true;
+        } catch (err) {
+          approveError = err instanceof Error ? err.message : String(err);
+          console.error(`[mcp:handleServerAction] Auto-approval failed for "${params.serverName}":`, err);
+        }
+      }
+    }
+
+    return { request_id, action: params.action, autoApproved, approveError };
   });
 
   ipcMain.handle("mcp:injectHooks", async () => {

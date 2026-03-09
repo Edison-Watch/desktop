@@ -43,6 +43,7 @@ export interface ApplyIntegrationsArgs {
   apiKey: string
   edisonSecretKey?: string
   apps: string[]
+  dryRun?: boolean
 }
 
 export interface ApplyIntegrationsResult {
@@ -143,12 +144,20 @@ async function applyToApp(
   url: string,
   headers: Record<string, string> | undefined,
   timestamp: string,
+  dryRun: boolean,
 ): Promise<ModifiedConfig | null> {
   const resolved = await getPathForApp(appId)
   if (!resolved) return null
 
   const { configPath, clientId } = resolved
   const backupPath = `${configPath}.backup.${timestamp}.json`
+
+  const entry = buildEdisonEntry(clientId, url, headers)
+
+  if (dryRun) {
+    console.log(`[dry-run] Would write to ${configPath}:`, JSON.stringify(entry, null, 2))
+    return { appId, configPath, backupPath: '' }
+  }
 
   // Ensure parent directory exists
   await fs.mkdir(dirname(configPath), { recursive: true })
@@ -157,8 +166,6 @@ async function applyToApp(
   if (existsSync(configPath)) {
     await fs.copyFile(configPath, backupPath)
   }
-
-  const entry = buildEdisonEntry(clientId, url, headers)
 
   if (isMergeClient(clientId)) {
     await mergeEdisonEntry(configPath, clientId, entry)
@@ -178,7 +185,7 @@ async function applyToApp(
 export async function applyAppIntegrations(
   args: ApplyIntegrationsArgs,
 ): Promise<ApplyIntegrationsResult> {
-  const { mcpBaseUrl, apiKey, edisonSecretKey, apps } = args
+  const { mcpBaseUrl, apiKey, edisonSecretKey, apps, dryRun = false } = args
 
   // Build MCP URL: mcpBaseUrl/mcp/{apiKey}/
   const baseUrl = mcpBaseUrl.replace(/\/$/, '')
@@ -206,7 +213,7 @@ export async function applyAppIntegrations(
 
   for (const appId of apps) {
     try {
-      const result = await applyToApp(appId, url, headers, timestamp)
+      const result = await applyToApp(appId, url, headers, timestamp, dryRun)
       if (result) modifiedConfigs.push(result)
     } catch (err) {
       errors.push(`${appId}: ${err instanceof Error ? err.message : String(err)}`)
