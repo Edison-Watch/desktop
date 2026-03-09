@@ -22,7 +22,6 @@
     "visual-test": "playwright test --config=playwright.visual.config.ts"
   },
   "dependencies": {
-    "@edison/shared": "*",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^3.0.0",
     "@sentry/electron": "^7.8.0",
@@ -33,6 +32,7 @@
     "jsonc-parser": "^3.3.1"
   },
   "devDependencies": {
+    "@edison/shared": "*",
     "@electron-toolkit/tsconfig": "^1.0.1",
     "@playwright/test": "^1.58.2",
     "@storybook/addon-a11y": "^10.2.14",
@@ -46,7 +46,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.5.2",
     "cross-env": "^7.0.3",
-    "electron": "^38.1.2",
+    "electron": "^40.8.0",
     "electron-builder": "^25.1.8",
     "electron-vite": "^4.0.1",
     "http-server": "^14.1.1",

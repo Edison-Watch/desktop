@@ -8,6 +8,7 @@ directories:
   output: dist
 files:
   - '!**/.vscode/*'
+  - '!**/.storybook/*'
   - '!src/*'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
@@ -69,6 +70,7 @@ linux:
       arch:
         - x64
         - arm64
+electronVersion: 40.8.0
 npmRebuild: false
 publish:
   provider: github
