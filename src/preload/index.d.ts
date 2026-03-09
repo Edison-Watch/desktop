@@ -52,6 +52,11 @@ interface EdisonAPI {
   config: {
     getEffectiveBaseUrls: () => Promise<{ mcpBaseUrl: string | null; apiBaseUrl: string | null }>;
   };
+  menu: {
+    openFeedback: () => Promise<void>;
+    resizeWindow: (width: number, height: number) => Promise<void>;
+    getVersion: () => Promise<string>;
+  };
   getVersion: () => string;
 }
 

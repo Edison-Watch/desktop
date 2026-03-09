@@ -85,6 +85,14 @@ const api = {
       ipcRenderer.invoke("config:getEffectiveBaseUrls"),
   },
 
+  /** Menu actions (post-setup window) */
+  menu: {
+    openFeedback: (): Promise<void> => ipcRenderer.invoke("menu:openFeedback"),
+    resizeWindow: (width: number, height: number): Promise<void> =>
+      ipcRenderer.invoke("menu:resizeWindow", width, height),
+    getVersion: (): Promise<string> => ipcRenderer.invoke("menu:getVersion"),
+  },
+
   /** App version */
   getVersion: (): string => electronAPI.process.versions.electron ?? "",
 } as const;

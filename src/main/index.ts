@@ -991,6 +991,25 @@ function registerIpcHandlers(): void {
     await shell.openExternal(url);
   });
 
+  // Open feedback window from renderer
+  ipcMain.handle("menu:openFeedback", () => {
+    showFeedbackWindow();
+  });
+
+  // Resize the main window (used by post-setup menu to shrink to content size)
+  ipcMain.handle("menu:resizeWindow", (_event, width: number, height: number) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setMinimumSize(Math.min(width, 480), Math.min(height, 300));
+      mainWindow.setSize(width, height, true);
+      mainWindow.center();
+    }
+  });
+
+  // Get app version
+  ipcMain.handle("menu:getVersion", () => {
+    return app.getVersion();
+  });
+
   // MCP: Discover installed clients
   ipcMain.handle("mcp:detectClients", async () => {
     const clients: Array<{ id: string; name: string; configPath: string }> = [];

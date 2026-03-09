@@ -5,6 +5,7 @@ import AppsStep from "./components/AppsStep";
 import type { ModifiedConfig, DiscoveredServer } from "./components/AppsStep";
 import EncryptionStep from "./components/EncryptionStep";
 import FinishStep from "./components/FinishStep";
+import MainMenu from "./components/MainMenu";
 import useAuth from "./hooks/useAuth";
 
 export default function App(): React.ReactNode {
@@ -66,21 +67,9 @@ export default function App(): React.ReactNode {
     );
   }
 
-  // Setup already complete — show "already configured" message
+  // Setup already complete — show the main menu
   if (setupDone === true) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-[var(--bg-base)] p-8 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)]/10 text-xl">
-          &#10003;
-        </div>
-        <h2 className="text-lg font-semibold text-[var(--text-primary)]">
-          Edison Watch is running
-        </h2>
-        <p className="text-sm text-[var(--text-secondary)]">
-          Setup is complete. Edison Watch is monitoring your MCP connections in the background.
-        </p>
-      </div>
-    );
+    return <MainMenu />;
   }
 
   return (
