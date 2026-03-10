@@ -90,6 +90,15 @@ if (DRY_RUN) console.log("[dry-run] Dry-run mode enabled — config files will n
 const DEBUG_ENV_NAMES = ["demo", "release", "dev"] as const;
 type DebugEnvName = (typeof DEBUG_ENV_NAMES)[number];
 
+/** The environment this binary was compiled for (from VITE_DEPLOY_ENV at build time). */
+function getBuildDefaultEnv(): DebugEnvName | null {
+  if (is.dev) return "dev";
+  const v = import.meta.env.VITE_DEPLOY_ENV as string | undefined;
+  if (v === "demo" || v === "release" || v === "dev") return v;
+  return null;
+}
+
+
 // "dev" = localhost backend (make dev / make demo_server) + demo Supabase auth
 const DEV_MCP_BASE_URL = "http://localhost:3000";
 const DEV_API_BASE_URL = "http://localhost:3001";
@@ -723,25 +732,6 @@ function buildTrayMenu(showDebugItems = false): Menu {
     });
   }
 
-  const currentEnv = getDebugEnvOverride();
-  const envSubmenu: MenuItemConstructorOptions[] = DEBUG_ENV_NAMES.map((name) => ({
-    label: name === "dev" ? "dev (localhost)" : name,
-    type: "radio" as const,
-    checked: currentEnv === name,
-    click: () => {
-      setDebugEnvOverride(name);
-      updateTrayMenu();
-      if (Notification.isSupported()) {
-        const n = new Notification({
-          title: "Edison Watch",
-          body: `Environment set to ${name === "dev" ? "dev (localhost backend, demo auth)" : name}.`,
-          ...(process.platform !== "darwin" && { icon: trayIconPath }),
-        });
-        n.show();
-      }
-    },
-  }));
-
   items.push(
     { type: "separator" },
     ...(showDebugItems
@@ -750,7 +740,6 @@ function buildTrayMenu(showDebugItems = false): Menu {
             label: "Debug Window",
             click: () => showDebugWindow(mainWindow ?? undefined),
           },
-          { label: "Switch Environment", submenu: envSubmenu },
           { type: "separator" },
           {
             label: "Re-run Setup Wizard",
@@ -804,12 +793,90 @@ function createTray(): void {
 }
 
 function updateTrayMenu(): void {
-  if (!tray) return;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (process.platform === "darwin" && (app as any).dock?.setMenu) {
+  if (tray && process.platform === "darwin" && (app as any).dock?.setMenu) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (app as any).dock.setMenu(buildTrayMenu());
   }
+  updateAppMenu();
+}
+
+// ── Application menu (always visible in native menu bar) ─────────────
+
+function buildAppMenu(): Electron.Menu {
+  // Effective env: manual override first, then build default
+  const currentEnv = getDebugEnvOverride() ?? getBuildDefaultEnv();
+
+  const envSubmenu: MenuItemConstructorOptions[] = DEBUG_ENV_NAMES.map((name) => ({
+    label: name === "dev" ? "dev (localhost)" : name,
+    type: "radio" as const,
+    checked: currentEnv === name,
+    click: () => {
+      setDebugEnvOverride(name);
+      updateAppMenu();
+      if (Notification.isSupported()) {
+        new Notification({
+          title: "Edison Watch",
+          body: `Environment set to ${name === "dev" ? "dev (localhost backend, demo auth)" : name}.`,
+          ...(process.platform !== "darwin" && { icon: trayIconPath }),
+        }).show();
+      }
+    },
+  }));
+
+  // On macOS: buried inside the app-named menu (Edison Watch → Developer → Switch Environment)
+  // On other platforms: buried at the bottom of the Edit menu
+  const developerItem: MenuItemConstructorOptions = {
+    label: "Developer",
+    submenu: [{ label: "Switch Environment", submenu: envSubmenu }],
+  };
+
+  const template: MenuItemConstructorOptions[] = [
+    // macOS requires an app-named first menu for Quit / About to appear correctly
+    ...(process.platform === "darwin"
+      ? ([
+          {
+            label: app.name,
+            submenu: [
+              { role: "about" },
+              { type: "separator" },
+              { role: "services" },
+              { type: "separator" },
+              { role: "hide" },
+              { role: "hideOthers" },
+              { role: "unhide" },
+              { type: "separator" },
+              developerItem,
+              { type: "separator" },
+              { role: "quit" },
+            ],
+          },
+        ] as MenuItemConstructorOptions[])
+      : []),
+    // Standard Edit menu so copy/paste works in text fields
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "selectAll" },
+        // Non-macOS: developer options live here
+        ...(process.platform !== "darwin"
+          ? ([{ type: "separator" }, developerItem] as MenuItemConstructorOptions[])
+          : []),
+      ],
+    },
+  ];
+
+  return Menu.buildFromTemplate(template);
+}
+
+function updateAppMenu(): void {
+  Menu.setApplicationMenu(buildAppMenu());
 }
 
 // ── Logout / re-run wizard ──────────────────────────────────────────
@@ -1350,6 +1417,7 @@ if (process.defaultApp) {
 app.whenReady().then(async () => {
   initSentry();
   electronApp.setAppUserModelId("com.edisonwatch.desktop");
+  updateAppMenu();
 
   // Start localhost auth callback server in dev mode (custom protocol is unreliable
   // for unpackaged apps, so we receive OAuth callbacks over HTTP instead).
@@ -1373,6 +1441,7 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window);
   });
 
+
   registerIpcHandlers();
 
   if (isSetupComplete()) {
@@ -1391,6 +1460,7 @@ app.whenReady().then(async () => {
     }
   });
 });
+
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {

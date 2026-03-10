@@ -26,6 +26,8 @@ export interface AuthState {
   autoQuarantineOtherMcpServers: boolean;
   loading: boolean;
   error: string;
+  /** Informational warning (e.g. duplicate account created for same email). */
+  warning: string;
 }
 
 const initialState: AuthState = {
@@ -40,13 +42,18 @@ const initialState: AuthState = {
   autoQuarantineOtherMcpServers: false,
   loading: false,
   error: "",
+  warning: "",
 };
+
+// Timeout before clearing loading if external browser never calls back (5 minutes)
+const AUTH_BROWSER_TIMEOUT_MS = 5 * 60 * 1000;
 
 export default function useAuth() {
   const [state, setState] = useState<AuthState>(initialState);
   const healthInterval = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const domainTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const domainAbort = useRef<AbortController | null>(null);
+  const authBrowserTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const update = useCallback((patch: Partial<AuthState>) => {
     setState((prev) => ({ ...prev, ...patch }));
@@ -74,9 +81,26 @@ export default function useAuth() {
 
   // Fetch API key and server URLs after auth
   const fetchServerUrls = useCallback(async () => {
-    const result = await fetchApiKey();
+    let result;
+    try {
+      result = await fetchApiKey();
+    } catch (err) {
+      const e = err as Error & { code?: string };
+      if (e.code === "SSO_ONLY_DOMAIN" || e.code === "AUTH_METHOD_MISMATCH") {
+        update({
+          loading: false,
+          ssoOnly: e.code === "SSO_ONLY_DOMAIN",
+          error: e.message || "Sign-in method not allowed. Please use your original login method.",
+        });
+        await supabase.auth.signOut();
+        return false;
+      }
+      update({ loading: false, error: "Failed to retrieve API key. Please try again." });
+      await supabase.auth.signOut();
+      return false;
+    }
     if (!result) {
-      update({ error: "Failed to retrieve API key. Please try again." });
+      update({ loading: false, error: "Failed to retrieve API key. Please try again." });
       await supabase.auth.signOut();
       return false;
     }
@@ -103,6 +127,7 @@ export default function useAuth() {
       signedIn: true,
       loading: false,
       error: "",
+      warning: result.warning || "",
     });
 
     // Start health polling
@@ -147,6 +172,21 @@ export default function useAuth() {
     return "edison-watch://auth/callback";
   }, []);
 
+  // Start a timeout that clears loading if external browser never calls back
+  const startAuthBrowserTimeout = useCallback(() => {
+    if (authBrowserTimeout.current) clearTimeout(authBrowserTimeout.current);
+    authBrowserTimeout.current = setTimeout(() => {
+      update({ loading: false, error: "Authentication timed out. Please try again." });
+    }, AUTH_BROWSER_TIMEOUT_MS);
+  }, [update]);
+
+  const clearAuthBrowserTimeout = useCallback(() => {
+    if (authBrowserTimeout.current) {
+      clearTimeout(authBrowserTimeout.current);
+      authBrowserTimeout.current = undefined;
+    }
+  }, []);
+
   // SSO sign-in
   const signInWithSSO = useCallback(async (email: string) => {
     update({ loading: true, error: "" });
@@ -168,8 +208,9 @@ export default function useAuth() {
 
     if (data?.url) {
       window.api.shell.openExternal(data.url);
+      startAuthBrowserTimeout();
     }
-  }, [getRedirectTo, update]);
+  }, [getRedirectTo, startAuthBrowserTimeout, update]);
 
   // Google OAuth
   const signInWithGoogle = useCallback(async () => {
@@ -192,8 +233,9 @@ export default function useAuth() {
 
     if (data?.url) {
       window.api.shell.openExternal(data.url);
+      startAuthBrowserTimeout();
     }
-  }, [getRedirectTo, update]);
+  }, [getRedirectTo, startAuthBrowserTimeout, update]);
 
   // Password sign-in
   const signInWithPassword = useCallback(async (email: string, password: string) => {
@@ -256,6 +298,7 @@ export default function useAuth() {
   // Listen for auth callbacks from main process
   useEffect(() => {
     const unsubscribe = window.api.auth.onCallback(async (url: string) => {
+      clearAuthBrowserTimeout();
       update({ loading: true, error: "" });
 
       const normalized = url.replace("edison-watch://", "http://");
@@ -273,8 +316,9 @@ export default function useAuth() {
         }
         const { data: { user } } = await supabase.auth.getUser();
         update({ email: user?.email || "", userId: user?.id || "" });
-        await fetchServerUrls();
-        return true;
+        const ok = await fetchServerUrls();
+        if (!ok) update({ loading: false });
+        return ok;
       };
 
       // 1. Tokens forwarded as query params by the dev auth server (from_hash=1 case)
@@ -308,7 +352,8 @@ export default function useAuth() {
         }
         const { data: { user } } = await supabase.auth.getUser();
         update({ email: user?.email || "", userId: user?.id || "" });
-        await fetchServerUrls();
+        const ok = await fetchServerUrls();
+        if (!ok) update({ loading: false });
         return;
       }
 
@@ -317,11 +362,12 @@ export default function useAuth() {
 
     return () => {
       unsubscribe();
+      clearAuthBrowserTimeout();
       if (healthInterval.current) clearInterval(healthInterval.current);
       if (domainTimeout.current) clearTimeout(domainTimeout.current);
       domainAbort.current?.abort();
     };
-  }, [fetchServerUrls, update]);
+  }, [clearAuthBrowserTimeout, fetchServerUrls, update]);
 
   // Restore existing session on mount
   useEffect(() => {
