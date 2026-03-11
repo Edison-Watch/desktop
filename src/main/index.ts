@@ -1414,8 +1414,10 @@ if (process.defaultApp) {
 
 // ── App lifecycle ───────────────────────────────────────────────────
 
+// Sentry must be initialized before the app 'ready' event fires
+initSentry();
+
 app.whenReady().then(async () => {
-  initSentry();
   electronApp.setAppUserModelId("com.edisonwatch.desktop");
   updateAppMenu();
 
