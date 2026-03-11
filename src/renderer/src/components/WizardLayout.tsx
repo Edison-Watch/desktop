@@ -9,7 +9,7 @@ interface WizardLayoutProps {
 
 export default function WizardLayout({ currentStep, locked, children }: WizardLayoutProps): React.ReactNode {
   return (
-    <div className="flex min-h-screen flex-col items-center bg-[var(--bg-base)]">
+    <div className="flex h-screen flex-col items-center overflow-y-auto bg-[var(--bg-base)]">
       {/* Header with branding */}
       <header className="flex w-full flex-col items-center gap-4 px-6 pt-10 pb-6">
         <img src={logoDark} alt="Edison Watch" className="h-8 w-auto" />

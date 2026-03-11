@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   ipcMain,
   shell,
+  session,
   Tray,
   Menu,
   Notification,
@@ -12,10 +13,21 @@ import {
 import type { MenuItemConstructorOptions } from "electron";
 import { join, resolve, sep, dirname } from "path";
 import { homedir } from "os";
-import { promises as fs, readFileSync, writeFileSync, existsSync, unlinkSync } from "fs";
+import { promises as fs, readFileSync, writeFileSync, existsSync, unlinkSync, appendFileSync } from "fs";
+
+const LOG_FILE = "/tmp/ew-startup.log";
+function slog(msg: string) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  try { appendFileSync(LOG_FILE, line); } catch {}
+  console.log(msg);
+}
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import type { AddressInfo } from "net";
-import { electronApp, optimizer, is } from "@electron-toolkit/utils";
+// Inline replacements for @electron-toolkit/utils (removed due to Electron 40 compat issue:
+// it evaluates electron.app.isPackaged at module load time, crashing before app.ready)
+const is = { get dev() { return !app.isPackaged; } };
+const electronApp = { setAppUserModelId: (id: string) => { if (process.platform === "win32") app.setAppUserModelId(app.isPackaged ? id : process.execPath); } };
+const optimizer = { watchWindowShortcuts: (_win: BrowserWindow) => { /* no-op: dev shortcuts removed */ } };
 import windowStateKeeper from "electron-window-state";
 import { discoverMcpServers, getJetBrainsMcpConfigPaths } from "./mcpDiscovery";
 import { injectAllHooks, removeAllHooks, getHookStatus } from "./hookInjection";
@@ -668,11 +680,9 @@ function buildTrayMenu(showDebugItems = false): Menu {
     },
     {
       label: "Open Dashboard",
-      enabled: Boolean(setupData.apiBaseUrl || setupData.serverAddress),
+      enabled: Boolean(getApiBaseUrl()),
       click: () => {
-        const dashboardUrl =
-          setupData.apiBaseUrl ||
-          (setupData.serverAddress ? `https://${setupData.serverAddress}` : null);
+        const dashboardUrl = getApiBaseUrl();
         if (dashboardUrl) shell.openExternal(dashboardUrl);
       },
     },
@@ -870,6 +880,30 @@ function buildAppMenu(): Electron.Menu {
           : []),
       ],
     },
+    {
+      label: "View",
+      submenu: [
+        { role: "reload" },
+        { role: "forceReload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+      ] as MenuItemConstructorOptions[],
+    },
+    {
+      label: "Window",
+      submenu: [
+        { role: "minimize" },
+        { role: "zoom" },
+        ...(process.platform === "darwin"
+          ? ([{ type: "separator" }, { role: "front" }] as MenuItemConstructorOptions[])
+          : ([{ role: "close" }] as MenuItemConstructorOptions[])),
+      ] as MenuItemConstructorOptions[],
+    },
   ];
 
   return Menu.buildFromTemplate(template);
@@ -881,8 +915,20 @@ function updateAppMenu(): void {
 
 // ── Logout / re-run wizard ──────────────────────────────────────────
 
-function rerunWizard(): void {
+// Flag to suppress app.quit() in the window-all-closed handler when we're
+// intentionally restarting (logout / re-run wizard). Without this, on Windows
+// and Linux destroying all windows would trigger app.quit() before the new
+// login window is created.
+let isRestarting = false;
+
+async function rerunWizard(): Promise<void> {
   markSetupIncomplete();
+  isRestarting = true;
+  BrowserWindow.getAllWindows().forEach((w) => w.destroy());
+  // Clear persisted Supabase session (localStorage, cookies) so the new window
+  // doesn't auto-login with the old session.
+  await session.defaultSession.clearStorageData({ storages: ["localstorage", "cookies", "indexdb"] });
+  isRestarting = false;
   createWindow();
 }
 
@@ -896,12 +942,13 @@ async function handleLogoutAndRestart(): Promise<void> {
   markSetupIncomplete();
   isServerOnline = false;
   updateTrayMenu();
-  rerunWizard();
+  await rerunWizard();
 }
 
 // ── Window creation ─────────────────────────────────────────────────
 
 function createWindow(): void {
+  slog("createWindow: start");
   const mainWindowState = windowStateKeeper({
     defaultWidth: 540,
     defaultHeight: 760,
@@ -929,8 +976,13 @@ function createWindow(): void {
   mainWindowState.manage(mainWindow);
 
   mainWindow.on("ready-to-show", () => {
+    slog("ready-to-show, showing window");
     mainWindow?.show();
   });
+
+  mainWindow.webContents.on("did-finish-load", () => slog("did-finish-load"));
+  mainWindow.webContents.on("did-fail-load", (_e, code, desc) => slog(`did-fail-load code=${code} desc=${desc}`));
+  mainWindow.webContents.on("render-process-gone", (_e, d) => slog(`render-process-gone reason=${d.reason} code=${d.exitCode}`));
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url);
@@ -1417,7 +1469,10 @@ if (process.defaultApp) {
 // Sentry must be initialized before the app 'ready' event fires
 initSentry();
 
+slog("module loaded, waiting for app.whenReady");
+
 app.whenReady().then(async () => {
+  slog("app.whenReady fired");
   electronApp.setAppUserModelId("com.edisonwatch.desktop");
   updateAppMenu();
 
@@ -1443,17 +1498,22 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window);
   });
 
-
+  slog("calling registerIpcHandlers");
   registerIpcHandlers();
+  slog("registerIpcHandlers ok");
 
   if (isSetupComplete()) {
-    console.log("[main] Setup already complete — launching in tray mode");
+    slog("setup complete, creating tray");
     createTray();
     startEventSubscription();
     startHookHealthMonitor();
     startUpdateChecker();
+    slog("tray/subscription/monitor ok");
+  } else {
+    slog("setup not complete");
   }
 
+  slog("calling createWindow");
   createWindow();
 
   app.on("activate", () => {
@@ -1465,7 +1525,7 @@ app.whenReady().then(async () => {
 
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
+  if (process.platform !== "darwin" && !isRestarting) {
     app.quit();
   }
 });

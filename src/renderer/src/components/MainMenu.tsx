@@ -48,10 +48,19 @@ export default function MainMenu(): React.ReactNode {
       ? `${setupData.mcpBaseUrl.replace(/\/$/, "")}/mcp/${setupData.apiKey}`
       : null;
 
-  const handleOpenDashboard = () => {
-    let url = setupData.apiBaseUrl || "";
+  const handleOpenDashboard = async () => {
+    // Use the live effective URL from main (handles dev overrides); fall back
+    // to what was saved in setup.json in case the IPC call fails.
+    let url = "";
+    try {
+      const effective = await window.api.config.getEffectiveBaseUrls();
+      url = effective.apiBaseUrl ?? "";
+    } catch {
+      // ignore
+    }
+    if (!url) url = setupData.apiBaseUrl ?? "";
     if (url && !/^https?:\/\//i.test(url)) url = `https://${url}`;
-    if (url) window.api.shell.openExternal(url);
+    if (url) await window.api.shell.openExternal(url);
   };
 
   const handleCopyMcpUrl = async () => {
