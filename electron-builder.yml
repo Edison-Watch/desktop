@@ -18,7 +18,7 @@ asarUnpack:
   - resources/**
 win:
   executableName: Edison Watch
-  icon: build/icon.ico
+  icon: resources/icon.ico
   target:
     - target: nsis
       arch:
@@ -35,14 +35,14 @@ nsis:
   createStartMenuShortcut: true
   menuCategory: true
 mac:
-  icon: build/icon.icns
+  icon: resources/icon.icns
   category: public.app-category.developer-tools
   target:
     - target: dmg
       arch:
         - universal
-  entitlements: build/entitlements.mac.plist
-  entitlementsInherit: build/entitlements.mac.plist
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
   hardenedRuntime: true
   gatekeeperAssess: false
   extendInfo:
@@ -63,7 +63,7 @@ dmg:
       type: link
       path: /Applications
 linux:
-  icon: build/icon.png
+  icon: resources/icon.png
   category: Development
   target:
     - target: AppImage
