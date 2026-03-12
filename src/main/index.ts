@@ -252,7 +252,7 @@ function getEventsUrl(apiKey: string): string | null {
 function getApprovalUrl(): string | null {
   const baseUrl = getApiBaseUrl();
   if (!baseUrl) return null;
-  return `${baseUrl.replace(/\/$/, "")}/api/approve_or_deny`;
+  return `${baseUrl.replace(/\/$/, "")}/api/v1/approvals/action`;
 }
 
 function getMcpUrl(): string | null {

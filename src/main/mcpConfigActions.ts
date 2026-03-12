@@ -380,7 +380,7 @@ export async function submitServerRequest(
     payload.template_fields = templateFields
   }
 
-  const requestUrl = `${apiBaseUrl.replace(/\/$/, '')}/api/mcp-requests`
+  const requestUrl = `${apiBaseUrl.replace(/\/$/, '')}/api/v1/mcp-requests`
 
   const response = await fetch(requestUrl, {
     method: 'POST',
@@ -417,7 +417,7 @@ export async function approveServerRequest(
   apiBaseUrl: string,
   apiKey: string
 ): Promise<void> {
-  const approveUrl = `${apiBaseUrl.replace(/\/$/, '')}/api/admin/mcp-requests/${requestId}/approve`
+  const approveUrl = `${apiBaseUrl.replace(/\/$/, '')}/api/v1/admin/mcp-requests/${requestId}/approve`
 
   const response = await fetch(approveUrl, {
     method: 'POST',

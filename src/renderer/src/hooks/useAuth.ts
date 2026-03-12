@@ -138,7 +138,7 @@ export default function useAuth() {
     // Fetch domain config (auto-quarantine setting)
     try {
       const domainRes = await fetch(
-        `${apiBaseUrl.replace(/\/$/, "")}/api/user/domain-config`,
+        `${apiBaseUrl.replace(/\/$/, "")}/api/v1/user/domain-config`,
         {
           method: "GET",
           headers: {
