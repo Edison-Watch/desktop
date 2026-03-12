@@ -91,6 +91,7 @@ const api = {
     resizeWindow: (width: number, height: number): Promise<void> =>
       ipcRenderer.invoke("menu:resizeWindow", width, height),
     getVersion: (): Promise<string> => ipcRenderer.invoke("menu:getVersion"),
+    getMcpConfig: (): Promise<string | null> => ipcRenderer.invoke("menu:getMcpConfig"),
   },
 
   /** App version */

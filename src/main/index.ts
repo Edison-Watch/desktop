@@ -267,11 +267,20 @@ function getMcpConfig(): string | null {
   const url = getMcpUrl();
   if (!url) return null;
   const setupData = getSetupData();
-  const parts = ["npx", "-y", "mcp-remote", url];
+  const args = ["-y", "mcp-remote", url];
   if (setupData.edisonSecretKey) {
-    parts.push("--header", `X-Edison-Secret-Key:${setupData.edisonSecretKey}`);
+    args.push("--header", `X-Edison-Secret-Key:${setupData.edisonSecretKey}`);
   }
-  return parts.join(" ");
+  const config = {
+    servers: {
+      edisonwatch: {
+        type: "stdio",
+        command: "npx",
+        args,
+      },
+    },
+  };
+  return JSON.stringify(config, null, 2);
 }
 
 // ── Server status checks ────────────────────────────────────────────
@@ -699,7 +708,7 @@ function buildTrayMenu(showDebugItems = false): Menu {
     },
     { type: "separator" },
     {
-      label: "Copy EW MCP config",
+      label: "Copy EdisonWatch MCP config",
       enabled: Boolean((setupData.mcpBaseUrl || setupData.serverAddress) && setupData.apiKey),
       click: () => {
         const mcpConfig = getMcpConfig();
@@ -1145,6 +1154,11 @@ function registerIpcHandlers(): void {
   // Get app version
   ipcMain.handle("menu:getVersion", () => {
     return app.getVersion();
+  });
+
+  // Get MCP config as VSCode JSON
+  ipcMain.handle("menu:getMcpConfig", () => {
+    return getMcpConfig();
   });
 
   // MCP: Discover installed clients

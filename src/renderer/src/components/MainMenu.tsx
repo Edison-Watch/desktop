@@ -63,11 +63,14 @@ export default function MainMenu(): React.ReactNode {
     if (url) await window.api.shell.openExternal(url);
   };
 
-  const handleCopyMcpUrl = async () => {
+  const handleCopyMcpConfig = async () => {
     if (!mcpUrl) return;
-    await navigator.clipboard.writeText(mcpUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const config = await window.api.menu.getMcpConfig();
+    if (config) {
+      await navigator.clipboard.writeText(config);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   const handleOpenDocs = () => {
@@ -139,10 +142,10 @@ export default function MainMenu(): React.ReactNode {
             {mcpUrl && (
               <Button
                 variant="ghost"
-                onClick={handleCopyMcpUrl}
+                onClick={handleCopyMcpConfig}
                 className="w-full"
               >
-                {copied ? "Copied!" : "Copy MCP URL"}
+                {copied ? "Copied!" : "Copy EdisonWatch MCP config"}
               </Button>
             )}
           </div>

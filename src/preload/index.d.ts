@@ -56,6 +56,7 @@ interface EdisonAPI {
     openFeedback: () => Promise<void>;
     resizeWindow: (width: number, height: number) => Promise<void>;
     getVersion: () => Promise<string>;
+    getMcpConfig: () => Promise<string | null>;
   };
   getVersion: () => string;
 }

@@ -65,7 +65,7 @@ export default function EncryptionStep({
       const userKeyHash = await hashSecretKey(rawUserKey);
       const body: Record<string, string> = { user_key_hash: userKeyHash };
       if (orgKey.trim()) body.domain_key_hash = await hashSecretKey(orgKey.trim());
-      const res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/api/user/secret-key/register`, {
+      const res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/api/v1/user/secret-key/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify(body),
