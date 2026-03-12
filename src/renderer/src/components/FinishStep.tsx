@@ -220,11 +220,11 @@ export default function FinishStep({
                     {APP_ID_TO_NAME[entry.appId] ?? entry.appId}
                   </strong>
                   <div className="text-[var(--text-muted)]">
-                    Config: <code>{entry.configPath}</code>
+                    Config: <code className="select-text cursor-text">{entry.configPath}</code>
                   </div>
                   {entry.backupPath && (
                     <div className="text-[var(--text-muted)]">
-                      Backup: <code>{entry.backupPath}</code>
+                      Backup: <code className="select-text cursor-text">{entry.backupPath}</code>
                     </div>
                   )}
                 </div>

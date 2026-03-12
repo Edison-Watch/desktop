@@ -263,6 +263,17 @@ function getMcpUrl(): string | null {
   return null;
 }
 
+function getMcpConfig(): string | null {
+  const url = getMcpUrl();
+  if (!url) return null;
+  const setupData = getSetupData();
+  const parts = ["npx", "-y", "mcp-remote", url];
+  if (setupData.edisonSecretKey) {
+    parts.push("--header", `X-Edison-Secret-Key:${setupData.edisonSecretKey}`);
+  }
+  return parts.join(" ");
+}
+
 // ── Server status checks ────────────────────────────────────────────
 
 async function checkServerStatus(): Promise<boolean> {
@@ -688,16 +699,16 @@ function buildTrayMenu(showDebugItems = false): Menu {
     },
     { type: "separator" },
     {
-      label: "Copy MCP URL to clipboard",
+      label: "Copy EW MCP config",
       enabled: Boolean((setupData.mcpBaseUrl || setupData.serverAddress) && setupData.apiKey),
       click: () => {
-        const mcpUrl = getMcpUrl();
-        if (mcpUrl) {
-          clipboard.writeText(mcpUrl);
+        const mcpConfig = getMcpConfig();
+        if (mcpConfig) {
+          clipboard.writeText(mcpConfig);
           if (Notification.isSupported()) {
             const n = new Notification({
               title: "Edison Watch",
-              body: "MCP URL copied to clipboard",
+              body: "MCP config copied to clipboard",
               ...(process.platform !== "darwin" && { icon: trayIconPath }),
             });
             n.show();
@@ -930,6 +941,13 @@ async function rerunWizard(): Promise<void> {
   await session.defaultSession.clearStorageData({ storages: ["localstorage", "cookies", "indexdb"] });
   isRestarting = false;
   createWindow();
+  // The window-state keeper may have persisted the compact menu size (400×380).
+  // Reset to the full wizard dimensions now that setup is incomplete.
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setMinimumSize(480, 600);
+    mainWindow.setSize(540, 760, true);
+    mainWindow.center();
+  }
 }
 
 async function handleLogoutAndRestart(): Promise<void> {
@@ -1141,7 +1159,12 @@ function registerIpcHandlers(): void {
       // since the User/ folder only exists after first launch.
       detectDir?: (configPath: string) => string;
     }> = [
-      { id: "vscode", name: "VS Code", getPath: () => import("./mcpDiscovery").then(m => m.getVscodeUserMcpPath()) },
+      {
+        id: "vscode",
+        name: "VS Code",
+        getPath: () => import("./mcpDiscovery").then(m => m.getVscodeUserMcpPath()),
+        detectDir: (configPath) => dirname(dirname(configPath)), // ~/Library/Application Support/Code/
+      },
       {
         id: "vscode-insiders",
         name: "VS Code Insiders",
