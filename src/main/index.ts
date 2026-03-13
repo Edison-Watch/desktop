@@ -116,15 +116,9 @@ const DEV_MCP_BASE_URL = "http://localhost:3000";
 const DEV_API_BASE_URL = "http://localhost:3001";
 
 // Per-env default API/MCP URLs for self-serve users (backend_base_url is null).
-// All envs are embedded at build time so runtime switching always works.
-const ENV_API_URLS: Record<string, string> = {
-  demo: "https://demo-dashboard.edison.watch",
-  release: "https://dashboard.edison.watch",
-};
-const ENV_MCP_URLS: Record<string, string> = {
-  demo: "https://demo-dashboard.edison.watch",
-  release: "https://dashboard.edison.watch",
-};
+// Values are injected at build time from frontend-v2/.env.<mode> — do not hardcode here.
+const ENV_API_URL: string = import.meta.env.VITE_API_BASE_URL ?? "";
+const ENV_MCP_URL: string = import.meta.env.VITE_MCP_BASE_URL ?? "";
 
 function getDebugEnvOverridePath(): string {
   return join(app.getPath("userData"), "edison_debug_env.json");
@@ -257,7 +251,7 @@ function getApiBaseUrl(): string | null {
   if (setupData.apiBaseUrl) return setupData.apiBaseUrl;
   if (setupData.serverAddress) return `https://${setupData.serverAddress}`;
   // Self-serve: look up default for the active env.
-  const url = ENV_API_URLS[activeEnv] ?? null;
+  const url = ENV_API_URL || null;
   if (!url) console.warn(`[getApiBaseUrl] No API URL for env "${activeEnv}".`);
   return url;
 }
@@ -269,7 +263,7 @@ function getMcpBaseUrl(): string | null {
   if (setupData.mcpBaseUrl) return setupData.mcpBaseUrl;
   if (setupData.serverAddress) return `https://${setupData.serverAddress}`;
   // Self-serve: look up default for the active env.
-  const url = ENV_MCP_URLS[activeEnv] ?? null;
+  const url = ENV_MCP_URL || null;
   if (!url) console.warn(`[getMcpBaseUrl] No MCP URL for env "${activeEnv}".`);
   return url;
 }
@@ -288,8 +282,9 @@ function getApprovalUrl(): string | null {
 
 function getMcpUrl(): string | null {
   const setupData = getSetupData();
-  if (setupData.mcpBaseUrl && setupData.apiKey) {
-    return `${setupData.mcpBaseUrl.replace(/\/$/, "")}/mcp/${setupData.apiKey}`;
+  const mcpBaseUrl = getMcpBaseUrl();
+  if (mcpBaseUrl && setupData.apiKey) {
+    return `${mcpBaseUrl.replace(/\/$/, "")}/mcp/${setupData.apiKey}`;
   }
   return null;
 }
@@ -736,7 +731,7 @@ function buildTrayMenu(showDebugItems = false): Menu {
     { type: "separator" },
     {
       label: "Copy EdisonWatch MCP config",
-      enabled: Boolean((setupData.mcpBaseUrl || setupData.serverAddress) && setupData.apiKey),
+      enabled: Boolean(getMcpUrl()),
       click: () => {
         const mcpConfig = getMcpConfig();
         if (mcpConfig) {
@@ -880,6 +875,7 @@ function buildAppMenu(): Electron.Menu {
     checked: currentEnv === name,
     click: () => {
       setDebugEnvOverride(name);
+      logEnvConfig(`switch→${name}`);
       updateAppMenu();
       // Tell renderer so it can update its Supabase credentials and reload.
       mainWindow?.webContents.send("env:changed", name);
@@ -1046,7 +1042,7 @@ function createWindow(): void {
     mainWindow?.show();
   });
 
-  mainWindow.webContents.on("did-finish-load", () => slog("did-finish-load"));
+  mainWindow.webContents.on("did-finish-load", () => { slog("did-finish-load"); logEnvConfig("startup"); });
   mainWindow.webContents.on("did-fail-load", (_e, code, desc) => slog(`did-fail-load code=${code} desc=${desc}`));
   mainWindow.webContents.on("render-process-gone", (_e, d) => slog(`render-process-gone reason=${d.reason} code=${d.exitCode}`));
 
@@ -1552,6 +1548,12 @@ if (process.defaultApp) {
 
 // Sentry must be initialized before the app 'ready' event fires
 initSentry();
+
+function logEnvConfig(context: string): void {
+  const msg = `[env:${context}] activeEnv=${getActiveEnv()} buildEnv=${getBuildDefaultEnv()} apiBaseUrl=${getApiBaseUrl()} mcpBaseUrl=${getMcpBaseUrl()} VITE_API_BASE_URL=${ENV_API_URL} VITE_MCP_BASE_URL=${ENV_MCP_URL}`;
+  slog(msg);
+  mainWindow?.webContents.executeJavaScript(`console.log(${JSON.stringify(msg)})`).catch(() => {});
+}
 
 slog("module loaded, waiting for app.whenReady");
 
