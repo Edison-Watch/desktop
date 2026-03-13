@@ -51,6 +51,8 @@ interface EdisonAPI {
   };
   config: {
     getEffectiveBaseUrls: () => Promise<{ mcpBaseUrl: string | null; apiBaseUrl: string | null }>;
+    getActiveEnv: () => Promise<string>;
+    onEnvChanged: (callback: (env: string) => void) => () => void;
   };
   menu: {
     openFeedback: () => Promise<void>;

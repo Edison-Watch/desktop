@@ -1,8 +1,38 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase, fetchApiKey } from "@edison/shared/auth";
+import { getEnv, STORAGE_KEY } from "@edison/shared/config";
 
-const DOMAIN_INFO_URL_FALLBACK: string =
-  import.meta.env.VITE_DOMAIN_INFO_API_URL || "https://demo-dashboard.edison.watch";
+// Sync active env from main process on startup — reload if it differs from localStorage
+// so Supabase is initialised with the correct credentials.
+(async () => {
+  try {
+    const activeEnv = await window.api.config.getActiveEnv();
+    // "dev" uses demo Supabase — clear any localStorage override so we fall back to build default.
+    const normalized = activeEnv === "dev" ? null : activeEnv;
+    const current = localStorage.getItem(STORAGE_KEY) ?? null;
+    if (current !== normalized) {
+      if (normalized) localStorage.setItem(STORAGE_KEY, normalized);
+      else localStorage.removeItem(STORAGE_KEY);
+      window.location.reload();
+    }
+  } catch {
+    // Not running in Electron — ignore.
+  }
+})();
+
+// Reload whenever the user switches env via the menu.
+try {
+  window.api.config.onEnvChanged((envName: string) => {
+    const normalized = envName === "dev" ? null : envName;
+    if (normalized) localStorage.setItem(STORAGE_KEY, normalized);
+    else localStorage.removeItem(STORAGE_KEY);
+    window.location.reload();
+  });
+} catch {
+  // Not running in Electron — ignore.
+}
+
+const DOMAIN_INFO_URL_FALLBACK: string = getEnv().API_BASE_URL;
 
 async function getDomainInfoBaseUrl(): Promise<string> {
   try {
@@ -108,6 +138,7 @@ export default function useAuth() {
     // Get effective URLs from main process (respects debug env override for dev mode)
     const normalizeUrl = (url: string) =>
       url && !/^https?:\/\//i.test(url) ? `https://${url}` : url;
+    // backend_base_url is null for self-serve users — main process provides the env default.
     let mcpBaseUrl = normalizeUrl(result.backend_base_url || "");
     let apiBaseUrl = normalizeUrl(result.backend_base_url || "");
     try {
@@ -117,6 +148,8 @@ export default function useAuth() {
     } catch {
       // Not available — use URLs from fetchApiKey
     }
+    if (!apiBaseUrl) console.warn("[useAuth] apiBaseUrl is empty after auth — API calls will fail. Check VITE_API_BASE_URL.");
+    if (!mcpBaseUrl) console.warn("[useAuth] mcpBaseUrl is empty after auth — MCP health checks will fail. Check VITE_MCP_BASE_URL.");
 
     update({
       apiKey: result.api_key,

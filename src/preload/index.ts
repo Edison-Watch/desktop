@@ -79,10 +79,17 @@ const api = {
     getHookStatus: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:getHookStatus"),
   },
 
-  /** Config: effective base URLs (respects debug env override) */
+  /** Config: effective base URLs and active env (respects debug env override) */
   config: {
     getEffectiveBaseUrls: (): Promise<{ mcpBaseUrl: string | null; apiBaseUrl: string | null }> =>
       ipcRenderer.invoke("config:getEffectiveBaseUrls"),
+    getActiveEnv: (): Promise<string> =>
+      ipcRenderer.invoke("config:getActiveEnv"),
+    onEnvChanged: (callback: (env: string) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, env: string): void => callback(env);
+      ipcRenderer.on("env:changed", handler);
+      return () => ipcRenderer.removeListener("env:changed", handler);
+    },
   },
 
   /** Menu actions (post-setup window) */

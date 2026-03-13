@@ -115,6 +115,17 @@ function getBuildDefaultEnv(): DebugEnvName | null {
 const DEV_MCP_BASE_URL = "http://localhost:3000";
 const DEV_API_BASE_URL = "http://localhost:3001";
 
+// Per-env default API/MCP URLs for self-serve users (backend_base_url is null).
+// All envs are embedded at build time so runtime switching always works.
+const ENV_API_URLS: Record<string, string> = {
+  demo: "https://demo-dashboard.edison.watch",
+  release: "https://dashboard.edison.watch",
+};
+const ENV_MCP_URLS: Record<string, string> = {
+  demo: "https://demo-dashboard.edison.watch",
+  release: "https://dashboard.edison.watch",
+};
+
 function getDebugEnvOverridePath(): string {
   return join(app.getPath("userData"), "edison_debug_env.json");
 }
@@ -235,18 +246,38 @@ function markSetupIncomplete(): void {
 
 // ── URL helpers ─────────────────────────────────────────────────────
 
+function getActiveEnv(): string {
+  return getDebugEnvOverride() ?? getBuildDefaultEnv() ?? "demo";
+}
+
 function getApiBaseUrl(): string | null {
-  if (is.dev || getDebugEnvOverride() === "dev") return DEV_API_BASE_URL;
+  const activeEnv = getActiveEnv();
+  if (activeEnv === "dev" || is.dev) return DEV_API_BASE_URL;
   const setupData = getSetupData();
   if (setupData.apiBaseUrl) return setupData.apiBaseUrl;
   if (setupData.serverAddress) return `https://${setupData.serverAddress}`;
-  return null;
+  // Self-serve: look up default for the active env.
+  const url = ENV_API_URLS[activeEnv] ?? null;
+  if (!url) console.warn(`[getApiBaseUrl] No API URL for env "${activeEnv}".`);
+  return url;
+}
+
+function getMcpBaseUrl(): string | null {
+  const activeEnv = getActiveEnv();
+  if (activeEnv === "dev" || is.dev) return DEV_MCP_BASE_URL;
+  const setupData = getSetupData();
+  if (setupData.mcpBaseUrl) return setupData.mcpBaseUrl;
+  if (setupData.serverAddress) return `https://${setupData.serverAddress}`;
+  // Self-serve: look up default for the active env.
+  const url = ENV_MCP_URLS[activeEnv] ?? null;
+  if (!url) console.warn(`[getMcpBaseUrl] No MCP URL for env "${activeEnv}".`);
+  return url;
 }
 
 function getEventsUrl(apiKey: string): string | null {
   const baseUrl = getApiBaseUrl();
   if (!baseUrl) return null;
-  return `${baseUrl.replace(/\/$/, "")}/events?api_key=${encodeURIComponent(apiKey)}`;
+  return `${baseUrl.replace(/\/$/, "")}/api/v1/events?api_key=${encodeURIComponent(apiKey)}`;
 }
 
 function getApprovalUrl(): string | null {
@@ -267,7 +298,7 @@ function getMcpConfig(): string | null {
   const url = getMcpUrl();
   if (!url) return null;
   const setupData = getSetupData();
-  const args = ["-y", "mcp-remote", url];
+  const args = ["-y", "mcp-remote", url, "--transport", "http"];
   if (setupData.edisonSecretKey) {
     args.push("--header", `X-Edison-Secret-Key:${setupData.edisonSecretKey}`);
   }
@@ -287,11 +318,7 @@ function getMcpConfig(): string | null {
 
 async function checkServerStatus(): Promise<boolean> {
   try {
-    const setupData = getSetupData();
-    const mcpUrl =
-      (is.dev || getDebugEnvOverride() === "dev" ? DEV_MCP_BASE_URL : null) ||
-      setupData.mcpBaseUrl ||
-      (setupData.serverAddress ? `https://${setupData.serverAddress}` : null);
+    const mcpUrl = getMcpBaseUrl();
     if (!mcpUrl) return false;
 
     const healthUrl = `${mcpUrl.replace(/\/$/, "")}/health`;
@@ -741,12 +768,22 @@ function buildTrayMenu(showDebugItems = false): Menu {
       click: async () => {
         try {
           const update = await checkForUpdateNow(trayIconPath);
-          if (!update && Notification.isSupported()) {
-            new Notification({
-              title: "Edison Watch",
-              body: "You're up to date.",
-              ...(process.platform !== "darwin" && { icon: trayIconPath }),
-            }).show();
+          if (Notification.isSupported()) {
+            if (update) {
+              const notification = new Notification({
+                title: "Edison Watch",
+                body: `Version ${update.version} is available. Click to download.`,
+                ...(process.platform !== "darwin" && { icon: trayIconPath }),
+              });
+              notification.on("click", () => openUpdateDownload());
+              notification.show();
+            } else {
+              new Notification({
+                title: "Edison Watch",
+                body: "You're already on the latest version.",
+                ...(process.platform !== "darwin" && { icon: trayIconPath }),
+              }).show();
+            }
           }
         } catch {
           if (Notification.isSupported()) {
@@ -844,6 +881,8 @@ function buildAppMenu(): Electron.Menu {
     click: () => {
       setDebugEnvOverride(name);
       updateAppMenu();
+      // Tell renderer so it can update its Supabase credentials and reload.
+      mainWindow?.webContents.send("env:changed", name);
       if (Notification.isSupported()) {
         new Notification({
           title: "Edison Watch",
@@ -1078,12 +1117,18 @@ function registerIpcHandlers(): void {
   // Auth: expose dev localhost callback URL (null in production)
   ipcMain.handle("auth:getDevCallbackUrl", () => devAuthCallbackUrl);
 
+  // Config: active env name (for renderer to sync its localStorage/Supabase creds)
+  ipcMain.handle("config:getActiveEnv", () => getActiveEnv());
+
   // Config: effective base URLs (respects debug env override)
   ipcMain.handle("config:getEffectiveBaseUrls", () => {
-    const devMode = is.dev || getDebugEnvOverride() === "dev";
+    const apiBaseUrl = getApiBaseUrl();
+    const mcpBaseUrl = getMcpBaseUrl();
+    if (!apiBaseUrl) console.warn("[config:getEffectiveBaseUrls] apiBaseUrl is null — renderer will have no API URL.");
+    if (!mcpBaseUrl) console.warn("[config:getEffectiveBaseUrls] mcpBaseUrl is null — server health checks will fail.");
     return {
-      mcpBaseUrl: devMode ? DEV_MCP_BASE_URL : null,
-      apiBaseUrl: getApiBaseUrl(),
+      mcpBaseUrl,
+      apiBaseUrl,
     };
   });
 
@@ -1219,8 +1264,9 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle("mcp:discover", async () => {
-    const servers = await discoverMcpServers();
-    console.log("[mcp:discover] Found", servers.length, "servers");
+    const all = await discoverMcpServers();
+    const servers = filterOutEdisonWatchServers(all);
+    console.log("[mcp:discover] Found", servers.length, "servers (filtered out", all.length - servers.length, "EW servers)");
     return servers;
   });
 
@@ -1452,6 +1498,7 @@ function startDevAuthServer(): Promise<void> {
     if (window.location.hash && window.location.hash.length > 1) {
       fetch('/auth/callback?from_hash=1&' + window.location.hash.substring(1))
     }
+    window.close();
   </script>
 </body>
 </html>`);

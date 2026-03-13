@@ -6,18 +6,20 @@ import { fileURLToPath } from "url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const projectRoot = resolve(__dirname, "..");
-const frontendDir = resolve(projectRoot, "frontend");
+const frontendDir = resolve(projectRoot, "frontend-v2");
 
 export default defineConfig(({ mode }) => {
-  // Load VITE_ vars from frontend/.env.<mode> so all bundles share the same source of truth
+  // Load VITE_ vars from frontend-v2/.env.<mode> — single source of truth for all bundles.
   const env = loadEnv(mode, frontendDir, "VITE_");
 
   return {
     main: {
       plugins: [externalizeDepsPlugin()],
-      // Expose VITE_DEPLOY_ENV to the main process at build time
+      // Expose env vars to the main process at build time.
       define: {
         "import.meta.env.VITE_DEPLOY_ENV": JSON.stringify(env["VITE_DEPLOY_ENV"] ?? ""),
+        "import.meta.env.VITE_API_BASE_URL": JSON.stringify(env["VITE_API_BASE_URL"] ?? ""),
+        "import.meta.env.VITE_MCP_BASE_URL": JSON.stringify(env["VITE_MCP_BASE_URL"] ?? ""),
       },
     },
     preload: {
