@@ -137,12 +137,6 @@ function descriptionFor(context: 'arg' | 'env' | 'header' | 'url', varName: stri
   }
 }
 
-/** Redact middle portion of a value for the example field */
-function redactExample(value: string): string {
-  if (value.length <= 8) return value.slice(0, 2) + '...'
-  return value.slice(0, 6) + '...' + value.slice(-4)
-}
-
 // ── Arg parsing helpers ────────────────────────────────────────────────────────
 
 interface ParsedFlag {
@@ -234,7 +228,7 @@ export function detectSecrets(server: DiscoveredMcpServer): TemplatizedConfig {
           usedNames.add(varName)
           argsFields[varName] = {
             description: descriptionFor('arg', varName),
-            example: redactExample(authToken.token)
+            example: ''
           }
           secretValues[varName] = authToken.token
           const replaced = `${authToken.prefix}{${varName}}`
@@ -253,7 +247,7 @@ export function detectSecrets(server: DiscoveredMcpServer): TemplatizedConfig {
 
           argsFields[varName] = {
             description: descriptionFor('arg', varName),
-            example: redactExample(pair.value)
+            example: ''
           }
           secretValues[varName] = pair.value
 
@@ -288,7 +282,7 @@ export function detectSecrets(server: DiscoveredMcpServer): TemplatizedConfig {
           usedNames.add(varName)
           argsFields[varName] = {
             description: descriptionFor('arg', varName),
-            example: redactExample(authToken.token)
+            example: ''
           }
           secretValues[varName] = authToken.token
           clonedArgs[i] = `${authToken.prefix}{${varName}}`
@@ -304,7 +298,7 @@ export function detectSecrets(server: DiscoveredMcpServer): TemplatizedConfig {
           usedNames.add(varName)
           argsFields[varName] = {
             description: descriptionFor('arg', varName),
-            example: redactExample(arg)
+            example: ''
           }
           secretValues[varName] = arg
           clonedArgs[i] = `{${varName}}`
@@ -330,7 +324,7 @@ export function detectSecrets(server: DiscoveredMcpServer): TemplatizedConfig {
           usedNames.add(varName)
           envFields[varName] = {
             description: descriptionFor('env', key),
-            example: redactExample(authToken.token)
+            example: ''
           }
           secretValues[varName] = authToken.token
           clonedEnv[key] = `${authToken.prefix}{${varName}}`
@@ -344,7 +338,7 @@ export function detectSecrets(server: DiscoveredMcpServer): TemplatizedConfig {
 
           envFields[varName] = {
             description: descriptionFor('env', key),
-            example: redactExample(value)
+            example: ''
           }
           secretValues[varName] = value
           clonedEnv[key] = `{${varName}}`
@@ -380,7 +374,7 @@ export function detectSecrets(server: DiscoveredMcpServer): TemplatizedConfig {
           if (!templateFields.env) templateFields.env = {}
           templateFields.env[varName] = {
             description: descriptionFor('url', varName),
-            example: redactExample(parsed.password)
+            example: ''
           }
           parsed.password = `{${varName}}`
         }
@@ -391,7 +385,7 @@ export function detectSecrets(server: DiscoveredMcpServer): TemplatizedConfig {
           if (!templateFields.env) templateFields.env = {}
           templateFields.env[varName] = {
             description: descriptionFor('url', varName),
-            example: redactExample(parsed.username)
+            example: ''
           }
           parsed.username = `{${varName}}`
         }
@@ -419,7 +413,7 @@ export function detectSecrets(server: DiscoveredMcpServer): TemplatizedConfig {
           usedNames.add(varName)
           envFields[varName] = {
             description: descriptionFor('header', key),
-            example: redactExample(authToken.token)
+            example: ''
           }
           secretValues[varName] = authToken.token
           clonedHeaders[key] = `${authToken.prefix}{${varName}}`
@@ -436,7 +430,7 @@ export function detectSecrets(server: DiscoveredMcpServer): TemplatizedConfig {
           usedNames.add(varName)
           envFields[varName] = {
             description: descriptionFor('header', key),
-            example: redactExample(value)
+            example: ''
           }
           secretValues[varName] = value
           clonedHeaders[key] = `{${varName}}`
