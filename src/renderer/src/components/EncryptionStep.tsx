@@ -63,18 +63,49 @@ export default function EncryptionStep({
     setKeyError("");
     try {
       const userKeyHash = await hashSecretKey(rawUserKey);
-      const body: Record<string, string> = { user_key_hash: userKeyHash };
-      if (orgKey.trim()) body.domain_key_hash = await hashSecretKey(orgKey.trim());
-      const res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/api/v1/user/secret-key/register`, {
+      const trimmedOrgKey = orgKey.trim();
+      const url = `${apiBaseUrl.replace(/\/$/, "")}/api/v1/user/secret-key/register`;
+      const headers = { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` };
+
+      // If org key provided, try with it first
+      let usedOrgKey = trimmedOrgKey;
+      if (trimmedOrgKey) {
+        const domainKeyHash = await hashSecretKey(trimmedOrgKey);
+        const res = await fetch(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ user_key_hash: userKeyHash, domain_key_hash: domainKeyHash }),
+        });
+        if (res.ok) {
+          const key = buildCompositeKey(rawUserKey, trimmedOrgKey);
+          cacheSecretKey(key);
+          setCompositeKey(key);
+          setKeyRegistered(true);
+          return;
+        }
+        // If domain key rejected, fall back to personal key only
+        const detail = await res.text().catch(() => "");
+        console.warn("[EncryptionStep] Org key rejected, registering personal key only:", detail);
+        usedOrgKey = "";
+      }
+
+      // Register with personal key only
+      const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify(body),
+        headers,
+        body: JSON.stringify({ user_key_hash: userKeyHash }),
       });
-      if (!res.ok) throw new Error(`Registration failed: ${res.status}`);
-      const key = buildCompositeKey(rawUserKey, orgKey.trim() || null);
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        throw new Error(`Registration failed (${res.status}): ${detail}`);
+      }
+      const key = buildCompositeKey(rawUserKey, usedOrgKey || null);
       cacheSecretKey(key);
       setCompositeKey(key);
       setKeyRegistered(true);
+      if (trimmedOrgKey && !usedOrgKey) {
+        setKeyError("Key registered, but the organisation key was not accepted — no domain key is configured for your organisation yet.");
+      }
     } catch (err) {
       setKeyError(err instanceof Error ? err.message : "Failed to register key");
     } finally {
@@ -138,6 +169,7 @@ export default function EncryptionStep({
           placeholder="Paste the key your admin provided"
           value={orgKey}
           onChange={(e) => setOrgKey(e.target.value)}
+          autoComplete="off"
         />
       </Card>
 
@@ -152,8 +184,13 @@ export default function EncryptionStep({
           </div>
 
           {keyRegistered ? (
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400">
-              Key registered successfully. Make sure you saved it in your password manager.
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400">
+                Key registered successfully. Make sure you saved it in your password manager.
+              </div>
+              {keyError && (
+                <p className="text-xs text-[var(--warning)]">{keyError}</p>
+              )}
             </div>
           ) : userKeyMode === "none" ? (
             <div className="flex gap-2">

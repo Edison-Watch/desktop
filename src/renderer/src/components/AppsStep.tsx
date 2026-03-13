@@ -240,8 +240,12 @@ export default function AppsStep({
             type="button"
             className="flex items-center justify-between w-full text-left"
             onClick={() => {
-              if (!scanned) handleScan();
-              else setShowServers((v) => !v);
+              if (!scanned) {
+                handleScan();
+                setShowServers(true);
+              } else {
+                setShowServers((v) => !v);
+              }
             }}
           >
             <div>
