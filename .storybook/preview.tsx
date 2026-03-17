@@ -11,6 +11,7 @@ import '../src/renderer/src/assets/main.css';
   setup: {
     getData: async () => null,
     reachedFinal: () => {},
+    complete: async () => {},
   },
   auth: {
     onCallback: (_cb: (url: string) => void) => () => {},
@@ -18,9 +19,28 @@ import '../src/renderer/src/assets/main.css';
   },
   config: {
     getEffectiveBaseUrls: async () => ({ mcpBaseUrl: '', apiBaseUrl: '' }),
+    getActiveEnv: async () => 'prod',
+    onEnvChanged: (_cb: (env: string) => void) => {},
   },
   shell: {
     openExternal: (_url: string) => {},
+  },
+  health: {
+    check: async () => true,
+  },
+  menu: {
+    getVersion: async () => '1.0.0',
+    resizeWindow: async () => {},
+    getMcpConfig: async () => '{"mcpServers":{"edison-watch":{"url":"https://mcp.demo.example.com/mcp/key"}}}',
+    openFeedback: () => {},
+  },
+  mcp: {
+    detectClients: async () => [],
+    readConfig: async () => '',
+    discover: async () => [],
+    submitAllDiscovered: async () => ({ submitted: 0, autoApproved: 0, skipped: 0, total: 0 }),
+    applyAppIntegrations: async () => ({ modifiedConfigs: [] }),
+    revertAppIntegrations: async () => ({ reverted: 0, errors: [] }),
   },
 };
 
