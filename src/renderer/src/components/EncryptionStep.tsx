@@ -188,6 +188,19 @@ export default function EncryptionStep({
               <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400">
                 Key registered successfully. Make sure you saved it in your password manager.
               </div>
+              {compositeKey && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(compositeKey);
+                    setKeyCopied(true);
+                    setTimeout(() => setKeyCopied(false), 2000);
+                  }}
+                >
+                  {keyCopied ? "Copied!" : "Copy Composite Key"}
+                </Button>
+              )}
               {keyError && (
                 <p className="text-xs text-[var(--warning)]">{keyError}</p>
               )}

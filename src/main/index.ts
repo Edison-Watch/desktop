@@ -37,6 +37,7 @@ import { startUpdateChecker, stopUpdateChecker, getAvailableUpdate, openUpdateDo
 import { showDebugWindow } from "./debugWindow";
 import { showFeedbackWindow } from "./feedbackWindow";
 import { showServerRegistrationDialog } from "./mcpServerActionDialog";
+import { showUpdateKeysWindow } from "./updateKeysWindow";
 import { fetchUserRole, submitServerRequest, approveServerRequest } from "./mcpConfigActions";
 import { filterOutEdisonWatchServers } from "./mcpConfigMonitor";
 import { applyAppIntegrations } from "./mcpConfigWriter";
@@ -692,7 +693,7 @@ document.getElementById('deny-all')?.addEventListener('click',()=>{document.quer
 
 // ── Tray ────────────────────────────────────────────────────────────
 
-function buildTrayMenu(showDebugItems = false): Menu {
+function buildTrayMenuItems(): MenuItemConstructorOptions[] {
   const setupData = getSetupData();
   const pendingCount = pendingApprovals.size;
   const userDisplayName = setupData.userEmail || "Not signed in";
@@ -739,7 +740,7 @@ function buildTrayMenu(showDebugItems = false): Menu {
           if (Notification.isSupported()) {
             const n = new Notification({
               title: "Edison Watch",
-              body: "MCP config copied to clipboard",
+              body: "MCP config copied — paste into VSCode, Cursor, or your MCP client",
               ...(process.platform !== "darwin" && { icon: trayIconPath }),
             });
             n.show();
@@ -796,19 +797,42 @@ function buildTrayMenu(showDebugItems = false): Menu {
 
   items.push(
     { type: "separator" },
-    ...(showDebugItems
-      ? ([
-          {
-            label: "Debug Window",
-            click: () => showDebugWindow(mainWindow ?? undefined),
+    {
+      label: "Debug Window",
+      click: () => showDebugWindow(mainWindow ?? undefined),
+    },
+    { type: "separator" },
+    {
+      label: "Re-run Setup Wizard",
+      click: () => rerunWizard(),
+    },
+    {
+      label: "Update Keys",
+      click: () =>
+        showUpdateKeysWindow(
+          getSetupData,
+          (key) => markSetupComplete({ edisonSecretKey: key }),
+          async (compositeKey) => {
+            const setup = getSetupData();
+            const mcpBaseUrl = getMcpBaseUrl();
+            const apiKey = setup.apiKey;
+            const serverAddress = setup.serverAddress ?? "";
+            if (!mcpBaseUrl || !apiKey) return;
+            const allApps = [
+              "vscode", "vscode-insiders", "cursor", "claude-desktop",
+              "claude-code", "windsurf", "zed", "antigravity",
+              "intellij", "pycharm", "webstorm",
+            ];
+            await applyAppIntegrations({
+              serverAddress,
+              mcpBaseUrl,
+              apiKey,
+              edisonSecretKey: compositeKey,
+              apps: allApps,
+            });
           },
-          { type: "separator" },
-          {
-            label: "Re-run Setup Wizard",
-            click: () => rerunWizard(),
-          },
-        ] as MenuItemConstructorOptions[])
-      : []),
+        ),
+    },
     {
       label: "Send Feedback",
       click: () => showFeedbackWindow(),
@@ -823,7 +847,11 @@ function buildTrayMenu(showDebugItems = false): Menu {
     },
   );
 
-  return Menu.buildFromTemplate(items);
+  return items;
+}
+
+function buildTrayMenu(): Menu {
+  return Menu.buildFromTemplate(buildTrayMenuItems());
 }
 
 function createTray(): void {
@@ -837,9 +865,9 @@ function createTray(): void {
   tray = new Tray(trayIconToUse);
   tray.setToolTip("Edison Watch");
 
-  const showMenu = (event: Electron.KeyboardEvent): void => {
+  const showMenu = (): void => {
     if (!tray) return;
-    tray.popUpContextMenu(buildTrayMenu(event.altKey));
+    tray.popUpContextMenu(buildTrayMenu());
   };
 
   tray.on("click", showMenu);
@@ -918,6 +946,11 @@ function buildAppMenu(): Electron.Menu {
           },
         ] as MenuItemConstructorOptions[])
       : []),
+    // Actions menu mirrors the tray menu for discoverability from the menu bar
+    {
+      label: "Actions",
+      submenu: buildTrayMenuItems(),
+    },
     // Standard Edit menu so copy/paste works in text fields
     {
       label: "Edit",

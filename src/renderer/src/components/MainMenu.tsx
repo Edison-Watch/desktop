@@ -140,13 +140,20 @@ export default function MainMenu(): React.ReactNode {
               Open Dashboard
             </Button>
             {mcpUrl && (
-              <Button
-                variant="ghost"
-                onClick={handleCopyMcpConfig}
-                className="w-full"
-              >
-                {copied ? "Copied!" : "Copy EdisonWatch MCP config"}
-              </Button>
+              <div className="flex flex-col gap-1">
+                <Button
+                  variant="ghost"
+                  onClick={handleCopyMcpConfig}
+                  className="w-full"
+                >
+                  {copied ? "Copied!" : "Copy EdisonWatch MCP config"}
+                </Button>
+                {copied && (
+                  <p className="text-center text-xs text-[var(--text-muted)]">
+                    Paste into VSCode, Cursor, or your MCP client
+                  </p>
+                )}
+              </div>
             )}
           </div>
         </div>
