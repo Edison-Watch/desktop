@@ -77,6 +77,10 @@ const api = {
     injectHooks: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:injectHooks"),
     removeHooks: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:removeHooks"),
     getHookStatus: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:getHookStatus"),
+    injectVsCodeWorkspaceHook: (workspacePath: string): Promise<boolean> =>
+      ipcRenderer.invoke("mcp:injectVsCodeWorkspaceHook", workspacePath),
+    removeVsCodeWorkspaceHook: (workspacePath: string): Promise<boolean> =>
+      ipcRenderer.invoke("mcp:removeVsCodeWorkspaceHook", workspacePath),
   },
 
   /** Config: effective base URLs and active env (respects debug env override) */

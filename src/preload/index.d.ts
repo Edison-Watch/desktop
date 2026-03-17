@@ -48,9 +48,11 @@ interface EdisonAPI {
     injectHooks: () => Promise<unknown[]>;
     removeHooks: () => Promise<unknown[]>;
     getHookStatus: () => Promise<unknown[]>;
+    injectVsCodeWorkspaceHook: (workspacePath: string) => Promise<boolean>;
+    removeVsCodeWorkspaceHook: (workspacePath: string) => Promise<boolean>;
   };
   config: {
-    getEffectiveBaseUrls: () => Promise<{ mcpBaseUrl: string | null; apiBaseUrl: string | null }>;
+    getEffectiveBaseUrls: () => Promise<{ mcpBaseUrl: string | null; apiBaseUrl: string | null; docsBaseUrl: string }>;
     getActiveEnv: () => Promise<string>;
     onEnvChanged: (callback: (env: string) => void) => () => void;
   };

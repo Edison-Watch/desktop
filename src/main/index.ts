@@ -30,7 +30,7 @@ const electronApp = { setAppUserModelId: (id: string) => { if (process.platform 
 const optimizer = { watchWindowShortcuts: (_win: BrowserWindow) => { /* no-op: dev shortcuts removed */ } };
 import windowStateKeeper from "electron-window-state";
 import { discoverMcpServers, getJetBrainsMcpConfigPaths } from "./mcpDiscovery";
-import { injectAllHooks, removeAllHooks, getHookStatus } from "./hookInjection";
+import { injectAllHooks, removeAllHooks, getHookStatus, injectVsCodeWorkspaceHook, removeVsCodeWorkspaceHook } from "./hookInjection";
 import { initSentry } from "./sentry";
 import { startHookHealthMonitor, stopHookHealthMonitor, getHookStatusLabel } from "./hookHealthMonitor";
 import { startUpdateChecker, stopUpdateChecker, getAvailableUpdate, openUpdateDownload, checkForUpdateNow } from "./updateChecker";
@@ -39,7 +39,8 @@ import { showFeedbackWindow } from "./feedbackWindow";
 import { showServerRegistrationDialog } from "./mcpServerActionDialog";
 import { showUpdateKeysWindow } from "./updateKeysWindow";
 import { fetchUserRole, submitServerRequest, approveServerRequest } from "./mcpConfigActions";
-import { filterOutEdisonWatchServers } from "./mcpConfigMonitor";
+import { filterOutEdisonWatchServers, McpConfigMonitor } from "./mcpConfigMonitor";
+import { SeenServersStore } from "./seenServersStore";
 import { applyAppIntegrations } from "./mcpConfigWriter";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -120,6 +121,7 @@ const DEV_API_BASE_URL = "http://localhost:3001";
 // Values are injected at build time from frontend-v2/.env.<mode> — do not hardcode here.
 const ENV_API_URL: string = import.meta.env.VITE_API_BASE_URL ?? "";
 const ENV_MCP_URL: string = import.meta.env.VITE_MCP_BASE_URL ?? "";
+const ENV_DOCS_URL: string = import.meta.env.VITE_DOCS_BASE_URL ?? "https://docs.edison.watch";
 
 function getDebugEnvOverridePath(): string {
   return join(app.getPath("userData"), "edison_debug_env.json");
@@ -189,6 +191,9 @@ interface TrifectaEventData {
 
 let isServerOnline = false;
 let serverStatusCheckInterval: ReturnType<typeof setInterval> | null = null;
+let configMonitor: McpConfigMonitor | null = null;
+let autoQuarantineEnabled = false;
+let isHandlingQuarantine = false;
 
 // ── Setup data persistence ──────────────────────────────────────────
 
@@ -396,6 +401,11 @@ function startEventSubscription(): void {
         const data = JSON.parse(event.data);
         if (data.type === "mcp_pre_block") {
           handleTrifectaEvent(data);
+        } else if (data.type === "quarantine_enabled") {
+          const userDomain = getSetupData().userEmail?.split("@")[1];
+          if (!data.domain || data.domain === userDomain) {
+            handleQuarantineEnabled();
+          }
         }
       } catch (err) {
         console.error("Failed to parse SSE event:", err);
@@ -422,6 +432,82 @@ function stopEventSubscription(): void {
     eventSource = null;
   }
   reconnectAttempts = 0;
+}
+
+// ── Quarantine monitor ───────────────────────────────────────────────
+
+async function startQuarantineMonitorIfEnabled(): Promise<void> {
+  const apiBaseUrl = getApiBaseUrl();
+  const setupData = getSetupData();
+  if (!apiBaseUrl || !setupData.apiKey) return;
+
+  try {
+    const resp = await fetch(`${apiBaseUrl}/api/v1/user/domain-config`, {
+      headers: { Authorization: `Bearer ${setupData.apiKey}` },
+    });
+    if (!resp.ok) return;
+    const config = (await resp.json()) as { auto_quarantine_other_mcp_servers?: boolean };
+    if (!config.auto_quarantine_other_mcp_servers) return;
+  } catch {
+    return;
+  }
+
+  await startQuarantineMonitor();
+}
+
+async function startQuarantineMonitor(): Promise<void> {
+  if (configMonitor) return; // already running
+  autoQuarantineEnabled = true;
+  updateTrayMenu();
+
+  await injectAllHooks();
+
+  configMonitor = new McpConfigMonitor(new SeenServersStore());
+
+  configMonitor.on("serversQuarantined", async (quarantinedEvents) => {
+    if (quarantinedEvents.length === 0) return;
+
+    const apiBaseUrl = getApiBaseUrl();
+    const setup = getSetupData();
+    let isAdminOrOwner = false;
+    if (apiBaseUrl && setup.apiKey) {
+      try {
+        const role = await fetchUserRole(apiBaseUrl, setup.apiKey);
+        isAdminOrOwner = role === "admin" || role === "owner";
+      } catch { /* treat as regular user on error */ }
+    }
+
+    if (isAdminOrOwner && Notification.isSupported()) {
+      const names = quarantinedEvents.map((e) => e.server.name).join(", ");
+      const n = new Notification({
+        title: "Edison Watch — MCP Server Quarantined",
+        body: `New server(s) quarantined: ${names}. Review in dashboard.`,
+        ...(process.platform !== "darwin" && { icon: trayIconPath }),
+      });
+      n.show();
+    }
+    // Regular users: quarantine is silent
+  });
+
+  await configMonitor.start();
+}
+
+async function handleQuarantineEnabled(): Promise<void> {
+  if (configMonitor || isHandlingQuarantine) return;
+  isHandlingQuarantine = true;
+  try {
+    autoQuarantineEnabled = true;
+    updateTrayMenu();
+    await startQuarantineMonitor();
+  } finally {
+    isHandlingQuarantine = false;
+  }
+}
+
+function stopQuarantineMonitor(): void {
+  configMonitor?.stop();
+  configMonitor = null;
+  autoQuarantineEnabled = false;
 }
 
 function handleReconnect(): void {
@@ -750,6 +836,12 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
     },
     { type: "separator" },
     { label: getHookStatusLabel(), enabled: false },
+    {
+      label: autoQuarantineEnabled
+        ? "MCP Auto-Quarantine: Enabled"
+        : "MCP Auto-Quarantine: Disabled",
+      enabled: false,
+    },
   ];
 
   const availableUpdate = getAvailableUpdate();
@@ -1033,6 +1125,7 @@ async function handleLogoutAndRestart(): Promise<void> {
   stopUpdateChecker();
   stopEventSubscription();
   stopHookHealthMonitor();
+  stopQuarantineMonitor();
   pendingApprovals.clear();
   markSetupIncomplete();
   isServerOnline = false;
@@ -1158,6 +1251,7 @@ function registerIpcHandlers(): void {
     return {
       mcpBaseUrl,
       apiBaseUrl,
+      docsBaseUrl: ENV_DOCS_URL,
     };
   });
 
@@ -1482,6 +1576,14 @@ function registerIpcHandlers(): void {
   ipcMain.handle("mcp:getHookStatus", async () => {
     return await getHookStatus();
   });
+
+  ipcMain.handle("mcp:injectVsCodeWorkspaceHook", async (_event, workspacePath: string) => {
+    return await injectVsCodeWorkspaceHook(workspacePath);
+  });
+
+  ipcMain.handle("mcp:removeVsCodeWorkspaceHook", async (_event, workspacePath: string) => {
+    return await removeVsCodeWorkspaceHook(workspacePath);
+  });
 }
 
 // ── Dev auth server (localhost OAuth callback for unpackaged dev builds) ─
@@ -1627,6 +1729,9 @@ app.whenReady().then(async () => {
     startEventSubscription();
     startHookHealthMonitor();
     startUpdateChecker();
+    startQuarantineMonitorIfEnabled().catch((err) =>
+      console.error("[Quarantine] Failed to start monitor:", err),
+    );
     slog("tray/subscription/monitor ok");
   } else {
     slog("setup not complete");

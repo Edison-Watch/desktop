@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button, Card, Badge } from "@edison/shared/ui";
 
-const DOCS_URL = "https://docs.edison.watch";
-
 interface SetupData {
   completed?: boolean;
   userEmail?: string;
@@ -16,6 +14,7 @@ export default function MainMenu(): React.ReactNode {
   const [online, setOnline] = useState<boolean | null>(null);
   const [copied, setCopied] = useState(false);
   const [version, setVersion] = useState("");
+  const [docsUrl, setDocsUrl] = useState("https://docs.edison.watch");
 
   useEffect(() => {
     (async () => {
@@ -25,6 +24,8 @@ export default function MainMenu(): React.ReactNode {
       setOnline(status);
       const ver = await window.api.menu.getVersion();
       setVersion(ver);
+      const urls = await window.api.config.getEffectiveBaseUrls();
+      setDocsUrl(urls.docsBaseUrl);
       // Resize window to fit the compact menu
       await window.api.menu.resizeWindow(400, 380);
     })();
@@ -74,7 +75,7 @@ export default function MainMenu(): React.ReactNode {
   };
 
   const handleOpenDocs = () => {
-    window.api.shell.openExternal(DOCS_URL);
+    window.api.shell.openExternal(docsUrl);
   };
 
   const handleOpenFeedback = () => {
