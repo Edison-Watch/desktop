@@ -103,6 +103,7 @@ const api = {
       ipcRenderer.invoke("menu:resizeWindow", width, height),
     getVersion: (): Promise<string> => ipcRenderer.invoke("menu:getVersion"),
     getMcpConfig: (): Promise<string | null> => ipcRenderer.invoke("menu:getMcpConfig"),
+    getMcpUrl: (): Promise<string | null> => ipcRenderer.invoke("menu:getMcpUrl"),
   },
 
   /** App version */

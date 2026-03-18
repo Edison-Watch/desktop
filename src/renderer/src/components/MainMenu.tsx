@@ -13,6 +13,7 @@ export default function MainMenu(): React.ReactNode {
   const [setupData, setSetupData] = useState<SetupData | null>(null);
   const [online, setOnline] = useState<boolean | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
   const [version, setVersion] = useState("");
   const [docsUrl, setDocsUrl] = useState("https://docs.edison.watch");
 
@@ -26,8 +27,9 @@ export default function MainMenu(): React.ReactNode {
       setVersion(ver);
       const urls = await window.api.config.getEffectiveBaseUrls();
       setDocsUrl(urls.docsBaseUrl);
-      // Resize window to fit the compact menu
-      await window.api.menu.resizeWindow(400, 380);
+      // Resize window to fit the compact menu — taller when MCP buttons are shown
+      const hasMcp = Boolean(data.mcpBaseUrl && data.apiKey);
+      await window.api.menu.resizeWindow(400, hasMcp ? 420 : 380);
     })();
     const interval = setInterval(async () => {
       const status = await window.api.health.check();
@@ -71,6 +73,18 @@ export default function MainMenu(): React.ReactNode {
       await navigator.clipboard.writeText(config);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleCopyMcpUrl = async () => {
+    if (!mcpUrl) return;
+    // Use IPC rather than local mcpUrl: in dev mode getMcpBaseUrl() returns
+    // DEV_MCP_BASE_URL which differs from the stored setupData.mcpBaseUrl.
+    const url = await window.api.menu.getMcpUrl();
+    if (url) {
+      await navigator.clipboard.writeText(url);
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 2000);
     }
   };
 
@@ -154,6 +168,13 @@ export default function MainMenu(): React.ReactNode {
                     Paste into VSCode, Cursor, or your MCP client
                   </p>
                 )}
+                <Button
+                  variant="ghost"
+                  onClick={handleCopyMcpUrl}
+                  className="w-full"
+                >
+                  {copiedUrl ? "Copied!" : "Copy MCP URL"}
+                </Button>
               </div>
             )}
           </div>

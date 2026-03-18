@@ -226,6 +226,24 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
         }
       },
     },
+    {
+      label: "Copy MCP URL",
+      enabled: Boolean(getMcpUrl()),
+      click: () => {
+        const url = getMcpUrl();
+        if (url) {
+          clipboard.writeText(url);
+          if (Notification.isSupported()) {
+            const n = new Notification({
+              title: "Edison Watch",
+              body: "MCP URL copied to clipboard",
+              ...(process.platform !== "darwin" && { icon: trayIconPath }),
+            });
+            n.show();
+          }
+        }
+      },
+    },
     { type: "separator" },
     { label: getHookStatusLabel(), enabled: false },
     {

@@ -28,6 +28,7 @@ import {
   getApiBaseUrl,
   getMcpBaseUrl,
   getMcpConfig,
+  getMcpUrl,
   getSetupData,
   getIsServerOnline,
   markSetupComplete,
@@ -177,6 +178,11 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   // Get MCP config as VSCode JSON
   ipcMain.handle("menu:getMcpConfig", () => {
     return getMcpConfig();
+  });
+
+  // Get raw MCP URL
+  ipcMain.handle("menu:getMcpUrl", () => {
+    return getMcpUrl();
   });
 
   // MCP: Discover installed clients

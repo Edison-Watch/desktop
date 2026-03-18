@@ -61,6 +61,7 @@ interface EdisonAPI {
     resizeWindow: (width: number, height: number) => Promise<void>;
     getVersion: () => Promise<string>;
     getMcpConfig: () => Promise<string | null>;
+    getMcpUrl: () => Promise<string | null>;
   };
   getVersion: () => string;
 }
