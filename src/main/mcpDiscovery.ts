@@ -1,6 +1,22 @@
 import { promises as fs } from 'fs'
 import { homedir, platform } from 'os'
-import { join, basename } from 'path'
+import { join, basename, dirname } from 'path'
+import {
+  getCursorWorkspaceStoragePath,
+  getCursorProjectMcpPaths,
+  getCursorPluginsInstalledPath,
+  getCursorPluginMcpPaths,
+  getClaudeCodeProjectMcpPaths
+} from './mcpProjectPaths'
+
+// Re-export so callers don't need to know about the split
+export {
+  getCursorWorkspaceStoragePath,
+  getCursorProjectMcpPaths,
+  getCursorPluginsInstalledPath,
+  getCursorPluginMcpPaths,
+  getClaudeCodeProjectMcpPaths
+}
 
 // Re-export fingerprinting utility from seenServersStore
 export { getServerFingerprint } from './seenServersStore'
@@ -106,28 +122,14 @@ export function getClaudeDesktopConfigPath(): string {
   }
 }
 
-// Cursor config path
+// Cursor global user-level config path (same on all platforms)
 export function getCursorConfigPath(): string {
-  switch (platform()) {
-    case 'darwin':
-      return join(homedir(), '.cursor', 'mcp.json')
-    case 'win32':
-      return join(homedir(), '.cursor', 'mcp.json')
-    default:
-      return join(homedir(), '.cursor', 'mcp.json')
-  }
+  return join(homedir(), '.cursor', 'mcp.json')
 }
 
-// Windsurf (Codeium) config path
+// Windsurf (Codeium) config path (same on all platforms)
 export function getWindsurfConfigPath(): string {
-  switch (platform()) {
-    case 'darwin':
-      return join(homedir(), '.codeium', 'windsurf', 'mcp_config.json')
-    case 'win32':
-      return join(homedir(), '.codeium', 'windsurf', 'mcp_config.json')
-    default:
-      return join(homedir(), '.codeium', 'windsurf', 'mcp_config.json')
-  }
+  return join(homedir(), '.codeium', 'windsurf', 'mcp_config.json')
 }
 
 // Zed config path (MCP servers in assistant.mcp_servers)
@@ -146,16 +148,9 @@ export function getZedConfigPath(): string {
   }
 }
 
-// Antigravity (Google) config path
+// Antigravity (Google) config path (same on all platforms)
 export function getAntigravityConfigPath(): string {
-  switch (platform()) {
-    case 'darwin':
-      return join(homedir(), '.gemini', 'antigravity', 'mcp_config.json')
-    case 'win32':
-      return join(homedir(), '.gemini', 'antigravity', 'mcp_config.json')
-    default:
-      return join(homedir(), '.gemini', 'antigravity', 'mcp_config.json')
-  }
+  return join(homedir(), '.gemini', 'antigravity', 'mcp_config.json')
 }
 
 // JetBrains IDE base directory (macOS and Windows only; plan scope)
@@ -416,7 +411,7 @@ export async function parseClaudeDedicatedMcpServers(
 async function discoverClaudeCode(): Promise<DiscoveredMcpServer[]> {
   const results: DiscoveredMcpServer[] = []
 
-  // Claude Code user settings
+  // Claude Code user settings: ~/.claude/settings.json
   try {
     const userPath = getClaudeCodeUserSettingsPath()
     await fs.access(userPath)
@@ -436,7 +431,7 @@ async function discoverClaudeCode(): Promise<DiscoveredMcpServer[]> {
     // ignore
   }
 
-  // Main ~/.claude.json supporting top-level and per-project definitions
+  // Main ~/.claude.json — top-level user-scoped mcpServers and per-project mcpServers
   try {
     const homeJsonPath = join(homedir(), '.claude.json')
     await fs.access(homeJsonPath)
@@ -454,6 +449,24 @@ async function discoverClaudeCode(): Promise<DiscoveredMcpServer[]> {
     results.push(...dedicatedServers)
   } catch {
     // ignore
+  }
+
+  // Project-scoped .mcp.json in each known project directory
+  // (project scope: checked into repo, shared with team — distinct from per-project mcpServers in ~/.claude.json)
+  const projectMcpPaths = await getClaudeCodeProjectMcpPaths()
+  for (const mcpPath of projectMcpPaths) {
+    try {
+      await fs.access(mcpPath)
+      const projectName = basename(dirname(mcpPath))
+      const servers = await parseClaudeCodeMcpJson(mcpPath, 'project')
+      // Tag each server with the project name for display
+      for (const s of servers) {
+        s.projectName = projectName
+      }
+      results.push(...servers)
+    } catch {
+      // .mcp.json doesn't exist in this project; ignore
+    }
   }
 
   // Claude Code enterprise managed MCP
@@ -510,7 +523,11 @@ async function discoverClaudeDesktop(): Promise<DiscoveredMcpServer[]> {
 
 // Parse Cursor mcp.json (shape: { mcpServers?: { [name]: { ... } } })
 // Exported for testing
-export async function parseCursorMcpJson(filePath: string): Promise<DiscoveredMcpServer[]> {
+export async function parseCursorMcpJson(
+  filePath: string,
+  source: DiscoveredMcpServer['source'] = 'user',
+  projectName?: string
+): Promise<DiscoveredMcpServer[]> {
   const raw = await fs.readFile(filePath, 'utf-8')
   const json = JSON.parse(raw) as {
     mcpServers?: Record<string, McpServerConfig>
@@ -522,9 +539,10 @@ export async function parseCursorMcpJson(filePath: string): Promise<DiscoveredMc
     servers.push({
       name,
       client: 'cursor',
-      source: 'user',
+      source,
       path: filePath,
-      config: cfg as McpServerConfig
+      config: cfg as McpServerConfig,
+      ...(projectName !== undefined ? { projectName } : {})
     })
   }
   return servers
@@ -533,6 +551,7 @@ export async function parseCursorMcpJson(filePath: string): Promise<DiscoveredMc
 async function discoverCursor(): Promise<DiscoveredMcpServer[]> {
   const results: DiscoveredMcpServer[] = []
 
+  // Global user-level config: ~/.cursor/mcp.json
   try {
     const configPath = getCursorConfigPath()
     await fs.access(configPath)
@@ -540,6 +559,31 @@ async function discoverCursor(): Promise<DiscoveredMcpServer[]> {
     results.push(...servers)
   } catch {
     // File not found or unreadable; ignore
+  }
+
+  // Project-level configs: .cursor/mcp.json in each known workspace
+  const projectMcpPaths = await getCursorProjectMcpPaths()
+  for (const mcpPath of projectMcpPaths) {
+    try {
+      await fs.access(mcpPath)
+      const projectName = basename(dirname(dirname(mcpPath))) // project dir name
+      const servers = await parseCursorMcpJson(mcpPath, 'project', projectName)
+      results.push(...servers)
+    } catch {
+      // File doesn't exist in this project; ignore
+    }
+  }
+
+  // Plugin-bundled MCP servers: ~/.cursor/plugins/cache/<marketplace>/<plugin>/latest/.mcp.json
+  const pluginMcpPaths = await getCursorPluginMcpPaths()
+  for (const mcpPath of pluginMcpPaths) {
+    try {
+      await fs.access(mcpPath)
+      const servers = await parseCursorMcpJson(mcpPath, 'user')
+      results.push(...servers)
+    } catch {
+      // Plugin doesn't define MCP servers; ignore
+    }
   }
 
   return results
@@ -727,6 +771,7 @@ export interface McpConfigPaths {
   vscodeInsiders: string
   claudeDesktop: string
   cursor: string
+  cursorWorkspaceStorage: string
   claudeCode: string[]
   windsurf: string
   zed: string
@@ -739,6 +784,7 @@ export function getAllConfigPaths(): McpConfigPaths {
     vscodeInsiders: getVscodeInsidersUserMcpPath(),
     claudeDesktop: getClaudeDesktopConfigPath(),
     cursor: getCursorConfigPath(),
+    cursorWorkspaceStorage: getCursorWorkspaceStoragePath(),
     claudeCode: [
       getClaudeCodeUserSettingsPath(),
       getClaudeCodeLocalSettingsPath(),

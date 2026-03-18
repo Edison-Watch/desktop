@@ -73,7 +73,11 @@ export default function App(): React.ReactNode {
   }
 
   return (
-    <WizardLayout currentStep={currentStep} locked={currentStep === 3}>
+    <WizardLayout
+      currentStep={currentStep}
+      locked={currentStep === 3}
+      onStepClick={(step) => setCurrentStep(step)}
+    >
       {currentStep === 0 && <WelcomeStep auth={auth} onNext={handleWelcomeNext} />}
       {currentStep === 1 && (
         <AppsStep onNext={handleAppsNext} />

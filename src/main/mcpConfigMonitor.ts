@@ -1,10 +1,17 @@
 import { EventEmitter } from 'events'
 import { watch, type FSWatcher } from 'chokidar'
 import { promises as fs } from 'fs'
+import { dirname } from 'path'
 import {
   discoverMcpServers,
   getAllConfigPaths,
   getJetBrainsMcpConfigPaths,
+  getCursorProjectMcpPaths,
+  getCursorPluginMcpPaths,
+  getCursorPluginsInstalledPath,
+  getClaudeCodeProjectMcpPaths,
+  getCursorWorkspaceStoragePath,
+  getClaudeCodeHomeJsonPath,
   getServerFingerprint,
   type DiscoveredMcpServer,
   type McpClientId
@@ -61,6 +68,7 @@ export interface McpConfigMonitorEvents {
  */
 export class McpConfigMonitor extends EventEmitter {
   private watcher: FSWatcher | null = null
+  private workspaceStorageWatcher: FSWatcher | null = null
   private seenStore: SeenServersStore
   private lastKnownServers: Map<string, DiscoveredMcpServer> = new Map()
   private debounceTimer: NodeJS.Timeout | null = null
@@ -84,19 +92,29 @@ export class McpConfigMonitor extends EventEmitter {
     // This ensures all servers are secured even if they existed before the app started
     await this.quarantineExistingServers()
 
-    // Get all config paths to watch (sync paths + JetBrains from async scan)
+    // Get all config paths to watch (sync paths + async scans for JetBrains/Cursor projects/Claude Code projects)
     const paths = getAllConfigPaths()
-    const jetbrainsPaths = await getJetBrainsMcpConfigPaths()
+    const [jetbrainsPaths, cursorProjectPaths, cursorPluginPaths, claudeCodeProjectPaths] =
+      await Promise.all([
+        getJetBrainsMcpConfigPaths(),
+        getCursorProjectMcpPaths(),
+        getCursorPluginMcpPaths(),
+        getClaudeCodeProjectMcpPaths()
+      ])
     this.configFiles = new Set([
       paths.vscode,
       paths.vscodeInsiders,
       paths.claudeDesktop,
       paths.cursor,
+      getCursorPluginsInstalledPath(), // watch for new plugin installs
       ...paths.claudeCode,
       paths.windsurf,
       paths.zed,
       paths.antigravity,
-      ...jetbrainsPaths.map((x) => x.path)
+      ...jetbrainsPaths.map((x) => x.path),
+      ...cursorProjectPaths,
+      ...cursorPluginPaths,
+      ...claudeCodeProjectPaths
     ])
 
     // Build list of paths to watch - files that exist + parent dirs for files that don't
@@ -109,7 +127,7 @@ export class McpConfigMonitor extends EventEmitter {
         existingPaths.push(p)
       } catch {
         // Track parent directory for non-existing files (we'll watch with depth: 0)
-        const parentDir = p.substring(0, p.lastIndexOf('/'))
+        const parentDir = dirname(p)
         if (parentDir) {
           parentDirs.add(parentDir)
         }
@@ -142,6 +160,10 @@ export class McpConfigMonitor extends EventEmitter {
     this.watcher.on('unlink', (path) => this.handleFileChange(path))
     this.watcher.on('error', (error) => this.emit('error', error))
 
+    // Watch Cursor's workspaceStorage directory (depth: 1) so that when the user opens a
+    // new project in Cursor, the new workspace.json triggers discovery of its .cursor/mcp.json.
+    await this.startWorkspaceStorageWatcher()
+
     this.isRunning = true
     console.log('[McpConfigMonitor] Started watching:', existingPaths)
   }
@@ -158,6 +180,11 @@ export class McpConfigMonitor extends EventEmitter {
     if (this.watcher) {
       await this.watcher.close()
       this.watcher = null
+    }
+
+    if (this.workspaceStorageWatcher) {
+      await this.workspaceStorageWatcher.close()
+      this.workspaceStorageWatcher = null
     }
 
     this.isRunning = false
@@ -217,7 +244,7 @@ export class McpConfigMonitor extends EventEmitter {
         pathsToWatch.push(p)
       } catch {
         // File doesn't exist, watch parent directory
-        const parentDir = p.substring(0, p.lastIndexOf('/'))
+        const parentDir = dirname(p)
         if (parentDir) {
           parentDirsToWatch.add(parentDir)
         }
@@ -272,6 +299,85 @@ export class McpConfigMonitor extends EventEmitter {
     return Array.from(this.configFiles)
   }
 
+  /**
+   * Watch Cursor's workspaceStorage directory (depth: 1) so newly-opened projects
+   * are detected. When a workspace.json appears or is updated, we rescan project paths
+   * and add any newly-discovered .cursor/mcp.json files to the watch list.
+   */
+  private async startWorkspaceStorageWatcher(): Promise<void> {
+    const storageDir = getCursorWorkspaceStoragePath()
+    try {
+      await fs.access(storageDir)
+    } catch {
+      // Cursor not installed or workspaceStorage doesn't exist yet; skip
+      return
+    }
+
+    this.workspaceStorageWatcher = watch(storageDir, {
+      persistent: true,
+      ignoreInitial: true,
+      depth: 1, // Watch workspace.json files inside each subdirectory
+      awaitWriteFinish: {
+        stabilityThreshold: 300,
+        pollInterval: 100
+      }
+    })
+
+    const handleWorkspaceJsonEvent = async (changedPath: string): Promise<void> => {
+      if (!changedPath.endsWith('workspace.json')) return
+      // New or updated project in Cursor — rescan and add any new .cursor/mcp.json paths
+      try {
+        const latestProjectPaths = await getCursorProjectMcpPaths()
+        const newPaths = latestProjectPaths.filter((p) => !this.configFiles.has(p))
+        if (newPaths.length > 0) {
+          console.log('[McpConfigMonitor] New Cursor projects detected, adding paths:', newPaths)
+          await this.addConfigPaths(newPaths)
+        }
+      } catch (err) {
+        console.error('[McpConfigMonitor] Error rescanning Cursor project paths:', err)
+      }
+    }
+
+    this.workspaceStorageWatcher.on('add', handleWorkspaceJsonEvent)
+    this.workspaceStorageWatcher.on('change', handleWorkspaceJsonEvent)
+    this.workspaceStorageWatcher.on('error', (error) => this.emit('error', error))
+    console.log('[McpConfigMonitor] Watching Cursor workspaceStorage:', storageDir)
+  }
+
+  /**
+   * When ~/.cursor/plugins/installed.json changes (new plugin installed), register
+   * any .mcp.json files bundled by the newly-installed plugin.
+   */
+  private async handleCursorPluginsInstalledChange(): Promise<void> {
+    try {
+      const latestPluginPaths = await getCursorPluginMcpPaths()
+      const newPaths = latestPluginPaths.filter((p) => !this.configFiles.has(p))
+      if (newPaths.length > 0) {
+        console.log('[McpConfigMonitor] New Cursor plugin MCP paths detected, adding:', newPaths)
+        await this.addConfigPaths(newPaths)
+      }
+    } catch (err) {
+      console.error('[McpConfigMonitor] Error rescanning Cursor plugin paths:', err)
+    }
+  }
+
+  /**
+   * When ~/.claude.json changes, rescan Claude Code project paths and register any
+   * newly-added project .mcp.json files with the watcher so future edits are caught.
+   */
+  private async handleClaudeHomeJsonChange(): Promise<void> {
+    try {
+      const latestProjectPaths = await getClaudeCodeProjectMcpPaths()
+      const newPaths = latestProjectPaths.filter((p) => !this.configFiles.has(p))
+      if (newPaths.length > 0) {
+        console.log('[McpConfigMonitor] New Claude Code projects detected, adding paths:', newPaths)
+        await this.addConfigPaths(newPaths)
+      }
+    } catch (err) {
+      console.error('[McpConfigMonitor] Error rescanning Claude Code project paths:', err)
+    }
+  }
+
   private handleFileChange(path: string): void {
     // Only process changes to actual config files we care about
     if (!this.configFiles.has(path)) {
@@ -285,11 +391,20 @@ export class McpConfigMonitor extends EventEmitter {
       clearTimeout(this.debounceTimer)
     }
 
-    this.debounceTimer = setTimeout(() => {
-      this.checkForChanges().catch((err) => {
+    this.debounceTimer = setTimeout(async () => {
+      try {
+        // Register new paths before scanning so they're included in checkForChanges
+        if (path === getClaudeCodeHomeJsonPath()) {
+          await this.handleClaudeHomeJsonChange()
+        }
+        if (path === getCursorPluginsInstalledPath()) {
+          await this.handleCursorPluginsInstalledChange()
+        }
+        await this.checkForChanges()
+      } catch (err) {
         console.error('[McpConfigMonitor] Error checking for changes:', err)
         this.emit('error', err)
-      })
+      }
     }, this.debounceMs)
   }
 

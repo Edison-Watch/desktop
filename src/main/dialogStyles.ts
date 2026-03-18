@@ -301,6 +301,21 @@ export const BUTTON_CSS = `
     font-size: 32px;
     margin-bottom: 12px;
   }
+
+  .already-pending-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--graphene-grey-200);
+    background: rgba(163, 169, 179, 0.08);
+    border: 1px solid rgba(163, 169, 179, 0.15);
+    padding: 8px 16px;
+    border-radius: 6px;
+    width: 100%;
+    font-style: italic;
+  }
 `
 
 /**

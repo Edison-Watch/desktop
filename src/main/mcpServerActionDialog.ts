@@ -280,19 +280,42 @@ export function showQuarantinedServersDialog(
             }, 400)
           }
 
-          function handleAction(fingerprint, serverName, sourceApp, action) {
+          function showAlreadyPendingBadge(fingerprint) {
+            const item = findItemByFingerprint(fingerprint)
+            if (!item) {
+              if (!bulkOperationInProgress) reenableButtons()
+              return
+            }
+            const actionsEl = item.querySelector('.server-actions')
+            if (actionsEl) {
+              actionsEl.innerHTML = '<div class="already-pending-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg>Request already pending with IT admin</div>'
+            }
+            if (!bulkOperationInProgress) reenableButtons()
+            setTimeout(() => removeServerItem(fingerprint), 2500)
+          }
+
+          async function handleAction(fingerprint, serverName, sourceApp, action) {
             const serverData = serverConfigs[fingerprint] || {}
             results.push({ fingerprint, serverName, sourceApp, action })
-            const p = ipcRenderer.invoke('mcp:handleServerAction', {
-              fingerprint,
-              serverName,
-              sourceApp,
-              action,
-              config: serverData.config,
-              configPath: serverData.path
-            })
+            let result
+            try {
+              result = await ipcRenderer.invoke('mcp:handleServerAction', {
+                fingerprint,
+                serverName,
+                sourceApp,
+                action,
+                config: serverData.config,
+                configPath: serverData.path
+              })
+            } catch (err) {
+              if (!bulkOperationInProgress) reenableButtons()
+              return
+            }
+            if (result && result.alreadyPending) {
+              showAlreadyPendingBadge(fingerprint)
+              return
+            }
             removeServerItem(fingerprint)
-            return p
           }
 
           document.addEventListener('click', (e) => {
@@ -600,25 +623,44 @@ export async function showServerRegistrationDialog(
             }, 400)
           }
 
-          function handleAction(fingerprint, serverName, sourceApp, action) {
+          function showAlreadyPendingBadge(fingerprint) {
+            const item = findItemByFingerprint(fingerprint)
+            if (!item) {
+              if (!bulkOperationInProgress) reenableButtons()
+              return
+            }
+            const actionsEl = item.querySelector('.server-actions')
+            if (actionsEl) {
+              actionsEl.innerHTML = '<div class="already-pending-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg>Request already pending with IT admin</div>'
+            }
+            if (!bulkOperationInProgress) reenableButtons()
+            setTimeout(() => removeServerItem(fingerprint), 2500)
+          }
+
+          async function handleAction(fingerprint, serverName, sourceApp, action) {
             const serverData = serverConfigs[fingerprint] || {}
             results.push({ fingerprint, serverName, sourceApp, action })
-            let p
             if (action === 'requested') {
-              p = ipcRenderer.invoke('mcp:handleServerAction', {
-                fingerprint,
-                serverName,
-                sourceApp,
-                action,
-                config: serverData.config,
-                configPath: serverData.path
-              })
-            } else {
-              // 'skipped' - no backend call, just remove from view
-              p = Promise.resolve()
+              let result
+              try {
+                result = await ipcRenderer.invoke('mcp:handleServerAction', {
+                  fingerprint,
+                  serverName,
+                  sourceApp,
+                  action,
+                  config: serverData.config,
+                  configPath: serverData.path
+                })
+              } catch (err) {
+                if (!bulkOperationInProgress) reenableButtons()
+                return
+              }
+              if (result && result.alreadyPending) {
+                showAlreadyPendingBadge(fingerprint)
+                return
+              }
             }
             removeServerItem(fingerprint)
-            return p
           }
 
           document.addEventListener('click', (e) => {

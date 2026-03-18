@@ -314,7 +314,7 @@ export async function submitServerRequest(
   apiBaseUrl: string,
   apiKey: string,
   userId?: string
-): Promise<{ request_id: number; secretValues?: Record<string, string> }> {
+): Promise<{ request_id: number; secretValues?: Record<string, string>; alreadyPending?: boolean }> {
   const serverConfig = server.config
 
   // Validate that server has either command (stdio) or url (HTTP/SSE).
@@ -393,6 +393,9 @@ export async function submitServerRequest(
 
   if (!response.ok) {
     const errorText = await response.text()
+    if (response.status === 409 && errorText.includes('already have a pending request')) {
+      return { request_id: 0, alreadyPending: true }
+    }
     throw new Error(`Failed to submit server request: ${response.status} ${errorText}`)
   }
 
