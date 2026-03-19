@@ -66,7 +66,6 @@ export default function FinishStep({
         mcpBaseUrl,
         apiBaseUrl,
         edisonSecretKey: edisonSecretKey || undefined,
-        modifiedConfigs,
       });
       onComplete();
     } catch {

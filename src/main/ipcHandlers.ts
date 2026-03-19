@@ -145,6 +145,8 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   });
 
   ipcMain.handle("accounts:switch", (_event, userId: string) => {
+    const current = getSetupData();
+    if (current.userId === userId) return { ok: true };
     const data = switchToAccount(userId);
     if (!data) return { ok: false };
     // Clear stale approvals from the previous account
