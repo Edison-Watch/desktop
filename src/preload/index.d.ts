@@ -56,6 +56,11 @@ interface EdisonAPI {
     getActiveEnv: () => Promise<string>;
     onEnvChanged: (callback: (env: string) => void) => () => void;
   };
+  accounts: {
+    list: () => Promise<Array<{ userId: string; userEmail: string; savedAt: string }>>;
+    switch: (userId: string) => Promise<{ ok: boolean }>;
+    remove: (userId: string) => Promise<{ ok: boolean }>;
+  };
   menu: {
     openFeedback: () => Promise<void>;
     resizeWindow: (width: number, height: number) => Promise<void>;

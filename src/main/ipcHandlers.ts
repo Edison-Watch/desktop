@@ -33,8 +33,11 @@ import {
   getIsServerOnline,
   markSetupComplete,
   markSetupIncomplete,
+  getSavedAccounts,
+  switchToAccount,
+  removeAccount,
 } from "./setupConfig";
-import { handleApproval } from "./approvalsHandler";
+import { handleApproval, pendingApprovals } from "./approvalsHandler";
 
 export interface IpcHandlerDeps {
   getMainWindow: () => BrowserWindow | null;
@@ -129,6 +132,36 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
 
   ipcMain.handle("setup:reset", () => {
     markSetupIncomplete();
+    return { ok: true };
+  });
+
+  // Multi-account management
+  ipcMain.handle("accounts:list", () => {
+    return getSavedAccounts().map(({ userId, userEmail, savedAt }) => ({
+      userId,
+      userEmail,
+      savedAt,
+    }));
+  });
+
+  ipcMain.handle("accounts:switch", (_event, userId: string) => {
+    const data = switchToAccount(userId);
+    if (!data) return { ok: false };
+    // Clear stale approvals from the previous account
+    pendingApprovals.clear();
+    // Restart background services for the new account
+    startEventSubscription();
+    startHookHealthMonitor();
+    _startUpdateChecker();
+    return { ok: true };
+  });
+
+  ipcMain.handle("accounts:remove", (_event, userId: string) => {
+    try {
+      removeAccount(userId);
+    } catch {
+      // best-effort; non-critical feature
+    }
     return { ok: true };
   });
 

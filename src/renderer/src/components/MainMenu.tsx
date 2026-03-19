@@ -1,12 +1,20 @@
 import { useState, useEffect } from "react";
-import { Button, Card, Badge } from "@edison/shared/ui";
+import { Button, Badge } from "@edison/shared/ui";
+import { supabase } from "@edison/shared/auth";
 
 interface SetupData {
   completed?: boolean;
   userEmail?: string;
+  userId?: string;
   mcpBaseUrl?: string;
   apiBaseUrl?: string;
   apiKey?: string;
+}
+
+interface SavedAccount {
+  userId: string;
+  userEmail: string;
+  savedAt: string;
 }
 
 export default function MainMenu(): React.ReactNode {
@@ -16,6 +24,9 @@ export default function MainMenu(): React.ReactNode {
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [version, setVersion] = useState("");
   const [docsUrl, setDocsUrl] = useState("https://docs.edison.watch");
+  const [accounts, setAccounts] = useState<SavedAccount[]>([]);
+  const [showAccounts, setShowAccounts] = useState(false);
+  const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -27,6 +38,8 @@ export default function MainMenu(): React.ReactNode {
       setVersion(ver);
       const urls = await window.api.config.getEffectiveBaseUrls();
       setDocsUrl(urls.docsBaseUrl);
+      const saved = await window.api.accounts.list();
+      setAccounts(saved);
       // Resize window to fit the compact menu — taller when MCP buttons are shown
       const hasMcp = Boolean(data.mcpBaseUrl && data.apiKey);
       await window.api.menu.resizeWindow(400, hasMcp ? 420 : 380);
@@ -96,53 +109,165 @@ export default function MainMenu(): React.ReactNode {
     window.api.menu.openFeedback();
   };
 
+  const handleSwitchAccount = async (userId: string) => {
+    setSwitching(true);
+    try {
+      const result = await window.api.accounts.switch(userId);
+      if (!result.ok) {
+        setSwitching(false);
+        return;
+      }
+      await supabase.auth.signOut();
+    } catch {
+      // fall through to reload regardless — main process may already
+      // be operating as the new account after a successful switch
+    }
+    window.location.reload();
+  };
+
+  const handleRemoveAccount = async (userId: string) => {
+    await window.api.accounts.remove(userId);
+    setAccounts((prev) => prev.filter((a) => a.userId !== userId));
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // best-effort sign-out; always continue to reset
+    }
+    await window.api.setup.reset();
+    window.location.reload();
+  };
+
   return (
     <div className="flex h-screen flex-col bg-[var(--bg-base)]">
       <div className="flex-1 overflow-y-auto p-5">
-        <div className="mx-auto flex max-w-sm flex-col gap-3">
+        <div className="mx-auto flex max-w-sm flex-col gap-4">
           {/* Header */}
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent)]/10 text-sm">
-              &#10003;
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
+              <svg viewBox="0 0 12 12" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
+                <path d="M2.5 6l2.5 2.5 4.5-4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </div>
-            <div>
-              <h2 className="text-base font-semibold text-[var(--text-primary)]">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] leading-tight">
                 Edison Watch
               </h2>
-              <p className="text-xs text-[var(--text-muted)]">
+              <p className="text-xs text-[var(--text-muted)] truncate">
                 {setupData.userEmail || ""}
               </p>
             </div>
-            <div className="ml-auto">
-              <Badge
-                variant={
-                  online === true
-                    ? "success"
-                    : online === false
-                      ? "danger"
-                      : "warning"
-                }
-                size="sm"
-              >
-                {online === true
-                  ? "Connected"
+            <Badge
+              variant={
+                online === true
+                  ? "success"
                   : online === false
-                    ? "Disconnected"
-                    : "Checking"}
-              </Badge>
-            </div>
+                    ? "danger"
+                    : "warning"
+              }
+              size="sm"
+            >
+              {online === true
+                ? "Connected"
+                : online === false
+                  ? "Disconnected"
+                  : "Checking"}
+            </Badge>
           </div>
 
-          {/* Server info */}
+          {/* Account switcher */}
+          {(() => {
+            const otherAccounts = accounts.filter((a) => a.userId !== setupData.userId && a.userEmail !== setupData.userEmail);
+            if (otherAccounts.length === 0) return null;
+            return (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowAccounts((v) => !v)}
+                className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+              >
+                <svg
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  className={`h-3 w-3 transition-transform ${showAccounts ? "rotate-180" : ""}`}
+                  aria-hidden="true"
+                >
+                  <path d="M3 4.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {otherAccounts.length} other account{otherAccounts.length > 1 ? "s" : ""}
+              </button>
+              {showAccounts && (
+                <div className="mt-2 flex flex-col gap-1">
+                  {otherAccounts.map((account) => (
+                      <div
+                        key={account.userId}
+                        className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-raised)] px-3 py-2"
+                      >
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--bg-input)] text-[10px] font-semibold text-[var(--text-secondary)] shrink-0">
+                          {account.userEmail[0]?.toUpperCase() || "?"}
+                        </div>
+                        <span className="flex-1 min-w-0 text-xs text-[var(--text-primary)] truncate">
+                          {account.userEmail}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleSwitchAccount(account.userId)}
+                          disabled={switching}
+                          className="shrink-0 text-[11px] font-medium text-[var(--accent)] hover:text-[var(--accent-muted)] transition-colors disabled:opacity-50"
+                        >
+                          Switch
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAccount(account.userId)}
+                          disabled={switching}
+                          className="shrink-0 text-[var(--text-muted)] hover:text-[var(--danger)] transition-colors disabled:opacity-50"
+                          title="Remove account"
+                        >
+                          <svg viewBox="0 0 12 12" fill="none" className="h-3 w-3" aria-hidden="true">
+                            <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+            );
+          })()}
+
+          {/* Server info — click to copy MCP URL */}
           {setupData.mcpBaseUrl && (
-            <Card>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-[var(--text-muted)]">Server</span>
-                <span className="text-sm text-[var(--text-primary)] truncate max-w-[200px]">
-                  {setupData.mcpBaseUrl}
-                </span>
+            <button
+              type="button"
+              onClick={handleCopyMcpUrl}
+              className="w-full rounded-lg border border-[var(--border)] overflow-hidden text-left hover:border-[var(--accent-muted)] transition-colors cursor-copy group"
+              style={{
+                borderTopColor: "var(--accent-dim)",
+                background: "linear-gradient(180deg, var(--bg-overlay) 0%, var(--bg-raised) 48px)",
+              }}
+            >
+              <div className="flex items-center justify-between gap-3 px-4 py-4">
+                <span className="text-xs text-[var(--text-muted)] shrink-0">Server</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  {copiedUrl ? (
+                    <span className="text-xs font-medium text-[var(--accent)]">Copied!</span>
+                  ) : (
+                    <>
+                      <span className="text-xs text-[var(--text-primary)] truncate font-mono">
+                        {setupData.mcpBaseUrl}
+                      </span>
+                      <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)] group-hover:text-[var(--accent)] transition-colors" aria-hidden="true">
+                        <rect x="5.5" y="5.5" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+                        <path d="M10.5 5.5V4a1.5 1.5 0 00-1.5-1.5H4A1.5 1.5 0 002.5 4v5A1.5 1.5 0 004 10.5h1.5" stroke="currentColor" strokeWidth="1.2" />
+                      </svg>
+                    </>
+                  )}
+                </div>
               </div>
-            </Card>
+            </button>
           )}
 
           {/* Actions */}
@@ -155,7 +280,7 @@ export default function MainMenu(): React.ReactNode {
               Open Dashboard
             </Button>
             {mcpUrl && (
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-1.5">
                 <Button
                   variant="ghost"
                   onClick={handleCopyMcpConfig}
@@ -164,59 +289,47 @@ export default function MainMenu(): React.ReactNode {
                   {copied ? "Copied!" : "Copy EdisonWatch MCP config"}
                 </Button>
                 {copied && (
-                  <p className="text-center text-xs text-[var(--text-muted)]">
+                  <p className="text-center text-[11px] text-[var(--text-muted)] -mt-0.5">
                     Paste into VSCode, Cursor, or your MCP client
                   </p>
                 )}
-                <Button
-                  variant="ghost"
-                  onClick={handleCopyMcpUrl}
-                  className="w-full"
-                >
-                  {copiedUrl ? "Copied!" : "Copy MCP URL"}
-                </Button>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Footer: version (left), docs + feedback (right) */}
-      <div className="flex items-center justify-between border-t border-[var(--border)] px-5 py-3">
-        <span className="text-xs text-[var(--text-muted)]">
+      {/* Footer: version (left), docs + feedback + sign out (right) */}
+      <div className="flex items-center justify-between border-t border-[var(--border)] px-5 py-2.5">
+        <span className="text-[11px] text-[var(--text-muted)] font-mono">
           {version ? `v${version}` : ""}
         </span>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-0.5">
           <button
             type="button"
             onClick={handleOpenDocs}
-            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-            title="Documentation"
+            className="group flex items-center gap-1.5 h-7 px-2 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 20 20"
               fill="currentColor"
-              className="h-4 w-4"
+              className="h-3.5 w-3.5"
             >
-              <path
-                fillRule="evenodd"
-                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z"
-                clipRule="evenodd"
-              />
+              <path d="M10.75 16.82A7.462 7.462 0 0115 15.5c.71 0 1.396.098 2.046.282A.75.75 0 0018 15.06V4.56a.75.75 0 00-.474-.695A9.962 9.962 0 0015 3.5c-1.87 0-3.57.62-4.95 1.66a.25.25 0 01-.1.04V16.82zM9.25 16.82V5.2a.25.25 0 00-.1-.04A7.455 7.455 0 005 3.5c-.88 0-1.73.114-2.526.327A.75.75 0 002 4.56v10.5a.75.75 0 00.954.721A7.462 7.462 0 015 15.5c1.57 0 3.042.474 4.25 1.32z" />
             </svg>
+            <span className="text-[10px] font-medium hidden group-hover:inline">Docs</span>
           </button>
           <button
             type="button"
             onClick={handleOpenFeedback}
-            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-            title="Send Feedback"
+            className="group flex items-center gap-1.5 h-7 px-2 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 20 20"
               fill="currentColor"
-              className="h-4 w-4"
+              className="h-3.5 w-3.5"
             >
               <path
                 fillRule="evenodd"
@@ -224,6 +337,31 @@ export default function MainMenu(): React.ReactNode {
                 clipRule="evenodd"
               />
             </svg>
+            <span className="text-[10px] font-medium hidden group-hover:inline">Feedback</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="group flex items-center gap-1.5 h-7 px-2 rounded-md text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--bg-hover)] transition-all"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="h-3.5 w-3.5"
+            >
+              <path
+                fillRule="evenodd"
+                d="M3 4.25A2.25 2.25 0 015.25 2h5.5A2.25 2.25 0 0113 4.25v2a.75.75 0 01-1.5 0v-2a.75.75 0 00-.75-.75h-5.5a.75.75 0 00-.75.75v11.5c0 .414.336.75.75.75h5.5a.75.75 0 00.75-.75v-2a.75.75 0 011.5 0v2A2.25 2.25 0 0110.75 18h-5.5A2.25 2.25 0 013 15.75V4.25z"
+                clipRule="evenodd"
+              />
+              <path
+                fillRule="evenodd"
+                d="M19 10a.75.75 0 00-.75-.75H8.704l1.048-.943a.75.75 0 10-1.004-1.114l-2.5 2.25a.75.75 0 000 1.114l2.5 2.25a.75.75 0 101.004-1.114l-1.048-.943h9.546A.75.75 0 0019 10z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span className="text-[10px] font-medium hidden group-hover:inline">Sign Out</span>
           </button>
         </div>
       </div>

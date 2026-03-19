@@ -131,8 +131,10 @@ export default function FinishStep({
   return (
     <div className="flex flex-col gap-6">
       <div className="text-center">
-        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)]/10 text-xl">
-          &#10003;
+        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
+          <svg viewBox="0 0 16 16" fill="none" className="h-5 w-5" aria-hidden="true">
+            <path d="M3 8l3.5 3.5 6.5-6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </div>
         <h2 className="text-lg font-semibold text-[var(--text-primary)]">
           Setup Complete
@@ -144,14 +146,15 @@ export default function FinishStep({
 
       <Card>
         <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-[var(--text-muted)]">Account</span>
-            <span className="text-sm text-[var(--text-primary)]">{email}</span>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs text-[var(--text-muted)] shrink-0">Account</span>
+            <span className="text-xs text-[var(--text-primary)] truncate">{email}</span>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-[var(--text-muted)]">Server</span>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-[var(--text-primary)] truncate max-w-[180px]">
+          <div className="h-px bg-[var(--border)]/50" />
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs text-[var(--text-muted)] shrink-0">Server</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs text-[var(--text-primary)] truncate font-mono">
                 {mcpBaseUrl}
               </span>
               <Badge
@@ -162,9 +165,10 @@ export default function FinishStep({
               </Badge>
             </div>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-[var(--text-muted)]">API Key</span>
-            <span className="text-sm font-mono text-[var(--text-secondary)]">
+          <div className="h-px bg-[var(--border)]/50" />
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs text-[var(--text-muted)] shrink-0">API Key</span>
+            <span className="text-xs font-mono text-[var(--text-secondary)]">
               {apiKey.length >= 12 ? `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}` : apiKey}
             </span>
           </div>
@@ -174,21 +178,22 @@ export default function FinishStep({
       {/* Modified configs summary with per-client undo */}
       {modifiedConfigs.length > 0 && (
         <Card>
-          <p className="text-xs text-[var(--text-muted)] mb-2">
-            Configuration changes applied:
+          <p className="text-xs font-medium text-[var(--text-muted)] mb-3">
+            Configuration changes applied
           </p>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1.5">
             {modifiedConfigs.map((entry) => {
               const reverted = revertedPaths.has(entry.configPath);
               const reverting = revertingPaths.has(entry.configPath);
               return (
-                <div key={entry.configPath} className="flex items-center gap-2 text-sm">
-                  <div className="flex-1 min-w-0">
-                    <span className={`text-[var(--text-primary)] shrink-0 ${reverted ? "line-through opacity-50" : ""}`}>
+                <div key={entry.configPath} className="flex items-center justify-between gap-3 py-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${reverted ? "bg-[var(--text-muted)]" : "bg-[var(--accent)]"}`} />
+                    <span className={`text-sm text-[var(--text-primary)] ${reverted ? "line-through opacity-50" : ""}`}>
                       {APP_ID_TO_NAME[entry.appId] ?? entry.appId}
                     </span>
                     {reverted && (
-                      <span className="ml-2 text-xs text-[var(--text-muted)]">reverted</span>
+                      <span className="text-[11px] text-[var(--text-muted)]">reverted</span>
                     )}
                   </div>
                   {!reverted && entry.backupPath && (
@@ -207,25 +212,25 @@ export default function FinishStep({
           </div>
           <button
             type="button"
-            className="mt-2 text-xs text-[var(--accent-muted)] hover:text-[var(--accent)]"
+            className="mt-3 text-xs text-[var(--accent-muted)] hover:text-[var(--accent)] transition-colors"
             onClick={() => setShowConfigDetails((v) => !v)}
           >
             {showConfigDetails ? "Hide details" : "Show details"}
           </button>
           {showConfigDetails && (
-            <div className="mt-2 flex flex-col gap-2">
+            <div className="mt-3 flex flex-col gap-3 pt-3 border-t border-[var(--border)]/50">
               {modifiedConfigs.map((entry) => (
-                <div key={entry.configPath} className="text-xs">
-                  <strong className="text-[var(--text-primary)]">
+                <div key={entry.configPath} className="text-xs space-y-0.5">
+                  <p className="font-medium text-[var(--text-primary)]">
                     {APP_ID_TO_NAME[entry.appId] ?? entry.appId}
-                  </strong>
-                  <div className="text-[var(--text-muted)]">
-                    Config: <code className="select-text cursor-text">{entry.configPath}</code>
-                  </div>
+                  </p>
+                  <p className="text-[var(--text-muted)]">
+                    Config: <code className="select-text cursor-text text-[var(--text-secondary)]">{entry.configPath}</code>
+                  </p>
                   {entry.backupPath && (
-                    <div className="text-[var(--text-muted)]">
-                      Backup: <code className="select-text cursor-text">{entry.backupPath}</code>
-                    </div>
+                    <p className="text-[var(--text-muted)]">
+                      Backup: <code className="select-text cursor-text text-[var(--text-secondary)]">{entry.backupPath}</code>
+                    </p>
                   )}
                 </div>
               ))}

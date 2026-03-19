@@ -1,5 +1,13 @@
 const steps = ["Welcome", "Apps", "Encrypt & Submit", "Finish"];
 
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 12 12" fill="none" className="h-3 w-3" aria-hidden="true">
+      <path d="M2.5 6l2.5 2.5 4.5-4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 interface StepIndicatorProps {
   currentStep: number;
   locked?: boolean;
@@ -8,36 +16,36 @@ interface StepIndicatorProps {
 
 export default function StepIndicator({ currentStep, locked, onStepClick }: StepIndicatorProps): React.ReactNode {
   return (
-    <div className={`flex items-center gap-2 ${locked ? "pointer-events-none opacity-60" : ""}`}>
+    <div className={`flex items-center gap-1 ${locked ? "pointer-events-none opacity-60" : ""}`}>
       {steps.map((label, i) => {
         const isComplete = i < currentStep;
         const isActive = i === currentStep;
         const isClickable = isComplete && !!onStepClick;
         return (
-          <div key={label} className="flex items-center gap-2">
+          <div key={label} className="flex items-center gap-1">
             {i > 0 && (
               <div
-                className={`h-px w-6 ${isComplete ? "bg-[var(--accent)]" : "bg-[var(--border)]"}`}
+                className={`h-px w-4 transition-colors ${isComplete ? "bg-[var(--accent)]" : "bg-[var(--border)]"}`}
               />
             )}
             <div
-              className={`flex items-center gap-1.5 ${isClickable ? "cursor-pointer group/step" : ""}`}
+              className={`flex items-center gap-1.5 rounded-full py-1 px-1.5 transition-colors ${isClickable ? "cursor-pointer hover:bg-[var(--bg-hover)]" : ""}`}
               onClick={isClickable ? () => onStepClick(i) : undefined}
             >
               <span
-                className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium transition-opacity ${
+                className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold transition-all ${
                   isComplete
-                    ? "bg-[var(--accent)] text-[var(--bg-base)] group-hover/step:opacity-75"
+                    ? "bg-[var(--accent)] text-[var(--bg-base)]"
                     : isActive
-                      ? "border border-[var(--accent)] text-[var(--accent)]"
+                      ? "border-2 border-[var(--accent)] text-[var(--accent)]"
                       : "border border-[var(--border)] text-[var(--text-muted)]"
                 }`}
               >
-                {isComplete ? "✓" : i + 1}
+                {isComplete ? <CheckIcon /> : i + 1}
               </span>
               <span
-                className={`text-sm transition-opacity ${
-                  isActive ? "text-[var(--text-primary)]" : isComplete ? "text-[var(--text-muted)] group-hover/step:opacity-75" : "text-[var(--text-muted)]"
+                className={`text-xs font-medium transition-colors ${
+                  isActive ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"
                 }`}
               >
                 {label}

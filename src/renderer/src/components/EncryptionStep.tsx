@@ -209,19 +209,21 @@ export default function EncryptionStep({
             <div className="flex gap-2">
               <Button
                 variant="primary"
-                size="sm"
+                size="md"
                 onClick={() => {
                   const key = generateSecretKey();
                   setGeneratedKey(key);
                   setUserKeyMode("generate");
                 }}
+                className="flex-1"
               >
                 Generate New Key
               </Button>
               <Button
                 variant="secondary"
-                size="sm"
+                size="md"
                 onClick={() => setUserKeyMode("existing")}
+                className="flex-1"
               >
                 I Have a Key
               </Button>
@@ -233,7 +235,7 @@ export default function EncryptionStep({
                   Your Generated Key
                 </label>
                 <div className="flex items-center gap-2">
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <Input type="password" value={generatedKey} readOnly className="font-mono" />
                   </div>
                   <Button
@@ -249,8 +251,13 @@ export default function EncryptionStep({
                   </Button>
                 </div>
               </div>
-              <div className="flex items-start gap-2 p-2.5 rounded-lg bg-[var(--warning)]/10 border border-[var(--warning)]/20">
-                <p className="text-[10px] text-[var(--warning)]">
+              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-[var(--warning)]/10 border border-[var(--warning)]/20">
+                <svg viewBox="0 0 16 16" fill="none" className="h-4 w-4 shrink-0 mt-px text-[var(--warning)]" aria-hidden="true">
+                  <path d="M8 1.5l6.5 12H1.5L8 1.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                  <path d="M8 6.5v3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  <circle cx="8" cy="11.5" r="0.5" fill="currentColor" />
+                </svg>
+                <p className="text-xs text-[var(--warning)] leading-relaxed">
                   Save this key in your password manager now. It will <strong>never be shown again</strong>.
                   If lost, your encrypted credentials cannot be recovered.
                 </p>
@@ -258,7 +265,7 @@ export default function EncryptionStep({
               {keyError && (
                 <p className="text-xs text-[var(--danger)]">{keyError}</p>
               )}
-              <div className="flex gap-2">
+              <div className="flex gap-2 justify-end">
                 <Button
                   variant="secondary"
                   size="sm"
@@ -276,7 +283,7 @@ export default function EncryptionStep({
                   loading={keyRegistering}
                   onClick={() => registerKey(generatedKey)}
                 >
-                  OK
+                  Register Key
                 </Button>
               </div>
             </div>
@@ -292,7 +299,7 @@ export default function EncryptionStep({
               {keyError && (
                 <p className="text-xs text-[var(--danger)]">{keyError}</p>
               )}
-              <div className="flex gap-2">
+              <div className="flex gap-2 justify-end">
                 <Button
                   variant="secondary"
                   size="sm"
@@ -311,7 +318,7 @@ export default function EncryptionStep({
                   disabled={!userKey.trim()}
                   onClick={() => registerKey(userKey.trim())}
                 >
-                  OK
+                  Register Key
                 </Button>
               </div>
             </div>
@@ -321,13 +328,13 @@ export default function EncryptionStep({
 
       {/* Register MCP Servers */}
       <Card>
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <div>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-[var(--text-primary)]">
                 Register MCP Servers
               </p>
-              <p className="text-xs text-[var(--text-muted)]">
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">
                 {discoveredServers.length > 0
                   ? `${discoveredServers.length} server${discoveredServers.length === 1 ? "" : "s"} discovered. Submit to register with Edison Watch.`
                   : "Submit discovered MCP servers to register them with Edison Watch."}
@@ -338,6 +345,7 @@ export default function EncryptionStep({
               size="sm"
               onClick={handleScanAndSubmit}
               loading={scanning}
+              className="shrink-0"
             >
               {scanning ? "Submitting..." : "Submit"}
             </Button>
@@ -416,11 +424,11 @@ export default function EncryptionStep({
       )}
 
       {showSkipWarning && (
-        <div className="flex flex-col gap-2 p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
-          <p className="text-xs text-orange-400">
+        <div className="flex flex-col gap-3 p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
+          <p className="text-xs text-orange-400 leading-relaxed">
             Are you sure you want to continue without submitting your servers for approval to be integrated in the Edison Watch platform?
           </p>
-          <div className="flex gap-2">
+          <div className="flex gap-2 justify-end">
             <Button
               variant="secondary"
               size="sm"

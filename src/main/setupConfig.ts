@@ -109,12 +109,102 @@ export function markSetupComplete(data?: Partial<SetupData>): void {
   writeFileSync(getSetupFlagPath(), JSON.stringify(merged, null, 2), "utf-8");
   setupCompleted = true;
   app.setLoginItemSettings({ openAtLogin: true });
+  // Persist to multi-account store (best-effort, non-critical)
+  try {
+    saveAccount(merged);
+  } catch {
+    // non-fatal — account switcher entry will be missing but setup succeeds
+  }
 }
 
 export function markSetupIncomplete(): void {
   writeFileSync(getSetupFlagPath(), JSON.stringify({ completed: false }), "utf-8");
   setupCompleted = false;
   app.setLoginItemSettings({ openAtLogin: false });
+}
+
+// ── Multi-account persistence ────────────────────────────────────────
+
+export interface SavedAccount {
+  userId: string;
+  userEmail: string;
+  serverAddress?: string;
+  mcpBaseUrl?: string;
+  apiBaseUrl?: string;
+  apiKey?: string;
+  edisonSecretKey?: string;
+  savedAt: string;
+}
+
+function getAccountsPath(): string {
+  return join(app.getPath("userData"), "accounts.json");
+}
+
+export function getSavedAccounts(): SavedAccount[] {
+  try {
+    const raw = readFileSync(getAccountsPath(), "utf-8");
+    const data = JSON.parse(raw) as { accounts?: SavedAccount[] };
+    return data.accounts ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function writeAccounts(accounts: SavedAccount[]): void {
+  writeFileSync(getAccountsPath(), JSON.stringify({ accounts }, null, 2), "utf-8");
+}
+
+export function saveAccount(data: SetupData): void {
+  if (!data.userId) return;
+  const accounts = getSavedAccounts();
+  const entry: SavedAccount = {
+    userId: data.userId!,
+    userEmail: data.userEmail ?? "",
+    serverAddress: data.serverAddress,
+    mcpBaseUrl: data.mcpBaseUrl,
+    apiBaseUrl: data.apiBaseUrl,
+    apiKey: data.apiKey,
+    edisonSecretKey: data.edisonSecretKey,
+    savedAt: new Date().toISOString(),
+  };
+  const idx = accounts.findIndex((a) => a.userId === data.userId);
+  if (idx >= 0) {
+    accounts[idx] = entry;
+  } else {
+    accounts.push(entry);
+  }
+  writeAccounts(accounts);
+}
+
+export function removeAccount(userId: string): void {
+  const accounts = getSavedAccounts().filter((a) => a.userId !== userId);
+  writeAccounts(accounts);
+}
+
+export function switchToAccount(userId: string): SetupData | null {
+  // Snapshot the current account so its latest credentials are preserved
+  try {
+    const current = getSetupData();
+    if (current.userId) saveAccount(current);
+  } catch {
+    // best-effort; non-critical
+  }
+  const accounts = getSavedAccounts();
+  const account = accounts.find((a) => a.userId === userId);
+  if (!account) return null;
+  const data: SetupData = {
+    completed: true,
+    userEmail: account.userEmail,
+    userId: account.userId,
+    serverAddress: account.serverAddress,
+    mcpBaseUrl: account.mcpBaseUrl,
+    apiBaseUrl: account.apiBaseUrl,
+    apiKey: account.apiKey,
+    edisonSecretKey: account.edisonSecretKey,
+  };
+  writeFileSync(getSetupFlagPath(), JSON.stringify(data, null, 2), "utf-8");
+  setupCompleted = true;
+  return data;
 }
 
 // ── URL helpers ─────────────────────────────────────────────────────

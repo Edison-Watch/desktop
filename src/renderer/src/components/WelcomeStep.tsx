@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Button, Input, Badge } from "@edison/shared/ui";
+import { supabase } from "@edison/shared/auth";
 import type { AuthState } from "../hooks/useAuth";
 
 function GoogleIcon() {
@@ -74,14 +75,20 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
   if (auth.signedIn) {
     return (
       <div className="flex flex-col gap-4">
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-raised)] p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent-dim)] text-sm font-medium text-[var(--accent)]">
+        <div
+          className="rounded-lg border border-[var(--border)] overflow-hidden"
+          style={{
+            borderTopColor: "var(--accent-dim)",
+            background: "linear-gradient(180deg, var(--bg-overlay) 0%, var(--bg-raised) 48px)",
+          }}
+        >
+          <div className="flex items-center gap-3 px-4 py-4">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent)]/15 text-xs font-semibold text-[var(--accent)]">
               {auth.email[0]?.toUpperCase() || "?"}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[var(--text-primary)] truncate">{auth.email}</p>
-              <p className="text-xs text-[var(--text-muted)]">Authenticated</p>
+              <p className="text-sm font-medium text-[var(--text-primary)] truncate leading-tight">{auth.email}</p>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">Authenticated</p>
             </div>
             <Badge variant={auth.serverStatus === "online" ? "success" : auth.serverStatus === "checking" ? "info" : "danger"}>
               {auth.serverStatus === "online" ? "Connected" : auth.serverStatus === "checking" ? "Checking…" : "Offline"}
@@ -91,6 +98,21 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
         <Button variant="primary" onClick={onNext} className="w-full">
           Continue
         </Button>
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await supabase.auth.signOut();
+            } catch {
+              // best-effort sign-out; always continue to reset
+            }
+            await window.api.setup.reset();
+            window.location.reload();
+          }}
+          className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+        >
+          Use a different account
+        </button>
       </div>
     );
   }
@@ -175,14 +197,14 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
               type="button"
               onClick={auth.signInWithGoogle}
               disabled={auth.loading}
-              className="w-full flex items-center justify-center gap-2 bg-white text-gray-800 font-medium py-2 px-4 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+              className="w-full flex items-center justify-center gap-2.5 bg-white text-gray-700 font-medium py-2 px-4 rounded-md border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
             >
               <GoogleIcon />
               Sign in with Google
             </button>
 
             {/* Toggle auth mode */}
-            <div className="mt-3 text-center">
+            <div className="mt-4 text-center">
               <button
                 type="button"
                 onClick={() => setAuthMode(authMode === "sso" ? "password" : "sso")}

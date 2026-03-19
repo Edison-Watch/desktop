@@ -12,13 +12,13 @@ export default function WizardLayout({ currentStep, locked, onStepClick, childre
   return (
     <div className="flex h-screen flex-col items-center overflow-y-auto bg-[var(--bg-base)]">
       {/* Header with branding */}
-      <header className="flex w-full flex-col items-center gap-4 px-6 pt-10 pb-6">
-        <img src={logoDark} alt="Edison Watch" className="h-8 w-auto" />
+      <header className="flex w-full flex-col items-center gap-3 px-6 pt-8 pb-4">
+        <img src={logoDark} alt="Edison Watch" className="h-7 w-auto" />
         <StepIndicator currentStep={currentStep} locked={locked} onStepClick={onStepClick} />
       </header>
 
       {/* Content area */}
-      <main className="flex w-full max-w-lg flex-1 flex-col px-6 pb-10">
+      <main className="flex w-full max-w-lg flex-1 flex-col px-6 pb-8">
         {children}
       </main>
     </div>

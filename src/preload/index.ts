@@ -85,7 +85,7 @@ const api = {
 
   /** Config: effective base URLs and active env (respects debug env override) */
   config: {
-    getEffectiveBaseUrls: (): Promise<{ mcpBaseUrl: string | null; apiBaseUrl: string | null }> =>
+    getEffectiveBaseUrls: (): Promise<{ mcpBaseUrl: string | null; apiBaseUrl: string | null; docsBaseUrl: string }> =>
       ipcRenderer.invoke("config:getEffectiveBaseUrls"),
     getActiveEnv: (): Promise<string> =>
       ipcRenderer.invoke("config:getActiveEnv"),
@@ -94,6 +94,16 @@ const api = {
       ipcRenderer.on("env:changed", handler);
       return () => ipcRenderer.removeListener("env:changed", handler);
     },
+  },
+
+  /** Multi-account management */
+  accounts: {
+    list: (): Promise<Array<{ userId: string; userEmail: string; savedAt: string }>> =>
+      ipcRenderer.invoke("accounts:list"),
+    switch: (userId: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("accounts:switch", userId),
+    remove: (userId: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("accounts:remove", userId),
   },
 
   /** Menu actions (post-setup window) */

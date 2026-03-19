@@ -33,9 +33,13 @@ export default function FeedbackForm({
 
   if (state === 'success') {
     return (
-      <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-        <div style={{ fontSize: 32, color: 'var(--success)', marginBottom: 12 }}>✓</div>
-        <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
+      <div className="text-center py-10 px-5">
+        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400">
+          <svg viewBox="0 0 16 16" fill="none" className="h-5 w-5" aria-hidden="true">
+            <path d="M3 8l3.5 3.5 6.5-6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+        <p className="text-sm text-[var(--text-secondary)]">
           Thanks! Your feedback has been sent.
         </p>
       </div>
@@ -43,19 +47,12 @@ export default function FeedbackForm({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="flex flex-col gap-4">
       <div>
-        <h1
-          style={{
-            fontSize: 16,
-            fontWeight: 600,
-            color: 'var(--text-primary)',
-            margin: '0 0 6px',
-          }}
-        >
+        <h1 className="text-base font-semibold text-[var(--text-primary)] mb-1.5">
           Send Feedback
         </h1>
-        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+        <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
           Tell us what&apos;s on your mind — bugs, suggestions, or anything else.
         </p>
       </div>
@@ -63,15 +60,7 @@ export default function FeedbackForm({
       <div>
         <label
           htmlFor="feedback-message"
-          style={{
-            display: 'block',
-            fontSize: 11,
-            fontWeight: 500,
-            color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            marginBottom: 6,
-          }}
+          className="block text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wide mb-1.5"
         >
           Message
         </label>
@@ -81,56 +70,22 @@ export default function FeedbackForm({
           onChange={(e) => setMessage(e.target.value)}
           disabled={state === 'submitting'}
           placeholder="Describe the issue or share your thoughts..."
-          style={{
-            width: '100%',
-            height: 120,
-            background: 'var(--bg-input)',
-            border: '1px solid var(--border)',
-            borderRadius: 6,
-            color: 'var(--text-primary)',
-            fontSize: 13,
-            padding: '10px 12px',
-            resize: 'vertical',
-            outline: 'none',
-            fontFamily: 'inherit',
-            boxSizing: 'border-box',
-          }}
+          className="w-full h-[120px] bg-[var(--bg-input)] border border-[var(--border)] rounded-md text-[var(--text-primary)] text-[13px] px-3 py-2.5 resize-y outline-none font-[inherit] focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent transition-colors placeholder:text-[var(--text-muted)]"
         />
       </div>
 
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+      <div className="flex gap-2 justify-end">
         <button
           onClick={onCancel}
           disabled={state === 'submitting'}
-          style={{
-            border: '1px solid var(--border)',
-            background: 'transparent',
-            color: 'var(--text-secondary)',
-            padding: '8px 20px',
-            borderRadius: 6,
-            cursor: 'pointer',
-            fontSize: 13,
-            fontWeight: 500,
-            fontFamily: 'inherit',
-          }}
+          className="border border-[var(--border)] bg-transparent text-[var(--text-secondary)] px-5 py-2 rounded-md cursor-pointer text-[13px] font-medium font-[inherit] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
         >
           Cancel
         </button>
         <button
           onClick={handleSubmit}
           disabled={state === 'submitting' || !message.trim()}
-          style={{
-            border: '1px solid var(--accent)',
-            background: 'var(--accent)',
-            color: '#000',
-            padding: '8px 20px',
-            borderRadius: 6,
-            cursor: state === 'submitting' || !message.trim() ? 'not-allowed' : 'pointer',
-            fontSize: 13,
-            fontWeight: 600,
-            fontFamily: 'inherit',
-            opacity: state === 'submitting' || !message.trim() ? 0.5 : 1,
-          }}
+          className="border border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-base)] px-5 py-2 rounded-md text-[13px] font-semibold font-[inherit] hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {state === 'submitting' ? 'Sending…' : 'Send Feedback'}
         </button>

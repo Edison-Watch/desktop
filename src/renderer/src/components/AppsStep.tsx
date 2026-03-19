@@ -166,16 +166,13 @@ export default function AppsStep({
           {clients.map((client) => (
             <div
               key={client.id}
-              className="relative rounded-lg border border-[var(--border)] overflow-hidden"
+              className="rounded-lg border border-[var(--border)] overflow-hidden transition-shadow"
               style={{
                 borderTopColor: client.enabled ? "var(--accent-dim)" : "var(--border)",
                 background: "linear-gradient(180deg, var(--bg-overlay) 0%, var(--bg-raised) 48px)",
-                boxShadow: client.enabled ? "0 0 12px 0 rgba(125, 255, 246, 0.1)" : "none",
+                boxShadow: client.enabled ? "0 0 12px 0 rgba(125, 255, 246, 0.08)" : "none",
               }}
             >
-              <span className="absolute top-1.5 right-2 text-[9px] font-medium text-emerald-400/80">
-                Detected
-              </span>
               {/* Clickable row — toggles selection */}
               <button
                 type="button"
@@ -184,15 +181,15 @@ export default function AppsStep({
               >
                 {/* Checkbox indicator */}
                 <div
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition-colors ${
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded transition-all ${
                     client.enabled
-                      ? "border-[var(--accent)]"
-                      : "border-[var(--border)]"
+                      ? "bg-[var(--accent)] border-[var(--accent)]"
+                      : "border-2 border-[var(--border)]"
                   }`}
                 >
                   {client.enabled && (
-                    <svg viewBox="0 0 12 12" fill="none" className="h-3 w-3" aria-hidden="true">
-                      <path d="M2 6l3 3 5-5" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <svg viewBox="0 0 12 12" fill="none" className="h-2.5 w-2.5" aria-hidden="true">
+                      <path d="M2 6l3 3 5-5" stroke="var(--bg-base)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   )}
                 </div>
@@ -202,9 +199,12 @@ export default function AppsStep({
 
                 {/* Name + path */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-[var(--text-primary)]">
                       {client.name}
+                    </span>
+                    <span className="text-[10px] font-medium text-emerald-400/80 bg-emerald-400/10 px-1.5 py-0.5 rounded">
+                      Detected
                     </span>
                   </div>
                   <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">
@@ -219,7 +219,7 @@ export default function AppsStep({
                   {client.configPreview ?? "Loading config..."}
                 </pre>
               )}
-              <div className="px-4 pb-2">
+              <div className="px-4 pb-2.5">
                 <button
                   type="button"
                   className="text-xs text-[var(--accent-muted)] hover:text-[var(--accent)] transition-colors"
