@@ -114,6 +114,82 @@ export async function getCursorPluginMcpPaths(): Promise<string[]> {
   return result
 }
 
+// VS Code workspace storage paths — used to discover per-project workspace roots
+export function getVsCodeWorkspaceStoragePath(): string {
+  switch (platform()) {
+    case 'darwin':
+      return join(homedir(), 'Library', 'Application Support', 'Code', 'User', 'workspaceStorage')
+    case 'win32':
+      return join(
+        process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'),
+        'Code',
+        'User',
+        'workspaceStorage'
+      )
+    default:
+      return join(homedir(), '.config', 'Code', 'User', 'workspaceStorage')
+  }
+}
+
+export function getVsCodeInsidersWorkspaceStoragePath(): string {
+  switch (platform()) {
+    case 'darwin':
+      return join(
+        homedir(),
+        'Library',
+        'Application Support',
+        'Code - Insiders',
+        'User',
+        'workspaceStorage'
+      )
+    case 'win32':
+      return join(
+        process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'),
+        'Code - Insiders',
+        'User',
+        'workspaceStorage'
+      )
+    default:
+      return join(homedir(), '.config', 'Code - Insiders', 'User', 'workspaceStorage')
+  }
+}
+
+/**
+ * Scan VS Code's workspaceStorage for local project folders and return their root paths.
+ * These are used for injecting workspace-level hook tasks.
+ */
+async function getWorkspaceRootsFromStorage(storageDir: string): Promise<string[]> {
+  const seen = new Set<string>()
+  try {
+    const entries = await fs.readdir(storageDir, { withFileTypes: true })
+    for (const dirent of entries) {
+      if (!dirent.isDirectory()) continue
+      const workspaceJsonPath = join(storageDir, dirent.name, 'workspace.json')
+      try {
+        const raw = await fs.readFile(workspaceJsonPath, 'utf-8')
+        const json = JSON.parse(raw) as { folder?: string }
+        const folder = json.folder
+        if (folder && folder.startsWith('file://')) {
+          seen.add(fileURLToPath(folder))
+        }
+      } catch {
+        // workspace.json missing or unreadable; skip
+      }
+    }
+  } catch {
+    // workspaceStorage doesn't exist yet; ignore
+  }
+  return Array.from(seen)
+}
+
+export async function getVsCodeWorkspacePaths(): Promise<string[]> {
+  return getWorkspaceRootsFromStorage(getVsCodeWorkspaceStoragePath())
+}
+
+export async function getVsCodeInsidersWorkspacePaths(): Promise<string[]> {
+  return getWorkspaceRootsFromStorage(getVsCodeInsidersWorkspaceStoragePath())
+}
+
 /**
  * Read the projects map from ~/.claude.json and return paths to each project's
  * .mcp.json file (whether or not it exists yet). These represent Claude Code's

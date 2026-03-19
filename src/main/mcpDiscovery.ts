@@ -32,6 +32,7 @@ export type McpClientId =
   | 'windsurf'
   | 'zed'
   | 'antigravity'
+  | 'codex'
   | 'intellij'
   | 'pycharm'
   | 'webstorm'

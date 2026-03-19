@@ -1,0 +1,530 @@
+/**
+ * Per-client hook injection helpers for Claude Code, Cursor, Windsurf, Gemini, and Codex.
+ */
+
+import { promises as fs, existsSync } from 'fs'
+import { homedir } from 'os'
+import { join, dirname } from 'path'
+import { parse as parseJsonc, modify, applyEdits } from 'jsonc-parser'
+import { ensureHookScript, ensureSessionHookScript } from './hookInjectionCore'
+
+// ── Path helpers ─────────────────────────────────────────────────────────────
+
+export function getClaudeCodeSettingsPath(): string {
+  return join(homedir(), '.claude', 'settings.json')
+}
+
+export function getCursorHooksPath(): string {
+  return join(homedir(), '.cursor', 'hooks.json')
+}
+
+export function getWindsurfHooksPath(): string {
+  return join(homedir(), '.codeium', 'windsurf', 'hooks.json')
+}
+
+export function getGeminiSettingsPath(): string {
+  return join(homedir(), '.gemini', 'settings.json')
+}
+
+export function getCodexConfigPath(): string {
+  return join(homedir(), '.codex', 'config.toml')
+}
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+export interface ClaudeCodeHook {
+  type: 'command'
+  command: string
+}
+
+export interface ClaudeCodeHookGroup {
+  matcher: string
+  hooks: ClaudeCodeHook[]
+}
+
+export interface ClaudeCodeHooks {
+  UserPromptSubmit?: ClaudeCodeHookGroup[]
+  PreToolUse?: ClaudeCodeHookGroup[]
+  PostToolUse?: ClaudeCodeHookGroup[]
+  SessionStart?: ClaudeCodeHookGroup[]
+  [key: string]: ClaudeCodeHookGroup[] | undefined
+}
+
+export interface ClaudeCodeSettings {
+  hooks?: ClaudeCodeHooks
+  [key: string]: unknown
+}
+
+export interface CursorHookEntry {
+  command: string
+  type?: 'command' | 'prompt'
+  timeout?: number
+  matcher?: string
+}
+
+export interface CursorHooks {
+  sessionStart?: CursorHookEntry[]
+  preToolUse?: CursorHookEntry[]
+  postToolUse?: CursorHookEntry[]
+  beforeMCPExecution?: CursorHookEntry[]
+  afterMCPExecution?: CursorHookEntry[]
+  [key: string]: CursorHookEntry[] | undefined
+}
+
+export interface CursorHooksFile {
+  version: number
+  hooks: CursorHooks
+}
+
+export interface WindsurfHookEntry {
+  command: string
+  show_output?: boolean
+  working_directory?: string
+}
+
+export interface WindsurfHooks {
+  pre_user_prompt?: WindsurfHookEntry[]
+  pre_mcp_tool_use?: WindsurfHookEntry[]
+  post_mcp_tool_use?: WindsurfHookEntry[]
+  [key: string]: WindsurfHookEntry[] | undefined
+}
+
+export interface WindsurfHooksFile {
+  hooks: WindsurfHooks
+}
+
+// ── Claude Code ──────────────────────────────────────────────────────────────
+
+export function isClaudeCodeInstalled(): boolean {
+  return existsSync(join(homedir(), '.claude'))
+}
+
+/**
+ * Inject Edison Watch hook into Claude Code settings.
+ * Uses JSONC parser to preserve comments and formatting.
+ */
+export async function injectClaudeCodeHook(): Promise<boolean> {
+  const settingsPath = getClaudeCodeSettingsPath()
+  const scriptPath = await ensureHookScript()
+
+  const settingsDir = dirname(settingsPath)
+  if (!existsSync(settingsDir)) {
+    await fs.mkdir(settingsDir, { recursive: true })
+  }
+
+  let content = '{}'
+  if (existsSync(settingsPath)) {
+    content = await fs.readFile(settingsPath, 'utf-8')
+  }
+
+  const settings = parseJsonc(content) as ClaudeCodeSettings
+
+  const edisonHook: ClaudeCodeHookGroup = {
+    matcher: '*',
+    hooks: [{ type: 'command', command: `"${scriptPath}" claude-code` }]
+  }
+
+  const existingHooks = settings.hooks?.UserPromptSubmit ?? []
+  const hasEdisonHook = existingHooks.some((group) =>
+    group.hooks?.some((h) => h.command?.includes('edison-hook'))
+  )
+
+  if (hasEdisonHook) {
+    console.log('[HookInjection] Edison hook already exists in Claude Code settings')
+    return false
+  }
+
+  const edits = modify(content, ['hooks', 'UserPromptSubmit'], [...existingHooks, edisonHook], {
+    formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' }
+  })
+  const newContent = applyEdits(content, edits)
+
+  if (existsSync(settingsPath)) {
+    const backupPath = `${settingsPath}.backup.${Date.now()}`
+    await fs.copyFile(settingsPath, backupPath)
+    console.log(`[HookInjection] Backed up settings to ${backupPath}`)
+  }
+
+  await fs.writeFile(settingsPath, newContent, 'utf-8')
+  console.log('[HookInjection] Injected Edison hook into Claude Code settings')
+  return true
+}
+
+/**
+ * Remove Edison Watch hook from Claude Code settings.
+ */
+export async function removeClaudeCodeHook(): Promise<boolean> {
+  const settingsPath = getClaudeCodeSettingsPath()
+  if (!existsSync(settingsPath)) return false
+
+  const content = await fs.readFile(settingsPath, 'utf-8')
+  const settings = parseJsonc(content) as ClaudeCodeSettings
+
+  const existingHooks = settings.hooks?.UserPromptSubmit ?? []
+  const filteredHooks = existingHooks.filter(
+    (group) => !group.hooks?.some((h) => h.command?.includes('edison-hook'))
+  )
+
+  if (filteredHooks.length === existingHooks.length) {
+    console.log('[HookInjection] No Edison hook found in Claude Code settings')
+    return false
+  }
+
+  const edits = modify(
+    content,
+    ['hooks', 'UserPromptSubmit'],
+    filteredHooks.length > 0 ? filteredHooks : undefined,
+    { formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' } }
+  )
+  const newContent = applyEdits(content, edits)
+  await fs.writeFile(settingsPath, newContent, 'utf-8')
+  console.log('[HookInjection] Removed Edison hook from Claude Code settings')
+  return true
+}
+
+// ── Cursor ───────────────────────────────────────────────────────────────────
+
+export function isCursorInstalled(): boolean {
+  return existsSync(join(homedir(), '.cursor'))
+}
+
+/**
+ * Inject Edison Watch hook into Cursor hooks.json.
+ */
+export async function injectCursorHook(): Promise<boolean> {
+  const hooksPath = getCursorHooksPath()
+  const scriptPath = await ensureHookScript()
+  const sessionScriptPath = await ensureSessionHookScript()
+
+  const hooksDir = dirname(hooksPath)
+  if (!existsSync(hooksDir)) {
+    await fs.mkdir(hooksDir, { recursive: true })
+  }
+
+  let hooksFile: CursorHooksFile = { version: 1, hooks: {} }
+  if (existsSync(hooksPath)) {
+    try {
+      const content = await fs.readFile(hooksPath, 'utf-8')
+      hooksFile = JSON.parse(content) as CursorHooksFile
+    } catch {
+      hooksFile = { version: 1, hooks: {} }
+    }
+  }
+
+  if (!hooksFile.hooks) hooksFile.hooks = {}
+
+  let injected = false
+
+  const existingSessionStart = hooksFile.hooks.sessionStart ?? []
+  const hasEdisonSessionStart = existingSessionStart.some((h) => h.command?.includes('edison-hook'))
+  if (!hasEdisonSessionStart) {
+    hooksFile.hooks.sessionStart = [
+      ...existingSessionStart,
+      { command: `"${scriptPath}" cursor`, type: 'command' }
+    ]
+    injected = true
+  }
+
+  const existingPreToolUse = hooksFile.hooks.preToolUse ?? []
+  const hasEdisonPreToolUse = existingPreToolUse.some((h) => h.command?.includes('edison-session-hook'))
+  if (!hasEdisonPreToolUse) {
+    hooksFile.hooks.preToolUse = [
+      ...existingPreToolUse,
+      { command: `"${sessionScriptPath}"`, type: 'command', matcher: 'MCP' }
+    ]
+    injected = true
+  }
+
+  if (!injected) {
+    console.log('[HookInjection] Edison hooks already exist in Cursor hooks')
+    return false
+  }
+
+  if (existsSync(hooksPath)) {
+    const backupPath = `${hooksPath}.backup.${Date.now()}`
+    await fs.copyFile(hooksPath, backupPath)
+    console.log(`[HookInjection] Backed up Cursor hooks to ${backupPath}`)
+  }
+
+  await fs.writeFile(hooksPath, JSON.stringify(hooksFile, null, 2), 'utf-8')
+  console.log('[HookInjection] Injected Edison hook into Cursor hooks')
+  return true
+}
+
+/**
+ * Remove Edison Watch hook from Cursor hooks.json.
+ */
+export async function removeCursorHook(): Promise<boolean> {
+  const hooksPath = getCursorHooksPath()
+  if (!existsSync(hooksPath)) return false
+
+  const content = await fs.readFile(hooksPath, 'utf-8')
+  const hooksFile = JSON.parse(content) as CursorHooksFile
+
+  let removed = false
+
+  const existingSessionStart = hooksFile.hooks?.sessionStart ?? []
+  const filteredSessionStart = existingSessionStart.filter((h) => !h.command?.includes('edison-hook'))
+  if (filteredSessionStart.length !== existingSessionStart.length) {
+    removed = true
+    if (filteredSessionStart.length > 0) {
+      hooksFile.hooks!.sessionStart = filteredSessionStart
+    } else {
+      delete hooksFile.hooks!.sessionStart
+    }
+  }
+
+  const existingPreToolUse = hooksFile.hooks?.preToolUse ?? []
+  const filteredPreToolUse = existingPreToolUse.filter((h) => !h.command?.includes('edison-session-hook'))
+  if (filteredPreToolUse.length !== existingPreToolUse.length) {
+    removed = true
+    if (filteredPreToolUse.length > 0) {
+      hooksFile.hooks!.preToolUse = filteredPreToolUse
+    } else {
+      delete hooksFile.hooks!.preToolUse
+    }
+  }
+
+  if (!removed) {
+    console.log('[HookInjection] No Edison hook found in Cursor hooks')
+    return false
+  }
+
+  await fs.writeFile(hooksPath, JSON.stringify(hooksFile, null, 2), 'utf-8')
+  console.log('[HookInjection] Removed Edison hook from Cursor hooks')
+  return true
+}
+
+// ── Windsurf ─────────────────────────────────────────────────────────────────
+
+export function isWindsurfInstalled(): boolean {
+  return existsSync(join(homedir(), '.codeium', 'windsurf'))
+}
+
+/**
+ * Inject Edison Watch hook into Windsurf hooks.json.
+ */
+export async function injectWindsurfHook(): Promise<boolean> {
+  const hooksPath = getWindsurfHooksPath()
+  const scriptPath = await ensureHookScript()
+
+  const hooksDir = dirname(hooksPath)
+  if (!existsSync(hooksDir)) {
+    await fs.mkdir(hooksDir, { recursive: true })
+  }
+
+  let hooksFile: WindsurfHooksFile = { hooks: {} }
+  if (existsSync(hooksPath)) {
+    try {
+      const content = await fs.readFile(hooksPath, 'utf-8')
+      hooksFile = JSON.parse(content) as WindsurfHooksFile
+    } catch {
+      hooksFile = { hooks: {} }
+    }
+  }
+
+  if (!hooksFile.hooks) hooksFile.hooks = {}
+
+  const existingHooks = hooksFile.hooks.pre_user_prompt ?? []
+  const hasEdisonHook = existingHooks.some((h) => h.command?.includes('edison-hook'))
+
+  if (hasEdisonHook) {
+    console.log('[HookInjection] Edison hook already exists in Windsurf hooks')
+    return false
+  }
+
+  hooksFile.hooks.pre_user_prompt = [
+    ...existingHooks,
+    { command: `"${scriptPath}" windsurf`, show_output: false }
+  ]
+
+  if (existsSync(hooksPath)) {
+    await fs.copyFile(hooksPath, `${hooksPath}.backup.${Date.now()}`)
+    console.log('[HookInjection] Backed up Windsurf hooks')
+  }
+
+  await fs.writeFile(hooksPath, JSON.stringify(hooksFile, null, 2), 'utf-8')
+  console.log('[HookInjection] Injected Edison hook into Windsurf hooks')
+  return true
+}
+
+/**
+ * Remove Edison Watch hook from Windsurf hooks.json.
+ */
+export async function removeWindsurfHook(): Promise<boolean> {
+  const hooksPath = getWindsurfHooksPath()
+  if (!existsSync(hooksPath)) return false
+
+  const content = await fs.readFile(hooksPath, 'utf-8')
+  const hooksFile = JSON.parse(content) as WindsurfHooksFile
+
+  const existingHooks = hooksFile.hooks?.pre_user_prompt ?? []
+  const filteredHooks = existingHooks.filter((h) => !h.command?.includes('edison-hook'))
+
+  if (filteredHooks.length === existingHooks.length) {
+    console.log('[HookInjection] No Edison hook found in Windsurf hooks')
+    return false
+  }
+
+  if (filteredHooks.length > 0) {
+    hooksFile.hooks.pre_user_prompt = filteredHooks
+  } else {
+    delete hooksFile.hooks.pre_user_prompt
+  }
+
+  await fs.writeFile(hooksPath, JSON.stringify(hooksFile, null, 2), 'utf-8')
+  console.log('[HookInjection] Removed Edison hook from Windsurf hooks')
+  return true
+}
+
+// ── Gemini CLI ───────────────────────────────────────────────────────────────
+
+export function isGeminiInstalled(): boolean {
+  return existsSync(join(homedir(), '.gemini'))
+}
+
+/**
+ * Inject Edison Watch hook into Gemini CLI settings.json.
+ * Uses the same hook group structure as Claude Code (SessionStart event).
+ */
+export async function injectGeminiHook(): Promise<boolean> {
+  const settingsPath = getGeminiSettingsPath()
+  const scriptPath = await ensureHookScript()
+
+  const settingsDir = dirname(settingsPath)
+  if (!existsSync(settingsDir)) {
+    await fs.mkdir(settingsDir, { recursive: true })
+  }
+
+  let content = '{}'
+  if (existsSync(settingsPath)) {
+    content = await fs.readFile(settingsPath, 'utf-8')
+  }
+
+  const settings = parseJsonc(content) as ClaudeCodeSettings
+
+  const existingHooks = settings.hooks?.SessionStart ?? []
+  const hasEdisonHook = existingHooks.some((group) =>
+    group.hooks?.some((h) => h.command?.includes('edison-hook'))
+  )
+
+  if (hasEdisonHook) {
+    console.log('[HookInjection] Edison hook already exists in Gemini settings')
+    return false
+  }
+
+  const edisonHook: ClaudeCodeHookGroup = {
+    matcher: '*',
+    hooks: [{ type: 'command', command: `"${scriptPath}" gemini` }]
+  }
+
+  const edits = modify(content, ['hooks', 'SessionStart'], [...existingHooks, edisonHook], {
+    formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' }
+  })
+  const newContent = applyEdits(content, edits)
+
+  if (existsSync(settingsPath)) {
+    await fs.copyFile(settingsPath, `${settingsPath}.backup.${Date.now()}`)
+  }
+
+  await fs.writeFile(settingsPath, newContent, 'utf-8')
+  console.log('[HookInjection] Injected Edison hook into Gemini settings')
+  return true
+}
+
+/**
+ * Remove Edison Watch hook from Gemini CLI settings.json.
+ */
+export async function removeGeminiHook(): Promise<boolean> {
+  const settingsPath = getGeminiSettingsPath()
+  if (!existsSync(settingsPath)) return false
+
+  const content = await fs.readFile(settingsPath, 'utf-8')
+  const settings = parseJsonc(content) as ClaudeCodeSettings
+
+  const existingHooks = settings.hooks?.SessionStart ?? []
+  const filteredHooks = existingHooks.filter(
+    (group) => !group.hooks?.some((h) => h.command?.includes('edison-hook'))
+  )
+
+  if (filteredHooks.length === existingHooks.length) {
+    console.log('[HookInjection] No Edison hook found in Gemini settings')
+    return false
+  }
+
+  const edits = modify(
+    content,
+    ['hooks', 'SessionStart'],
+    filteredHooks.length > 0 ? filteredHooks : undefined,
+    { formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' } }
+  )
+  const newContent = applyEdits(content, edits)
+  await fs.writeFile(settingsPath, newContent, 'utf-8')
+  console.log('[HookInjection] Removed Edison hook from Gemini settings')
+  return true
+}
+
+// ── Codex CLI ────────────────────────────────────────────────────────────────
+
+export function isCodexInstalled(): boolean {
+  return existsSync(join(homedir(), '.codex'))
+}
+
+function buildCodexHookToml(scriptPath: string): string {
+  return `\n[[hooks.SessionStart]]\ncommand = "${scriptPath} codex"\n`
+}
+
+/**
+ * Inject Edison Watch hook into Codex CLI config.toml.
+ * Appends a [[hooks.SessionStart]] array-of-tables entry.
+ */
+export async function injectCodexHook(): Promise<boolean> {
+  const configPath = getCodexConfigPath()
+  const scriptPath = await ensureHookScript()
+
+  const configDir = dirname(configPath)
+  if (!existsSync(configDir)) {
+    await fs.mkdir(configDir, { recursive: true })
+  }
+
+  let existing = ''
+  if (existsSync(configPath)) {
+    existing = await fs.readFile(configPath, 'utf-8')
+  }
+
+  if (existing.includes('edison-hook')) {
+    console.log('[HookInjection] Edison hook already exists in Codex config.toml')
+    return false
+  }
+
+  if (existsSync(configPath)) {
+    await fs.copyFile(configPath, `${configPath}.backup.${Date.now()}`)
+  }
+
+  await fs.writeFile(configPath, existing + buildCodexHookToml(scriptPath), 'utf-8')
+  console.log('[HookInjection] Injected Edison hook into Codex config.toml')
+  return true
+}
+
+/**
+ * Remove Edison Watch hook from Codex CLI config.toml.
+ */
+export async function removeCodexHook(): Promise<boolean> {
+  const configPath = getCodexConfigPath()
+  if (!existsSync(configPath)) return false
+
+  const content = await fs.readFile(configPath, 'utf-8')
+  const cleaned = content.replace(
+    /\n\[\[hooks\.SessionStart\]\]\ncommand = "[^"]*edison-hook[^"]*"\n/g,
+    ''
+  )
+
+  if (cleaned === content) {
+    console.log('[HookInjection] No Edison hook found in Codex config.toml')
+    return false
+  }
+
+  await fs.writeFile(configPath, cleaned, 'utf-8')
+  console.log('[HookInjection] Removed Edison hook from Codex config.toml')
+  return true
+}
