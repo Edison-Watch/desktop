@@ -442,11 +442,9 @@ export function detectSecrets(server: DiscoveredMcpServer): TemplatizedConfig {
       }
     }
 
-    const clonedConfig: McpServerConfig = {
-      type: config.type,
-      url: clonedUrl,
-      ...(clonedHeaders && { headers: clonedHeaders })
-    }
+    const clonedConfig: McpServerConfig = config.type
+      ? { type: config.type, url: clonedUrl, ...(clonedHeaders && { headers: clonedHeaders }) }
+      : { url: clonedUrl, ...(clonedHeaders && { headers: clonedHeaders }) }
 
     return { config: clonedConfig, templateFields, secretValues }
   }

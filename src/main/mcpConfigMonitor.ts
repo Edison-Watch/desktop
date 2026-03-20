@@ -2,9 +2,9 @@ import { EventEmitter } from 'events'
 import { watch, type FSWatcher } from 'chokidar'
 import { promises as fs } from 'fs'
 import { dirname } from 'path'
+import { getAllConfigPaths } from './mcpConfigPaths'
 import {
   discoverMcpServers,
-  getAllConfigPaths,
   getJetBrainsMcpConfigPaths,
   getCursorProjectMcpPaths,
   getCursorPluginMcpPaths,
@@ -597,6 +597,9 @@ export class McpConfigMonitor extends EventEmitter {
  * other localhost dev servers.
  */
 export function isEdisonWatchServer(server: DiscoveredMcpServer): boolean {
+  // Name we write to configs via mcpConfigWriter
+  if (server.name === 'edison-watch') return true
+
   const config = server.config
   if ('command' in config && config.command) {
     const args = config.args?.join(' ') ?? ''
@@ -604,18 +607,17 @@ export function isEdisonWatchServer(server: DiscoveredMcpServer): boolean {
     return (
       config.command === 'npx' &&
       args.includes('mcp-remote') &&
-      (args.includes('edison') ||
+      (args.includes('edison.watch') ||
         (args.includes('localhost:') && argsList.some((arg) => /\/mcp(?:\/|$)/.test(String(arg)))))
     )
   }
   if ('url' in config && config.url) {
     return (
-      config.url.includes('edison') ||
+      config.url.includes('edison.watch') ||
       (config.url.includes('localhost') && /\/mcp(?:\/|$)/.test(config.url))
     )
   }
-  // Check server name
-  return server.name.toLowerCase().includes('edison')
+  return false
 }
 
 /**

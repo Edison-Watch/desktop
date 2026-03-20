@@ -628,7 +628,8 @@ export async function restoreAllQuarantinedServers(): Promise<{
   restored: number
   errors: string[]
 }> {
-  const { getAllConfigPaths, getJetBrainsMcpConfigPaths } = await import('./mcpDiscovery')
+  const { getAllConfigPaths } = await import('./mcpConfigPaths')
+  const { getJetBrainsMcpConfigPaths } = await import('./mcpDiscovery')
 
   // Collect all known config paths
   const paths = getAllConfigPaths()

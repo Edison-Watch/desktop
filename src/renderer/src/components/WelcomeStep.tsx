@@ -45,11 +45,16 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
   const onNextRef = useRef(onNext);
   onNextRef.current = onNext;
 
+  // Track whether the user was already signed in when this step mounted.
+  // If they navigate back to this step while already signed in, we don't
+  // want to auto-advance — they should have to click Continue explicitly.
+  const wasSignedInOnMount = useRef(auth.signedIn);
+
   // Auto-advance to next step shortly after sign-in succeeds.
-  // Only depends on signedIn — using a ref for onNext avoids resetting
-  // the timer when App re-renders (e.g. server-status health check).
+  // Only fires if the user actually signed in while on this step (not when
+  // navigating back while already authenticated).
   useEffect(() => {
-    if (!auth.signedIn) return;
+    if (!auth.signedIn || wasSignedInOnMount.current) return;
     const timer = setTimeout(() => onNextRef.current(), 1200);
     return () => clearTimeout(timer);
   }, [auth.signedIn]);

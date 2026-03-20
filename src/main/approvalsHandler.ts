@@ -4,7 +4,7 @@
  * Extracted from index.ts to keep the main entry point under the 800-line CI limit.
  */
 
-import { BrowserWindow, Notification } from "electron";
+import { app, BrowserWindow, Notification } from "electron";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import trayIconPath from "../../resources/icon_tray.png?asset";
@@ -88,8 +88,11 @@ export function startEventSubscription(onQuarantineEnabled: (domain?: string) =>
     eventSource.onmessage = (event: { data: string }) => {
       try {
         const data = JSON.parse(event.data);
+        console.log(`[SSE] event received: type=${data.type}`);
         if (data.type === "mcp_pre_block") {
           handleTrifectaEvent(data);
+        } else if (data.type === "mcp_approve_or_deny_once") {
+          handleRemoteApprovalDismiss(data);
         } else if (data.type === "quarantine_enabled") {
           const userDomain = getSetupData().userEmail?.split("@")[1];
           if (!data.domain || data.domain === userDomain) {
@@ -138,6 +141,11 @@ function handleReconnect(onQuarantineEnabled: (domain?: string) => void): void {
   }, delay);
 }
 
+/** Safely check if the window exists and is usable. */
+function isAlive(w: BrowserWindow | null): w is BrowserWindow {
+  return w !== null && !w.isDestroyed();
+}
+
 function handleTrifectaEvent(data: TrifectaEventData): void {
   const mainWindow = _getMainWindow();
   const approvalWindow = _getApprovalWindow();
@@ -156,7 +164,7 @@ function handleTrifectaEvent(data: TrifectaEventData): void {
   _onPendingChanged?.();
 
   // Notify approval window if open
-  if (approvalWindow && !approvalWindow.isDestroyed()) {
+  if (isAlive(approvalWindow)) {
     approvalWindow.webContents.send("approval:added", {
       id: approvalId,
       sessionId: session_id,
@@ -169,7 +177,9 @@ function handleTrifectaEvent(data: TrifectaEventData): void {
 
   // Show native notification
   try {
-    if (!Notification.isSupported()) return;
+    const supported = Notification.isSupported();
+    console.log(`[SSE] Notification.isSupported()=${supported}, approvalId=${approvalId}`);
+    if (!supported) throw new Error("notifications not supported");
 
     const toolName = name.replace(/^agent_/, "").replace(/_/g, " ");
     const readableName = toolName
@@ -207,13 +217,43 @@ function handleTrifectaEvent(data: TrifectaEventData): void {
     }
 
     notification.on("click", () => {
-      showPendingApprovalsDialog(mainWindow);
+      showPendingApprovalsDialog(_getMainWindow());
     });
 
+    console.log(`[SSE] Showing notification for: ${readableName}`);
     notification.show();
+    // Bounce dock icon so the user notices even if macOS suppresses the notification banner
+    if (!isAlive(mainWindow) || !mainWindow.isFocused()) app.dock?.bounce("informational");
     setTimeout(() => notification.close(), 30000);
   } catch (err) {
     console.error("Failed to show notification:", err);
+  }
+
+  // Always pop the approval dialog as a reliable fallback — macOS can silently suppress notifications
+  showPendingApprovalsDialog(_getMainWindow());
+}
+
+function handleRemoteApprovalDismiss(data: {
+  session_id: string;
+  kind: string;
+  name: string;
+}): void {
+  const { session_id, kind, name } = data;
+  for (const [id, approval] of pendingApprovals) {
+    if (approval.sessionId === session_id && approval.kind === kind && approval.name === name) {
+      pendingApprovals.delete(id);
+      _onPendingChanged?.();
+      const approvalWindow = _getApprovalWindow();
+      if (isAlive(approvalWindow)) {
+        approvalWindow.webContents.send("approval:removed", id);
+        if (pendingApprovals.size === 0) {
+          setTimeout(() => {
+            if (isAlive(approvalWindow)) approvalWindow.close();
+          }, 500);
+        }
+      }
+      break;
+    }
   }
 }
 
@@ -223,16 +263,26 @@ export async function handleApproval(
   approvalId: string,
   command: "approve" | "deny" | "approve_and_remember",
 ): Promise<void> {
-  const approvalWindow = _getApprovalWindow();
   const pending = pendingApprovals.get(approvalId);
-  if (!pending) return;
+  if (!pending) {
+    console.warn(`[approval] No pending approval found for id=${approvalId}`);
+    return;
+  }
 
   const setupData = getSetupData();
   const apiKey = setupData.apiKey;
-  if (!apiKey) return;
+  if (!apiKey) {
+    console.warn("[approval] No API key available");
+    return;
+  }
 
   const approvalUrl = getApprovalUrl();
-  if (!approvalUrl) return;
+  if (!approvalUrl) {
+    console.warn("[approval] Cannot construct approval URL");
+    return;
+  }
+
+  console.log(`[approval] Sending ${command} for ${pending.kind}:${pending.name} (session=${pending.sessionId.substring(0, 8)}...)`);
 
   try {
     const response = await fetch(approvalUrl, {
@@ -251,38 +301,47 @@ export async function handleApproval(
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`[approval] Server returned ${response.status}: ${errorText}`);
       throw new Error(`Approval failed: ${response.status} ${errorText}`);
     }
 
+    console.log(`[approval] Server accepted ${command}`);
+
+    // Show success notification (best-effort)
+    try {
+      if (Notification.isSupported()) {
+        const actionLabel =
+          command === "approve"
+            ? "approved"
+            : command === "approve_and_remember"
+              ? "approved and remembered"
+              : "denied";
+        const n = new Notification({
+          title: "Edison Watch",
+          body: `Successfully ${actionLabel} ${pending.kind} '${pending.name}'`,
+          ...(process.platform !== "darwin" && { icon: trayIconPath }),
+        });
+        n.show();
+      }
+    } catch {
+      // Don't let a notification failure block the UI cleanup
+    }
+  } catch (err) {
+    console.error(`[approval] Failed to ${command} ${pending.kind} '${pending.name}':`, err);
+  } finally {
+    // Always remove from local state and UI, even if the POST failed —
+    // a stale item the user can't dismiss is worse than a missed approval
     pendingApprovals.delete(approvalId);
     _onPendingChanged?.();
-
-    // Show success notification
-    if (Notification.isSupported()) {
-      const actionLabel =
-        command === "approve"
-          ? "approved"
-          : command === "approve_and_remember"
-            ? "approved and remembered"
-            : "denied";
-      const n = new Notification({
-        title: "Edison Watch",
-        body: `Successfully ${actionLabel} ${pending.kind} '${pending.name}'`,
-        ...(process.platform !== "darwin" && { icon: trayIconPath }),
-      });
-      n.show();
-    }
-
-    if (approvalWindow && !approvalWindow.isDestroyed()) {
+    const approvalWindow = _getApprovalWindow();
+    if (isAlive(approvalWindow)) {
       approvalWindow.webContents.send("approval:removed", approvalId);
       if (pendingApprovals.size === 0) {
         setTimeout(() => {
-          if (approvalWindow && !approvalWindow.isDestroyed()) approvalWindow.close();
+          if (isAlive(approvalWindow)) approvalWindow.close();
         }, 500);
       }
     }
-  } catch (err) {
-    console.error(`Failed to ${command} ${pending.kind} '${pending.name}':`, err);
   }
 }
 
@@ -293,7 +352,7 @@ export function showPendingApprovalsDialog(mainWindow: BrowserWindow | null): vo
   const approvals = Array.from(pendingApprovals.values());
   if (approvals.length === 0) return;
 
-  if (approvalWindow && !approvalWindow.isDestroyed()) {
+  if (isAlive(approvalWindow)) {
     approvalWindow.focus();
     return;
   }

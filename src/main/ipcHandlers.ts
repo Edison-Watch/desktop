@@ -5,12 +5,12 @@
  * Call registerIpcHandlers() once after app.whenReady().
  */
 
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, safeStorage, shell } from "electron";
 import { promises as fs } from "fs";
 import { homedir } from "os";
-import { dirname, resolve, sep } from "path";
+import { dirname, join, resolve, sep } from "path";
 
-import { discoverMcpServers, getJetBrainsMcpConfigPaths } from "./mcpDiscovery";
+import { discoverMcpServers, getJetBrainsMcpConfigPaths, macAppExists } from "./mcpDiscovery";
 import type { DiscoveredMcpServer, McpClientId, McpServerConfig } from "./mcpDiscovery";
 import { injectAllHooks, removeAllHooks, getHookStatus, injectVsCodeWorkspaceHook, removeVsCodeWorkspaceHook } from "./hookInjection";
 import { startHookHealthMonitor } from "./hookHealthMonitor";
@@ -223,6 +223,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   // MCP: Discover installed clients
   ipcMain.handle("mcp:detectClients", async () => {
     const clients: Array<{ id: string; name: string; configPath: string }> = [];
+
     const checks: Array<{
       id: string;
       name: string;
@@ -249,6 +250,13 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
       { id: "windsurf", name: "Windsurf", getPath: () => import("./mcpDiscovery").then(m => m.getWindsurfConfigPath()) },
       { id: "zed", name: "Zed", getPath: () => import("./mcpDiscovery").then(m => m.getZedConfigPath()) },
       { id: "claude-desktop", name: "Claude Desktop", getPath: () => import("./mcpDiscovery").then(m => m.getClaudeDesktopConfigPath()) },
+      {
+        id: "claude-cowork",
+        name: "Claude Cowork",
+        getPath: () => import("./mcpDiscovery").then(m => m.getClaudeCoworkConfigPath()),
+        // Cowork is detected by the presence of vm_bundles/ (downloaded on first Cowork launch)
+        detectDir: (configPath) => join(dirname(configPath), 'vm_bundles'),
+      },
       { id: "antigravity", name: "Antigravity", getPath: () => import("./mcpDiscovery").then(m => m.getAntigravityConfigPath()) },
     ];
 
@@ -257,6 +265,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
         const configPath = await check.getPath();
         const checkDir = check.detectDir ? check.detectDir(configPath) : dirname(configPath);
         await fs.access(checkDir);
+        if (!(await macAppExists(check.id))) continue;
         clients.push({ id: check.id, name: check.name, configPath });
       } catch {
         // Client not installed
@@ -268,6 +277,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
       const jbPaths = await getJetBrainsMcpConfigPaths();
       const nameMap: Record<string, string> = { intellij: "IntelliJ IDEA", pycharm: "PyCharm", webstorm: "WebStorm" };
       for (const { client, path } of jbPaths) {
+        if (!(await macAppExists(client))) continue;
         clients.push({ id: client, name: nameMap[client] ?? client, configPath: path });
       }
     } catch {
@@ -484,5 +494,36 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
 
   ipcMain.handle("mcp:removeVsCodeWorkspaceHook", async (_event, workspacePath: string) => {
     return await removeVsCodeWorkspaceHook(workspacePath);
+  });
+
+  // Keychain: store/load the user's personal encryption key via OS keychain (safeStorage)
+  const keychainFile = join(app.getPath("userData"), ".personal-key.enc");
+
+  ipcMain.handle("keychain:save", async (_event, plaintext: string) => {
+    if (!safeStorage.isEncryptionAvailable()) {
+      return { ok: false, error: "OS encryption not available" };
+    }
+    const encrypted = safeStorage.encryptString(plaintext);
+    await fs.writeFile(keychainFile, encrypted);
+    return { ok: true };
+  });
+
+  ipcMain.handle("keychain:load", async () => {
+    if (!safeStorage.isEncryptionAvailable()) return null;
+    try {
+      const encrypted = await fs.readFile(keychainFile);
+      return safeStorage.decryptString(encrypted);
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle("keychain:delete", async () => {
+    try {
+      await fs.unlink(keychainFile);
+    } catch {
+      // Not present — ignore
+    }
+    return { ok: true };
   });
 }

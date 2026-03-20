@@ -19,11 +19,11 @@ import {
   getWindsurfConfigPath,
   getZedConfigPath,
   getAntigravityConfigPath,
+  getClaudeCoworkConfigPath,
   getJetBrainsMcpConfigPaths,
 } from './mcpDiscovery'
 import {
   readConfigFile,
-  getServersKey,
   getServersFromConfig,
   setServersInConfig,
   type ConfigFileFormat,
@@ -54,11 +54,6 @@ export interface ApplyIntegrationsResult {
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
-/** Clients whose config files contain other settings we must preserve. */
-function isMergeClient(clientId: McpClientId): boolean {
-  return ['claude-code', 'zed', 'intellij', 'pycharm', 'webstorm'].includes(clientId)
-}
-
 /** Build the Edison Watch MCP server entry for a given client. */
 function buildEdisonEntry(
   clientId: McpClientId,
@@ -86,6 +81,7 @@ async function getPathForApp(
     'vscode-insiders': getVscodeInsidersUserMcpPath,
     cursor: getCursorConfigPath,
     'claude-desktop': getClaudeDesktopConfigPath,
+    'claude-cowork': getClaudeCoworkConfigPath,
     'claude-code': getClaudeCodeUserSettingsPath,
     windsurf: getWindsurfConfigPath,
     zed: getZedConfigPath,
@@ -126,18 +122,6 @@ async function mergeEdisonEntry(
   await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8')
 }
 
-/** For overwrite clients: write a fresh config with just the edison-watch entry. */
-async function writeEdisonConfig(
-  configPath: string,
-  clientId: McpClientId,
-  edisonEntry: Record<string, unknown>,
-): Promise<void> {
-  const config: ConfigFileFormat = {}
-  const key = getServersKey(clientId)
-  config[key] = { 'edison-watch': edisonEntry as McpServerConfig }
-  await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8')
-}
-
 /** Apply Edison Watch config to a single app. Returns modified config info. */
 async function applyToApp(
   appId: string,
@@ -167,11 +151,7 @@ async function applyToApp(
     await fs.copyFile(configPath, backupPath)
   }
 
-  if (isMergeClient(clientId)) {
-    await mergeEdisonEntry(configPath, clientId, entry)
-  } else {
-    await writeEdisonConfig(configPath, clientId, entry)
-  }
+  await mergeEdisonEntry(configPath, clientId, entry)
 
   return {
     appId,

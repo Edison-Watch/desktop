@@ -46,6 +46,9 @@ export default function FinishStep({
   // Track which individual configs have been reverted (by configPath)
   const [revertedPaths, setRevertedPaths] = useState<Set<string>>(new Set());
   const [revertingPaths, setRevertingPaths] = useState<Set<string>>(new Set());
+  const [redoingPaths, setRedoingPaths] = useState<Set<string>>(new Set());
+  // Updated backup paths after redo (re-apply creates a new backup)
+  const [updatedBackupPaths, setUpdatedBackupPaths] = useState<Map<string, string>>(new Map());
 
   const handleOpenDashboard = async () => {
     let dashUrl = apiBaseUrl.replace(/\/$/, "");
@@ -99,6 +102,42 @@ export default function FinishStep({
     }
   };
 
+  const handleRedoOne = async (appId: string, configPath: string) => {
+    if (redoingPaths.has(configPath)) return;
+    setRedoingPaths((prev) => new Set(prev).add(configPath));
+    try {
+      const result = await window.api.mcp.applyAppIntegrations({
+        serverAddress: mcpBaseUrl,
+        mcpBaseUrl,
+        apiKey,
+        edisonSecretKey: edisonSecretKey || undefined,
+        apps: [appId],
+      });
+      if (result.success && result.modifiedConfigs.length > 0) {
+        const newBackupPath = result.modifiedConfigs[0].backupPath;
+        setRevertedPaths((prev) => {
+          const next = new Set(prev);
+          next.delete(configPath);
+          return next;
+        });
+        setUpdatedBackupPaths((prev) => {
+          const next = new Map(prev);
+          if (newBackupPath) next.set(configPath, newBackupPath);
+          else next.delete(configPath); // clear stale path so original backupPath is used
+          return next;
+        });
+      }
+    } catch (err) {
+      console.warn("Redo failed:", err);
+    } finally {
+      setRedoingPaths((prev) => {
+        const next = new Set(prev);
+        next.delete(configPath);
+        return next;
+      });
+    }
+  };
+
   const handleUndoAll = async () => {
     const remaining = modifiedConfigs.filter(
       (c) => !revertedPaths.has(c.configPath) && !revertingPaths.has(c.configPath),
@@ -109,7 +148,7 @@ export default function FinishStep({
       const result = await window.api.mcp.revertAppIntegrations({
         configs: remaining.map((c) => ({
           configPath: c.configPath,
-          backupPath: c.backupPath,
+          backupPath: updatedBackupPaths.get(c.configPath) ?? c.backupPath,
         })),
       });
       if (result.errors?.length) {
@@ -184,6 +223,8 @@ export default function FinishStep({
             {modifiedConfigs.map((entry) => {
               const reverted = revertedPaths.has(entry.configPath);
               const reverting = revertingPaths.has(entry.configPath);
+              const redoing = redoingPaths.has(entry.configPath);
+              const currentBackupPath = updatedBackupPaths.get(entry.configPath) ?? entry.backupPath;
               return (
                 <div key={entry.configPath} className="flex items-center justify-between gap-3 py-1">
                   <div className="flex items-center gap-2 min-w-0">
@@ -195,16 +236,28 @@ export default function FinishStep({
                       <span className="text-[11px] text-[var(--text-muted)]">reverted</span>
                     )}
                   </div>
-                  {!reverted && entry.backupPath && (
-                    <button
-                      type="button"
-                      disabled={reverting}
-                      onClick={() => handleUndoOne(entry.configPath, entry.backupPath)}
-                      className="shrink-0 text-xs text-[var(--danger)]/70 hover:text-[var(--danger)] transition-colors disabled:opacity-50"
-                    >
-                      {reverting ? "Undoing…" : "Undo"}
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {reverted && (
+                      <button
+                        type="button"
+                        disabled={redoing}
+                        onClick={() => handleRedoOne(entry.appId, entry.configPath)}
+                        className="text-xs text-[var(--accent)]/70 hover:text-[var(--accent)] transition-colors disabled:opacity-50"
+                      >
+                        {redoing ? "Redoing…" : "Redo"}
+                      </button>
+                    )}
+                    {!reverted && currentBackupPath && (
+                      <button
+                        type="button"
+                        disabled={reverting}
+                        onClick={() => handleUndoOne(entry.configPath, currentBackupPath)}
+                        className="text-xs text-[var(--danger)]/70 hover:text-[var(--danger)] transition-colors disabled:opacity-50"
+                      >
+                        {reverting ? "Undoing…" : "Undo"}
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}

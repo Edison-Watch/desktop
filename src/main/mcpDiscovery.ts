@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs'
 import { homedir, platform } from 'os'
 import { join, basename, dirname } from 'path'
+import * as jsonc from 'jsonc-parser'
 import {
   getCursorWorkspaceStoragePath,
   getCursorProjectMcpPaths,
@@ -21,6 +22,14 @@ export {
 // Re-export fingerprinting utility from seenServersStore
 export { getServerFingerprint } from './seenServersStore'
 
+// Re-export Cowork helpers and dedup (split to stay within line limits)
+export { getClaudeCoworkConfigPath, parseClaudeCoworkConfig } from './mcpDiscoveryCowork'
+import { discoverClaudeCowork, deduplicateByNameAndConfig } from './mcpDiscoveryCowork'
+
+// Re-export Antigravity helpers (split to stay within line limits)
+export { getAntigravityConfigPath, parseAntigravityMcpJson } from './mcpDiscoveryAntigravity'
+import { discoverAntigravity } from './mcpDiscoveryAntigravity'
+
 // Standardized structures we return to the renderer. Designed to be easily extensible
 // to additional MCP clients beyond VS Code.
 export type McpClientId =
@@ -28,6 +37,7 @@ export type McpClientId =
   | 'vscode-insiders'
   | 'cursor'
   | 'claude-desktop'
+  | 'claude-cowork'
   | 'claude-code'
   | 'windsurf'
   | 'zed'
@@ -49,8 +59,15 @@ export type McpServerConfig =
       envFile?: string
     }
   | {
-      // http/sse server
+      // http/sse server (with explicit type)
       type: McpServerTransport
+      url: string
+      headers?: Record<string, string>
+    }
+  | {
+      // http server (bare url, no type — used by Cursor and others)
+      type?: undefined
+      command?: undefined
       url: string
       headers?: Record<string, string>
     }
@@ -147,11 +164,6 @@ export function getZedConfigPath(): string {
     default:
       return join(homedir(), '.config', 'zed', 'settings.json')
   }
-}
-
-// Antigravity (Google) config path (same on all platforms)
-export function getAntigravityConfigPath(): string {
-  return join(homedir(), '.gemini', 'antigravity', 'mcp_config.json')
 }
 
 // JetBrains IDE base directory (macOS and Windows only; plan scope)
@@ -530,7 +542,8 @@ export async function parseCursorMcpJson(
   projectName?: string
 ): Promise<DiscoveredMcpServer[]> {
   const raw = await fs.readFile(filePath, 'utf-8')
-  const json = JSON.parse(raw) as {
+  // Cursor config files commonly contain trailing commas; use JSONC parser
+  const json = jsonc.parse(raw) as {
     mcpServers?: Record<string, McpServerConfig>
   }
 
@@ -665,41 +678,32 @@ async function discoverZed(): Promise<DiscoveredMcpServer[]> {
   return results
 }
 
-// Parse Antigravity mcp.json (shape: { mcpServers?: { [name]: { ... } } })
-// Exported for testing
-export async function parseAntigravityMcpJson(filePath: string): Promise<DiscoveredMcpServer[]> {
-  const raw = await fs.readFile(filePath, 'utf-8')
-  const json = JSON.parse(raw) as {
-    mcpServers?: Record<string, McpServerConfig>
-  }
-
-  const servers: DiscoveredMcpServer[] = []
-  const entries = Object.entries(json.mcpServers ?? {})
-  for (const [name, cfg] of entries) {
-    servers.push({
-      name,
-      client: 'antigravity',
-      source: 'user',
-      path: filePath,
-      config: cfg as McpServerConfig
-    })
-  }
-  return servers
+// On macOS, map client ids to possible .app bundle names.
+// Clients without an entry are CLI-only and always pass the check.
+// JetBrains IDEs can have variant names (e.g. "IntelliJ IDEA CE.app").
+export const MAC_APP_NAMES: Record<string, string[]> = {
+  vscode: ['Visual Studio Code.app'],
+  'vscode-insiders': ['Visual Studio Code - Insiders.app'],
+  cursor: ['Cursor.app'],
+  windsurf: ['Windsurf.app'],
+  zed: ['Zed.app'],
+  'claude-desktop': ['Claude.app'],
+  'claude-cowork': ['Claude.app'],
+  intellij: ['IntelliJ IDEA.app', 'IntelliJ IDEA CE.app', 'IntelliJ IDEA Ultimate.app'],
+  pycharm: ['PyCharm.app', 'PyCharm CE.app'],
+  webstorm: ['WebStorm.app'],
 }
 
-async function discoverAntigravity(): Promise<DiscoveredMcpServer[]> {
-  const results: DiscoveredMcpServer[] = []
-
-  try {
-    const configPath = getAntigravityConfigPath()
-    await fs.access(configPath)
-    const servers = await parseAntigravityMcpJson(configPath)
-    results.push(...servers)
-  } catch {
-    // File not found or unreadable; ignore
+/** On macOS, check whether a GUI client's .app bundle exists. CLI-only clients always pass. */
+export async function macAppExists(clientId: string): Promise<boolean> {
+  if (platform() !== 'darwin') return true
+  const appNames = MAC_APP_NAMES[clientId]
+  if (!appNames) return true
+  for (const appName of appNames) {
+    try { await fs.access(join('/Applications', appName)); return true } catch { /* */ }
+    try { await fs.access(join(homedir(), 'Applications', appName)); return true } catch { /* */ }
   }
-
-  return results
+  return false
 }
 
 export async function discoverMcpServers(): Promise<DiscoveredMcpServer[]> {
@@ -733,6 +737,10 @@ export async function discoverMcpServers(): Promise<DiscoveredMcpServer[]> {
   const claudeDesktopServers = await discoverClaudeDesktop()
   results.push(...claudeDesktopServers)
 
+  // Claude Cowork discovery (shares config with Desktop; separate client tag)
+  const claudeCoworkServers = await discoverClaudeCowork()
+  results.push(...claudeCoworkServers)
+
   // Cursor discovery
   const cursorServers = await discoverCursor()
   results.push(...cursorServers)
@@ -760,40 +768,21 @@ export async function discoverMcpServers(): Promise<DiscoveredMcpServer[]> {
     }
   }
 
-  return results
-}
+  // On macOS, filter out servers whose GUI client .app is not actually installed
+  const deduped = deduplicateByNameAndConfig(results)
+  if (platform() !== 'darwin') return deduped
 
-/**
- * Get all config paths that should be monitored for changes.
- * Returns an object with paths for each client.
- */
-export interface McpConfigPaths {
-  vscode: string
-  vscodeInsiders: string
-  claudeDesktop: string
-  cursor: string
-  cursorWorkspaceStorage: string
-  claudeCode: string[]
-  windsurf: string
-  zed: string
-  antigravity: string
-}
-
-export function getAllConfigPaths(): McpConfigPaths {
-  return {
-    vscode: getVscodeUserMcpPath(),
-    vscodeInsiders: getVscodeInsidersUserMcpPath(),
-    claudeDesktop: getClaudeDesktopConfigPath(),
-    cursor: getCursorConfigPath(),
-    cursorWorkspaceStorage: getCursorWorkspaceStoragePath(),
-    claudeCode: [
-      getClaudeCodeUserSettingsPath(),
-      getClaudeCodeLocalSettingsPath(),
-      getClaudeCodeHomeJsonPath(),
-      getClaudeCodeDedicatedMcpPath()
-    ],
-    windsurf: getWindsurfConfigPath(),
-    zed: getZedConfigPath(),
-    antigravity: getAntigravityConfigPath()
+  const installedCache = new Map<string, boolean>()
+  const filtered: DiscoveredMcpServer[] = []
+  for (const server of deduped) {
+    let installed = installedCache.get(server.client)
+    if (installed === undefined) {
+      installed = await macAppExists(server.client)
+      installedCache.set(server.client, installed)
+    }
+    if (installed) filtered.push(server)
   }
+  return filtered
 }
+
+// McpConfigPaths and getAllConfigPaths moved to ./mcpConfigPaths

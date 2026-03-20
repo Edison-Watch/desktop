@@ -40,6 +40,10 @@ export const Zed: Story = {
   args: { id: 'zed', name: 'Zed' },
 };
 
+export const Antigravity: Story = {
+  args: { id: 'antigravity', name: 'Antigravity' },
+};
+
 export const UnknownApp: Story = {
   args: { id: 'my-custom-ide', name: 'My Custom IDE' },
 };
@@ -58,6 +62,7 @@ export const AllLogos: Story = {
         { id: 'intellij', name: 'IntelliJ' },
         { id: 'pycharm', name: 'PyCharm' },
         { id: 'webstorm', name: 'WebStorm' },
+        { id: 'antigravity', name: 'Antigravity' },
         { id: 'unknown', name: 'Unknown App' },
       ].map(({ id, name }) => (
         <div key={id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>

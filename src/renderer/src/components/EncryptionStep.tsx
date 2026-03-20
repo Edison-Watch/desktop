@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button, Card, Input } from "@edison/shared/ui";
 import {
   generateSecretKey,
@@ -30,13 +30,56 @@ export default function EncryptionStep({
   // Key state
   const [orgKey, setOrgKey] = useState("");
   const [userKey, setUserKey] = useState("");
-  const [userKeyMode, setUserKeyMode] = useState<"none" | "generate" | "existing">("none");
+  const [userKeyMode, setUserKeyMode] = useState<"generate" | "existing">("generate");
   const [generatedKey, setGeneratedKey] = useState("");
   const [keyCopied, setKeyCopied] = useState(false);
   const [keyRegistering, setKeyRegistering] = useState(false);
   const [keyRegistered, setKeyRegistered] = useState(false);
   const [keyError, setKeyError] = useState("");
   const [compositeKey, setCompositeKey] = useState("");
+  const [keychainSaved, setKeychainSaved] = useState(false);
+  const [keychainSaving, setKeychainSaving] = useState(false);
+
+  // On mount: auto-generate a key, then check if one is already registered
+  useEffect(() => {
+    const init = async () => {
+      // Auto-generate upfront so user can immediately copy/save
+      const newKey = generateSecretKey();
+      setGeneratedKey(newKey);
+      setUserKeyMode("generate");
+
+      // Check backend for existing key
+      try {
+        const res = await fetch(
+          `${apiBaseUrl.replace(/\/$/, "")}/api/v1/user/settings`,
+          { headers: { Authorization: `Bearer ${apiKey}` } }
+        );
+        if (res.ok) {
+          const data = await res.json() as { has_secret_key?: boolean };
+          if (data.has_secret_key) {
+            // Try to restore from local keychain
+            const stored = await window.api.keychain.load();
+            if (stored) {
+              // Key is in keychain — restore and mark registered
+              const key = buildCompositeKey(stored, null);
+              cacheSecretKey(key);
+              setCompositeKey(key);
+              setKeyRegistered(true);
+              setKeychainSaved(true);
+            } else {
+              // Backend has a key but it's not in keychain — ask user to paste
+              setGeneratedKey("");
+              setUserKeyMode("existing");
+            }
+          }
+        }
+      } catch {
+        // Non-fatal — user can still proceed with the generated key
+      }
+    };
+    void init();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Scan & submit state
   const [scanning, setScanning] = useState(false);
@@ -57,6 +100,24 @@ export default function EncryptionStep({
   // Apply state
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState("");
+
+  const handleSaveToKeychain = async (rawKey: string) => {
+    setKeychainSaving(true);
+    setKeyError("");
+    try {
+      const result = await window.api.keychain.save(rawKey);
+      if (!result.ok) {
+        setKeyError(result.error ?? "Failed to save to keychain");
+        return;
+      }
+      setKeychainSaved(true);
+      await registerKey(rawKey);
+    } catch (err) {
+      setKeyError(err instanceof Error ? err.message : "Failed to save to keychain");
+    } finally {
+      setKeychainSaving(false);
+    }
+  };
 
   const registerKey = async (rawUserKey: string) => {
     setKeyRegistering(true);
@@ -186,7 +247,9 @@ export default function EncryptionStep({
           {keyRegistered ? (
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400">
-                Key registered successfully. Make sure you saved it in your password manager.
+                {keychainSaved
+                  ? "Key registered and saved to macOS Keychain."
+                  : "Key registered successfully. Make sure you saved it in your password manager."}
               </div>
               {compositeKey && (
                 <Button
@@ -198,41 +261,18 @@ export default function EncryptionStep({
                     setTimeout(() => setKeyCopied(false), 2000);
                   }}
                 >
-                  {keyCopied ? "Copied!" : "Copy Composite Key"}
+                  {keyCopied ? "Copied!" : "Copy Key"}
                 </Button>
               )}
               {keyError && (
                 <p className="text-xs text-[var(--warning)]">{keyError}</p>
               )}
             </div>
-          ) : userKeyMode === "none" ? (
-            <div className="flex gap-2">
-              <Button
-                variant="primary"
-                size="md"
-                onClick={() => {
-                  const key = generateSecretKey();
-                  setGeneratedKey(key);
-                  setUserKeyMode("generate");
-                }}
-                className="flex-1"
-              >
-                Generate New Key
-              </Button>
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={() => setUserKeyMode("existing")}
-                className="flex-1"
-              >
-                I Have a Key
-              </Button>
-            </div>
           ) : userKeyMode === "generate" ? (
             <div className="flex flex-col gap-3">
               <div>
                 <label className="block text-xs font-medium text-[var(--text-primary)] mb-1.5">
-                  Your Generated Key
+                  Your Personal Key
                 </label>
                 <div className="flex items-center gap-2">
                   <div className="flex-1 min-w-0">
@@ -251,39 +291,29 @@ export default function EncryptionStep({
                   </Button>
                 </div>
               </div>
-              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-[var(--warning)]/10 border border-[var(--warning)]/20">
-                <svg viewBox="0 0 16 16" fill="none" className="h-4 w-4 shrink-0 mt-px text-[var(--warning)]" aria-hidden="true">
-                  <path d="M8 1.5l6.5 12H1.5L8 1.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-                  <path d="M8 6.5v3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                  <circle cx="8" cy="11.5" r="0.5" fill="currentColor" />
-                </svg>
-                <p className="text-xs text-[var(--warning)] leading-relaxed">
-                  Save this key in your password manager now. It will <strong>never be shown again</strong>.
-                  If lost, your encrypted credentials cannot be recovered.
-                </p>
-              </div>
+              <p className="text-xs text-[var(--text-muted)]">
+                Keep a backup in your password manager — this key cannot be recovered if lost.
+              </p>
               {keyError && (
                 <p className="text-xs text-[var(--danger)]">{keyError}</p>
               )}
-              <div className="flex gap-2 justify-end">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    setUserKeyMode("none");
-                    setGeneratedKey("");
-                    setKeyError("");
-                  }}
-                >
-                  Cancel
-                </Button>
+              <div className="flex gap-2">
                 <Button
                   variant="primary"
                   size="sm"
-                  loading={keyRegistering}
-                  onClick={() => registerKey(generatedKey)}
+                  loading={keychainSaving || keyRegistering}
+                  onClick={() => handleSaveToKeychain(generatedKey)}
+                  className="flex-1"
                 >
-                  Register Key
+                  Save to Keychain & Register
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={keychainSaving || keyRegistering}
+                  onClick={() => setUserKeyMode("existing")}
+                >
+                  I Have a Key
                 </Button>
               </div>
             </div>
@@ -304,12 +334,12 @@ export default function EncryptionStep({
                   variant="secondary"
                   size="sm"
                   onClick={() => {
-                    setUserKeyMode("none");
+                    setUserKeyMode("generate");
                     setUserKey("");
                     setKeyError("");
                   }}
                 >
-                  Cancel
+                  Back
                 </Button>
                 <Button
                   variant="primary"

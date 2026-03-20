@@ -4,7 +4,8 @@
  */
 
 /**
- * Base CSS: reset, CSS variables (Edison palette), body, and shared typography.
+ * Base CSS: reset, Edison design tokens (matches packages/shared/src/theme/tokens.css),
+ * body, and shared typography.
  */
 export const BASE_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&display=swap');
@@ -12,41 +13,27 @@ export const BASE_CSS = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   :root {
-    --baseline-black: #000000;
-    --grid-grey-50: #F9F9F9;
-    --grid-grey-100: #C8C8C8;
-    --grid-grey-200: #8F8F8F;
-    --grid-grey-300: #555555;
-    --grid-grey-400: #383838;
-    --grid-grey-500: #1C1C1C;
-    --graphene-grey-200: #A3A9B3;
-    --graphene-grey-500: #5E6575;
-    --graphene-grey-800: #2F3440;
-    --core-cyan-400: #E0FFFE;
-    --core-cyan-500: #C3FFFD;
-    --core-cyan-600: #7DE6E2;
-    --circuit-green-400: #3EE7A0;
-    --circuit-green-500: #00C781;
-    --circuit-green-600: #007A52;
-    --infra-red-400: #FF6B7D;
-    --infra-red-500: #FF3B4D;
-    --infra-red-600: #C3001A;
-
-    /* Semantic mappings */
-    --bg: var(--baseline-black);
-    --card: var(--grid-grey-500);
-    --border: var(--grid-grey-400);
-    --text: var(--grid-grey-50);
-    --muted: var(--graphene-grey-200);
-    --accent: var(--core-cyan-500);
-    --success: var(--circuit-green-500);
-    --danger: var(--infra-red-500);
+    --bg-base: #0B0E14;
+    --bg-raised: #141820;
+    --bg-overlay: #1A1F2B;
+    --bg-input: #0F1219;
+    --accent: #7DFFF6;
+    --accent-muted: #5CC8C0;
+    --accent-dim: #2A4A48;
+    --text-primary: #E8ECF2;
+    --text-secondary: #8B95A8;
+    --text-muted: #5A6478;
+    --border: #1E2432;
+    --border-active: #7DFFF6;
+    --success: #34D399;
+    --warning: #FBBF24;
+    --danger: #F87171;
   }
 
   body {
     font-family: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: var(--bg);
-    color: var(--text);
+    background: var(--bg-base);
+    color: var(--text-primary);
     padding: 20px;
   }
 `
@@ -65,7 +52,7 @@ export const HEADER_CSS = `
   h1 {
     font-size: 18px;
     font-weight: 600;
-    color: var(--text);
+    color: var(--text-primary);
     margin: 0;
     display: flex;
     align-items: center;
@@ -73,7 +60,7 @@ export const HEADER_CSS = `
   }
 
   h1 .count {
-    color: var(--infra-red-400);
+    color: var(--danger);
   }
 
   .header-actions {
@@ -83,18 +70,18 @@ export const HEADER_CSS = `
 
   .description {
     font-size: 13px;
-    color: var(--muted);
+    color: var(--text-muted);
     margin-bottom: 16px;
     line-height: 1.5;
   }
 
   .description strong {
-    color: var(--infra-red-400);
+    color: var(--danger);
   }
 
   .summary {
     font-size: 13px;
-    color: var(--muted);
+    color: var(--text-muted);
     margin-bottom: 16px;
   }
 
@@ -115,7 +102,7 @@ export const SERVER_CARD_CSS = `
   }
 
   .server-item {
-    background: var(--card);
+    background: var(--bg-raised);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 14px;
@@ -123,7 +110,7 @@ export const SERVER_CARD_CSS = `
   }
 
   .server-item:hover {
-    border-color: var(--graphene-grey-500);
+    border-color: var(--text-muted);
   }
 
   .server-header {
@@ -142,14 +129,14 @@ export const SERVER_CARD_CSS = `
   .server-name strong {
     font-size: 15px;
     font-weight: 500;
-    color: var(--text);
+    color: var(--text-primary);
   }
 
   .transport-badge {
     font-size: 10px;
     font-weight: 600;
     color: var(--accent);
-    background: rgba(195, 255, 253, 0.1);
+    background: var(--accent-dim);
     padding: 2px 8px;
     border-radius: 3px;
     letter-spacing: 0.5px;
@@ -160,8 +147,8 @@ export const SERVER_CARD_CSS = `
     align-items: center;
     gap: 6px;
     font-size: 11px;
-    color: var(--muted);
-    background: var(--graphene-grey-800);
+    color: var(--text-muted);
+    background: var(--bg-overlay);
     padding: 4px 10px;
     border-radius: 4px;
   }
@@ -181,7 +168,7 @@ export const SERVER_CARD_CSS = `
 
   .server-info {
     font-size: 12px;
-    color: var(--muted);
+    color: var(--text-secondary);
     font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
     margin-bottom: 6px;
     overflow: hidden;
@@ -191,7 +178,7 @@ export const SERVER_CARD_CSS = `
 
   .server-meta {
     font-size: 11px;
-    color: var(--graphene-grey-500);
+    color: var(--text-muted);
     display: flex;
     align-items: center;
     gap: 6px;
@@ -200,13 +187,11 @@ export const SERVER_CARD_CSS = `
 
   .meta-label {
     font-weight: 500;
-    color: var(--graphene-grey-200);
-    opacity: 0.6;
+    color: var(--text-muted);
   }
 
   .meta-value {
-    color: var(--graphene-grey-200);
-    opacity: 0.8;
+    color: var(--text-secondary);
   }
 
   .meta-value.path {
@@ -219,13 +204,13 @@ export const SERVER_CARD_CSS = `
   }
 
   .meta-separator {
-    color: var(--grid-grey-400);
+    color: var(--border);
   }
 
   .empty-state {
     text-align: center;
     padding: 48px 20px;
-    color: var(--muted);
+    color: var(--text-muted);
   }
 
   .empty-state p {
@@ -246,8 +231,8 @@ export const BUTTON_CSS = `
 
   .button {
     border: 1px solid var(--border);
-    background: var(--graphene-grey-800);
-    color: var(--text);
+    background: var(--bg-overlay);
+    color: var(--text-primary);
     padding: 8px 16px;
     border-radius: 6px;
     cursor: pointer;
@@ -275,7 +260,7 @@ export const BUTTON_CSS = `
 
   .button-dismiss {
     background: transparent !important;
-    color: var(--muted) !important;
+    color: var(--text-muted) !important;
     border-color: var(--border) !important;
   }
 
@@ -287,14 +272,14 @@ export const BUTTON_CSS = `
 
   .button-dismiss-all {
     background: transparent !important;
-    color: var(--muted) !important;
+    color: var(--text-muted) !important;
     border-color: var(--border) !important;
   }
 
   .done-message {
     text-align: center;
     padding: 40px;
-    color: var(--muted);
+    color: var(--text-muted);
   }
 
   .done-message .checkmark {
@@ -308,9 +293,9 @@ export const BUTTON_CSS = `
     justify-content: center;
     gap: 6px;
     font-size: 12px;
-    color: var(--graphene-grey-200);
-    background: rgba(163, 169, 179, 0.08);
-    border: 1px solid rgba(163, 169, 179, 0.15);
+    color: var(--text-secondary);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
     padding: 8px 16px;
     border-radius: 6px;
     width: 100%;
@@ -328,41 +313,41 @@ export const QUARANTINE_CSS = `
     align-items: center;
     gap: 6px;
     font-size: 11px;
-    color: var(--core-cyan-500);
-    background: rgba(195, 255, 253, 0.1);
+    color: var(--accent);
+    background: var(--accent-dim);
     padding: 4px 10px;
     border-radius: 4px;
     margin-bottom: 12px;
   }
 
   .quarantine-badge svg {
-    color: var(--core-cyan-500);
+    color: var(--accent);
   }
 
   h1 .count {
-    color: var(--core-cyan-500);
+    color: var(--accent);
   }
 
   .description strong {
-    color: var(--core-cyan-500);
+    color: var(--accent);
   }
 
   .button-request {
-    background: var(--core-cyan-600) !important;
-    color: var(--baseline-black) !important;
-    border-color: var(--core-cyan-600) !important;
+    background: var(--accent-muted) !important;
+    color: var(--bg-base) !important;
+    border-color: var(--accent-muted) !important;
     font-weight: 600 !important;
   }
 
   .button-request-all {
-    background: var(--core-cyan-600) !important;
-    color: var(--baseline-black) !important;
-    border-color: var(--core-cyan-600) !important;
+    background: var(--accent-muted) !important;
+    color: var(--bg-base) !important;
+    border-color: var(--accent-muted) !important;
     font-weight: 600 !important;
   }
 
   .done-message .checkmark {
-    color: var(--core-cyan-500);
+    color: var(--accent);
   }
 `
 
@@ -377,8 +362,8 @@ export const REGISTRATION_CSS = QUARANTINE_CSS
 export const DEBUG_CSS = `
   .refresh-btn {
     border: 1px solid var(--border);
-    background: var(--graphene-grey-800);
-    color: var(--text);
+    background: var(--bg-overlay);
+    color: var(--text-primary);
     padding: 6px 14px;
     border-radius: 6px;
     cursor: pointer;
@@ -423,13 +408,13 @@ export const DEBUG_CSS = `
     border-radius: 8px;
     padding: 14px;
     margin-bottom: 16px;
-    background: var(--card);
+    background: var(--bg-raised);
   }
 
   .debug-actions h2 {
     font-size: 13px;
     font-weight: 600;
-    color: var(--muted);
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 10px;
@@ -443,8 +428,8 @@ export const DEBUG_CSS = `
 
   .action-btn {
     border: 1px solid var(--border);
-    background: var(--graphene-grey-800);
-    color: var(--text);
+    background: var(--bg-overlay);
+    color: var(--text-primary);
     padding: 8px 14px;
     border-radius: 6px;
     cursor: pointer;

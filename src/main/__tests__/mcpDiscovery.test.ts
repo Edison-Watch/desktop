@@ -15,7 +15,6 @@ import {
   getClaudeCodeHomeJsonPath,
   getClaudeCodeDedicatedMcpPath,
   getClaudeCodeManagedMcpPath,
-  getAllConfigPaths,
   parseVscodeMcpJson,
   parseClaudeCodeSettingsJson,
   parseClaudeCodeMcpJson,
@@ -32,6 +31,7 @@ import {
   getServerFingerprint,
 } from "../mcpDiscovery";
 import type { DiscoveredMcpServer } from "../mcpDiscovery";
+import { getAllConfigPaths } from "../mcpConfigPaths";
 
 // ---------------------------------------------------------------------------
 // Helpers

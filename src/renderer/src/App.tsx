@@ -10,6 +10,12 @@ import useAuth from "./hooks/useAuth";
 
 export default function App(): React.ReactNode {
   const [currentStep, setCurrentStep] = useState(0);
+  const [maxVisitedStep, setMaxVisitedStep] = useState(0);
+
+  const goToStep = (step: number) => {
+    setCurrentStep(step);
+    setMaxVisitedStep((prev) => Math.max(prev, step));
+  };
   const [setupDone, setSetupDone] = useState<boolean | null>(null);
   const [selectedApps, setSelectedApps] = useState<string[]>([]);
   const [discoveredServers, setDiscoveredServers] = useState<DiscoveredServer[]>([]);
@@ -31,27 +37,27 @@ export default function App(): React.ReactNode {
   }, []);
 
   const handleWelcomeNext = () => {
-    if (auth.signedIn) setCurrentStep(1);
+    if (auth.signedIn) goToStep(1);
   };
 
   const handleAppsNext = (apps: string[], servers: DiscoveredServer[]) => {
     setSelectedApps(apps);
     setDiscoveredServers(servers);
-    setCurrentStep(2);
+    goToStep(2);
   };
 
   const handleEncryptionNext = (compositeKey: string, configs: ModifiedConfig[]) => {
     setEdisonSecretKey(compositeKey);
     setModifiedConfigs(configs);
     window.api.setup.reachedFinal();
-    setCurrentStep(3);
+    goToStep(3);
   };
 
   const handleRestart = () => {
     setModifiedConfigs([]);
     setEdisonSecretKey("");
     setSelectedApps([]);
-    setCurrentStep(1);
+    goToStep(1);
   };
 
   const handleComplete = () => {
@@ -75,8 +81,9 @@ export default function App(): React.ReactNode {
   return (
     <WizardLayout
       currentStep={currentStep}
+      maxVisitedStep={maxVisitedStep}
       locked={currentStep === 3}
-      onStepClick={(step) => setCurrentStep(step)}
+      onStepClick={goToStep}
     >
       {currentStep === 0 && <WelcomeStep auth={auth} onNext={handleWelcomeNext} />}
       {currentStep === 1 && (

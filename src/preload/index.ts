@@ -116,6 +116,16 @@ const api = {
     getMcpUrl: (): Promise<string | null> => ipcRenderer.invoke("menu:getMcpUrl"),
   },
 
+  /** OS keychain (safeStorage) — store/load the personal encryption key */
+  keychain: {
+    save: (plaintext: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("keychain:save", plaintext),
+    load: (): Promise<string | null> =>
+      ipcRenderer.invoke("keychain:load"),
+    delete: (): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("keychain:delete"),
+  },
+
   /** App version */
   getVersion: (): string => electronAPI.process.versions.electron ?? "",
 } as const;

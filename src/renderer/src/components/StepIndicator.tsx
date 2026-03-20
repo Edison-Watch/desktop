@@ -10,17 +10,19 @@ function CheckIcon() {
 
 interface StepIndicatorProps {
   currentStep: number;
+  maxVisitedStep?: number;
   locked?: boolean;
   onStepClick?: (step: number) => void;
 }
 
-export default function StepIndicator({ currentStep, locked, onStepClick }: StepIndicatorProps): React.ReactNode {
+export default function StepIndicator({ currentStep, maxVisitedStep, locked, onStepClick }: StepIndicatorProps): React.ReactNode {
+  const highWater = maxVisitedStep ?? currentStep;
   return (
     <div className={`flex items-center gap-1 ${locked ? "pointer-events-none opacity-60" : ""}`}>
       {steps.map((label, i) => {
         const isComplete = i < currentStep;
         const isActive = i === currentStep;
-        const isClickable = isComplete && !!onStepClick;
+        const isClickable = i !== currentStep && i <= highWater && !!onStepClick;
         return (
           <div key={label} className="flex items-center gap-1">
             {i > 0 && (

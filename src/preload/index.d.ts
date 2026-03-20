@@ -68,6 +68,11 @@ interface EdisonAPI {
     getMcpConfig: () => Promise<string | null>;
     getMcpUrl: () => Promise<string | null>;
   };
+  keychain: {
+    save: (plaintext: string) => Promise<{ ok: boolean; error?: string }>;
+    load: () => Promise<string | null>;
+    delete: () => Promise<{ ok: boolean }>;
+  };
   getVersion: () => string;
 }
 
