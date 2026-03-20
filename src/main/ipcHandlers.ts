@@ -176,10 +176,6 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     await handleApproval(approvalId, "deny");
   });
 
-  ipcMain.handle("approval:approve-remember", async (_event, approvalId: string) => {
-    await handleApproval(approvalId, "approve_and_remember");
-  });
-
   // Server health check
   ipcMain.handle("menu:check-health", async () => {
     return getIsServerOnline();
