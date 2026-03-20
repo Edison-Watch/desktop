@@ -30,6 +30,10 @@ export function getCodexConfigPath(): string {
   return join(homedir(), '.codex', 'config.toml')
 }
 
+export function getVsCodeCopilotHooksPath(): string {
+  return join(homedir(), '.copilot', 'hooks', 'edison-watch.json')
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface ClaudeCodeHook {
@@ -638,5 +642,74 @@ export async function removeCodexHook(): Promise<boolean> {
 
   await fs.writeFile(configPath, cleaned, 'utf-8')
   console.log('[HookInjection] Removed Edison hook from Codex config.toml')
+  return true
+}
+
+// ── VSCode Copilot Agent Hooks ──────────────────────────────────────────────
+
+export interface VsCodeCopilotHooksFile {
+  hooks: {
+    PreToolUse?: ClaudeCodeHook[]
+    Stop?: ClaudeCodeHook[]
+    [key: string]: ClaudeCodeHook[] | undefined
+  }
+}
+
+export function isVsCodeCopilotInstalled(): boolean {
+  return existsSync(join(homedir(), '.copilot'))
+}
+
+/**
+ * Inject Edison Watch hooks into VSCode Copilot's ~/.copilot/hooks/edison-watch.json.
+ * Creates PreToolUse (session ID injection) and Stop (session end) hooks.
+ */
+export async function injectVsCodeCopilotHook(): Promise<boolean> {
+  const hooksPath = getVsCodeCopilotHooksPath()
+
+  // Always ensure scripts exist (guards against manual deletion of ~/.edison-watch/ scripts)
+  const sessionScriptPath = await ensureSessionHookScript()
+  const sessionEndScriptPath = await ensureSessionEndHookScript()
+
+  // If the file already exists, it's ours — check if it's current
+  if (existsSync(hooksPath)) {
+    try {
+      const content = await fs.readFile(hooksPath, 'utf-8')
+      const existing = JSON.parse(content) as VsCodeCopilotHooksFile
+      const hasPreToolUse = existing.hooks?.PreToolUse?.some((h) => h.command?.includes('edison-session-hook') && !h.command?.includes('edison-session-end'))
+      const hasStop = existing.hooks?.Stop?.some((h) => h.command?.includes('edison-session-end'))
+      if (hasPreToolUse && hasStop) {
+        console.log('[HookInjection] Edison hooks already exist in VSCode Copilot hooks')
+        return false
+      }
+    } catch { /* corrupt file, overwrite */ }
+  }
+
+  const hooksDir = dirname(hooksPath)
+  if (!existsSync(hooksDir)) {
+    await fs.mkdir(hooksDir, { recursive: true })
+  }
+
+  const hooksFile: VsCodeCopilotHooksFile = {
+    hooks: {
+      PreToolUse: [{ type: 'command', command: `"${sessionScriptPath}"` }],
+      Stop: [{ type: 'command', command: `"${sessionEndScriptPath}"` }]
+    }
+  }
+
+  await fs.writeFile(hooksPath, JSON.stringify(hooksFile, null, 2), 'utf-8')
+  console.log('[HookInjection] Injected Edison hooks into VSCode Copilot hooks')
+  return true
+}
+
+/**
+ * Remove Edison Watch hooks from VSCode Copilot.
+ * Deletes the entire edison-watch.json file since it's Edison-owned.
+ */
+export async function removeVsCodeCopilotHook(): Promise<boolean> {
+  const hooksPath = getVsCodeCopilotHooksPath()
+  if (!existsSync(hooksPath)) return false
+
+  await fs.unlink(hooksPath)
+  console.log('[HookInjection] Removed Edison hooks from VSCode Copilot')
   return true
 }

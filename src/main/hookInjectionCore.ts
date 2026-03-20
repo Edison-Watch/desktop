@@ -152,7 +152,7 @@ const SESSION_END_HOOK_PYTHON = `#!/usr/bin/env python3
 import json, sys, os, time, random
 try:
     data = json.load(sys.stdin)
-    conv_id = data.get("conversation_id")
+    conv_id = data.get("conversation_id") if data.get("conversation_id") is not None else data.get("sessionId")
     reason = data.get("reason", "unknown")
     if conv_id:
         pending_dir = os.path.expanduser("~/.edison-watch/pending")
@@ -223,29 +223,47 @@ function getSessionHookScriptPath(): string {
   return join(homedir(), '.edison-watch', scriptName)
 }
 
-/** Python script content for the session hook (shared by Unix .py and Windows .py). */
+/** Python script content for the session hook (shared by Unix .py and Windows .py).
+ *  Format-agnostic: detects VSCode Copilot (hookEventName), Claude Code (hook_event_name), or Cursor (conversation_id). */
 const SESSION_HOOK_PYTHON = `#!/usr/bin/env python3
 import json
 import sys
 
 try:
     data = json.load(sys.stdin)
-    conv_id = data.get("conversation_id") or data.get("session_id")
-    tool_input = data.get("tool_input", {})
+    # Detect client: VSCode Copilot (camelCase), Claude Code (snake_case), or Cursor (flat)
+    is_vscode = "hookEventName" in data
     is_claude_code = "hook_event_name" in data
+    uses_hook_output = is_vscode or is_claude_code
+    # Extract conversation/session ID per client format
+    if is_vscode:
+        conv_id = data.get("sessionId")
+    elif is_claude_code:
+        conv_id = data.get("session_id") or data.get("conversation_id")
+    else:
+        conv_id = data.get("conversation_id")
+    # Extract tool input (VSCode uses camelCase toolInput)
+    tool_input = data.get("toolInput", data.get("tool_input", {})) if is_vscode else data.get("tool_input", {})
     if conv_id and isinstance(tool_input, dict):
         tool_input["_edison_conversation_id"] = conv_id
-        if is_claude_code:
-            print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow", "updatedInput": tool_input}}))
+        if uses_hook_output:
+            hook_event = data.get("hookEventName") or data.get("hook_event_name") or "PreToolUse"
+            print(json.dumps({"hookSpecificOutput": {
+                "hookEventName": hook_event,
+                "permissionDecision": "allow", "updatedInput": tool_input}}))
         else:
             print(json.dumps({"decision": "allow", "updated_input": tool_input}))
     else:
-        if is_claude_code:
-            print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}))
+        if uses_hook_output:
+            hook_event = data.get("hookEventName") or data.get("hook_event_name") or "PreToolUse"
+            print(json.dumps({"hookSpecificOutput": {
+                "hookEventName": hook_event,
+                "permissionDecision": "allow"}}))
         else:
             print(json.dumps({"decision": "allow"}))
 except Exception:
-    print(json.dumps({"decision": "allow"}))
+    print(json.dumps({"decision": "allow", "hookSpecificOutput": {
+        "hookEventName": "PreToolUse", "permissionDecision": "allow"}}))
 sys.exit(0)
 `
 
@@ -296,3 +314,4 @@ export async function ensureSessionHookScript(): Promise<string> {
     throw err
   }
 }
+

@@ -298,6 +298,95 @@ describe("hookInjection", () => {
     });
   });
 
+  describe("VSCode Copilot hook injection (file-based)", () => {
+    it("creates correct JSON structure with PreToolUse + Stop hooks", async () => {
+      const hooksPath = join(testDir, "edison-watch.json");
+
+      // Simulate what injectVsCodeCopilotHook does
+      const hooksFile = {
+        hooks: {
+          PreToolUse: [
+            { type: "command", command: "/path/to/edison-session-hook.py" },
+          ],
+          Stop: [
+            {
+              type: "command",
+              command: "/path/to/edison-session-end.py",
+            },
+          ],
+        },
+      };
+
+      await fs.writeFile(
+        hooksPath,
+        JSON.stringify(hooksFile, null, 2),
+        "utf-8",
+      );
+      const result = JSON.parse(await fs.readFile(hooksPath, "utf-8"));
+
+      expect(result.hooks.PreToolUse).toHaveLength(1);
+      expect(result.hooks.PreToolUse[0].type).toBe("command");
+      expect(result.hooks.PreToolUse[0].command).toContain(
+        "edison-session-hook",
+      );
+      expect(result.hooks.Stop).toHaveLength(1);
+      expect(result.hooks.Stop[0].type).toBe("command");
+      expect(result.hooks.Stop[0].command).toContain(
+        "edison-session-end",
+      );
+    });
+
+    it("is idempotent (second write with same content returns same structure)", async () => {
+      const hooksPath = join(testDir, "edison-watch.json");
+
+      const hooksFile = {
+        hooks: {
+          PreToolUse: [
+            { type: "command", command: "/path/to/edison-session-hook.py" },
+          ],
+          Stop: [
+            {
+              type: "command",
+              command: "/path/to/edison-session-end.py",
+            },
+          ],
+        },
+      };
+
+      // Write twice
+      await fs.writeFile(
+        hooksPath,
+        JSON.stringify(hooksFile, null, 2),
+        "utf-8",
+      );
+      await fs.writeFile(
+        hooksPath,
+        JSON.stringify(hooksFile, null, 2),
+        "utf-8",
+      );
+
+      const result = JSON.parse(await fs.readFile(hooksPath, "utf-8"));
+      expect(result.hooks.PreToolUse).toHaveLength(1);
+      expect(result.hooks.Stop).toHaveLength(1);
+    });
+
+    it("removes hook file cleanly", async () => {
+      const hooksPath = join(testDir, "edison-watch.json");
+
+      await fs.writeFile(hooksPath, '{"hooks":{}}', "utf-8");
+      await fs.unlink(hooksPath);
+
+      let exists = false;
+      try {
+        await fs.access(hooksPath);
+        exists = true;
+      } catch {
+        /* expected */
+      }
+      expect(exists).toBe(false);
+    });
+  });
+
   describe("Windsurf hook injection (file-based)", () => {
     it("creates correct hooks.json structure", async () => {
       const hooksPath = join(testDir, "windsurf-hooks.json");

@@ -25,9 +25,11 @@ import {
   isWindsurfInstalled, injectWindsurfHook, removeWindsurfHook,
   isGeminiInstalled, injectGeminiHook, removeGeminiHook,
   isCodexInstalled, injectCodexHook, removeCodexHook,
+  isVsCodeCopilotInstalled, injectVsCodeCopilotHook, removeVsCodeCopilotHook,
   getClaudeCodeSettingsPath, getCursorHooksPath, getWindsurfHooksPath,
-  getGeminiSettingsPath, getCodexConfigPath,
+  getGeminiSettingsPath, getCodexConfigPath, getVsCodeCopilotHooksPath,
   type ClaudeCodeSettings, type CursorHooksFile, type WindsurfHooksFile,
+  type VsCodeCopilotHooksFile,
 } from './hookInjectionClients'
 
 // Re-export all helpers so existing imports of hookInjection still work.
@@ -90,6 +92,7 @@ export async function injectAllHooks(): Promise<HookInjectionResult[]> {
   }
 
   // VS Code — inject workspace task into each known workspace
+  let copilotHandled = false
   for (const clientId of ['vscode', 'vscode-insiders'] as const) {
     try {
       const workspacePaths =
@@ -103,7 +106,19 @@ export async function injectAllHooks(): Promise<HookInjectionResult[]> {
         if (injected) anyInjected = true
         if (injected) allExisted = false
       }
-      if (workspacePaths.length > 0) {
+
+      // Copilot agent hooks: shared ~/.copilot, associate with variant that has workspaces
+      // (or last variant as fallback for Insiders-only users)
+      const isLastVariant = clientId === 'vscode-insiders'
+      const copilotInstalled = !copilotHandled && isVsCodeCopilotInstalled() && (workspacePaths.length > 0 || isLastVariant)
+      if (copilotInstalled) {
+        copilotHandled = true
+        const copilotInjected = await injectVsCodeCopilotHook()
+        if (copilotInjected) anyInjected = true
+        if (copilotInjected) allExisted = false
+      }
+
+      if (workspacePaths.length > 0 || copilotInstalled) {
         results.push({ client: clientId, installed: anyInjected, alreadyExists: allExisted })
       }
     } catch (err) {
@@ -276,7 +291,8 @@ export async function removeAllHooks(): Promise<HookInjectionResult[]> {
     }
   }
 
-  // VS Code — remove workspace task from each known workspace
+  // VS Code — remove workspace task + Copilot agent hooks
+  let copilotRemoveHandled = false
   for (const clientId of ['vscode', 'vscode-insiders'] as const) {
     try {
       const workspacePaths =
@@ -286,7 +302,16 @@ export async function removeAllHooks(): Promise<HookInjectionResult[]> {
       for (const wsPath of workspacePaths) {
         await removeVsCodeWorkspaceHook(wsPath)
       }
-      if (workspacePaths.length > 0) {
+
+      // Copilot agent hooks: shared ~/.copilot, associate with variant that has workspaces
+      const isLastVariant = clientId === 'vscode-insiders'
+      const copilotInstalled = !copilotRemoveHandled && isVsCodeCopilotInstalled() && (workspacePaths.length > 0 || isLastVariant)
+      if (copilotInstalled) {
+        copilotRemoveHandled = true
+        await removeVsCodeCopilotHook()
+      }
+
+      if (workspacePaths.length > 0 || copilotInstalled) {
         results.push({ client: clientId, installed: false, alreadyExists: false })
       }
     } catch (err) {
@@ -394,7 +419,8 @@ export async function getHookStatus(): Promise<
   }
   results.push({ client: 'windsurf', installed: windsurfInstalled, hasHook: windsurfHasHook })
 
-  // VS Code — report true if any known workspace has the hook
+  // VS Code — report true if any known workspace has the hook OR Copilot hooks exist
+  let copilotStatusHandled = false
   for (const clientId of ['vscode', 'vscode-insiders'] as const) {
     let hasHook = false
     try {
@@ -414,7 +440,28 @@ export async function getHookStatus(): Promise<
           }
         } catch { /* unreadable; skip */ }
       }
-      const installed = workspacePaths.length > 0
+
+      // Copilot agent hooks: shared ~/.copilot, associate with variant that has workspaces
+      const isLastVariant = clientId === 'vscode-insiders'
+      const copilotInstalled = !copilotStatusHandled && isVsCodeCopilotInstalled() && (workspacePaths.length > 0 || isLastVariant)
+      if (copilotInstalled) {
+        copilotStatusHandled = true
+        if (!hasHook) {
+          try {
+            const copilotHooksPath = getVsCodeCopilotHooksPath()
+            if (existsSync(copilotHooksPath)) {
+              const content = await fs.readFile(copilotHooksPath, 'utf-8')
+              const hooksFile = JSON.parse(content) as VsCodeCopilotHooksFile
+              hasHook = !!(
+                hooksFile.hooks?.PreToolUse?.some((h) => h.command?.includes('edison-session-hook') && !h.command?.includes('edison-session-end')) &&
+                hooksFile.hooks?.Stop?.some((h) => h.command?.includes('edison-session-end'))
+              )
+            }
+          } catch { /* ignore */ }
+        }
+      }
+
+      const installed = workspacePaths.length > 0 || copilotInstalled
       results.push({ client: clientId, installed, hasHook })
     } catch {
       results.push({ client: clientId, installed: false, hasHook: false })
