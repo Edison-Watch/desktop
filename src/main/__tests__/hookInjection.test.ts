@@ -109,15 +109,26 @@ describe("hookInjection", () => {
       // reads from a fixed path. Instead test the JSON structure it would produce.
       const settings = JSON.parse(await fs.readFile(settingsPath, "utf-8"));
 
-      // Simulate what injectClaudeCodeHook does: add hooks.PreToolUse
+      // Simulate what injectClaudeCodeHook does: add UserPromptSubmit + PreToolUse
       settings.hooks = {
-        PreToolUse: [
+        UserPromptSubmit: [
           {
-            matcher: "mcp",
+            matcher: "*",
             hooks: [
               {
                 type: "command",
-                command: "edison-watch-hook pre-tool-use",
+                command: '"edison-hook" claude-code',
+              },
+            ],
+          },
+        ],
+        PreToolUse: [
+          {
+            matcher: "mcp__*",
+            hooks: [
+              {
+                type: "command",
+                command: '"edison-session-hook"',
               },
             ],
           },
@@ -128,11 +139,17 @@ describe("hookInjection", () => {
       const result = JSON.parse(await fs.readFile(settingsPath, "utf-8"));
 
       expect(result.hooks).toBeDefined();
+      expect(result.hooks.UserPromptSubmit).toHaveLength(1);
+      expect(result.hooks.UserPromptSubmit[0].matcher).toBe("*");
+      expect(result.hooks.UserPromptSubmit[0].hooks[0].type).toBe("command");
+      expect(result.hooks.UserPromptSubmit[0].hooks[0].command).toContain(
+        "edison-hook",
+      );
       expect(result.hooks.PreToolUse).toHaveLength(1);
-      expect(result.hooks.PreToolUse[0].matcher).toBe("mcp");
+      expect(result.hooks.PreToolUse[0].matcher).toBe("mcp__*");
       expect(result.hooks.PreToolUse[0].hooks[0].type).toBe("command");
       expect(result.hooks.PreToolUse[0].hooks[0].command).toContain(
-        "edison-watch-hook",
+        "edison-session-hook",
       );
     });
 
@@ -140,13 +157,24 @@ describe("hookInjection", () => {
       const settingsPath = join(testDir, "settings-with-hook.json");
       const settings = {
         hooks: {
-          PreToolUse: [
+          UserPromptSubmit: [
             {
-              matcher: "mcp",
+              matcher: "*",
               hooks: [
                 {
                   type: "command",
-                  command: "edison-watch-hook pre-tool-use",
+                  command: '"edison-hook" claude-code',
+                },
+              ],
+            },
+          ],
+          PreToolUse: [
+            {
+              matcher: "mcp__*",
+              hooks: [
+                {
+                  type: "command",
+                  command: '"edison-session-hook"',
                 },
               ],
             },
@@ -160,16 +188,38 @@ describe("hookInjection", () => {
         "utf-8",
       );
 
-      // Simulate removeClaudeCodeHook: filter out Edison entries
+      // Simulate removeClaudeCodeHook: filter per hook type, mirroring production logic
       const loaded = JSON.parse(await fs.readFile(settingsPath, "utf-8"));
-      for (const key of Object.keys(loaded.hooks ?? {})) {
-        loaded.hooks[key] = loaded.hooks[key].filter(
+
+      // UserPromptSubmit: remove entries matching 'edison-hook' but not 'edison-session-hook'
+      if (loaded.hooks?.UserPromptSubmit) {
+        loaded.hooks.UserPromptSubmit = loaded.hooks.UserPromptSubmit.filter(
           (g: { hooks: Array<{ command: string }> }) =>
-            !g.hooks?.some((h) => h.command?.includes("edison-watch")),
+            !g.hooks?.some(
+              (h) =>
+                h.command?.includes("edison-hook") &&
+                !h.command?.includes("edison-session-hook"),
+            ),
         );
-        if (loaded.hooks[key].length === 0) delete loaded.hooks[key];
+        if (loaded.hooks.UserPromptSubmit.length === 0)
+          delete loaded.hooks.UserPromptSubmit;
       }
-      if (Object.keys(loaded.hooks).length === 0) delete loaded.hooks;
+
+      // PreToolUse: remove entries matching 'edison-session-hook'
+      if (loaded.hooks?.PreToolUse) {
+        loaded.hooks.PreToolUse = loaded.hooks.PreToolUse.filter(
+          (g: { hooks: Array<{ command: string }> }) =>
+            !g.hooks?.some((h) =>
+              h.command?.includes("edison-session-hook"),
+            ),
+        );
+        if (loaded.hooks.PreToolUse.length === 0)
+          delete loaded.hooks.PreToolUse;
+      }
+
+      // Clean up empty hooks object (matches production behavior)
+      if (loaded.hooks && Object.keys(loaded.hooks).length === 0)
+        delete loaded.hooks;
 
       await fs.writeFile(
         settingsPath,

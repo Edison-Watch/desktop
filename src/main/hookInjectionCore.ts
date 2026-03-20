@@ -230,13 +230,20 @@ import sys
 
 try:
     data = json.load(sys.stdin)
-    conv_id = data.get("conversation_id")
+    conv_id = data.get("conversation_id") or data.get("session_id")
     tool_input = data.get("tool_input", {})
+    is_claude_code = "hook_event_name" in data
     if conv_id and isinstance(tool_input, dict):
         tool_input["_edison_conversation_id"] = conv_id
-        print(json.dumps({"decision": "allow", "updated_input": tool_input}))
+        if is_claude_code:
+            print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow", "updatedInput": tool_input}}))
+        else:
+            print(json.dumps({"decision": "allow", "updated_input": tool_input}))
     else:
-        print(json.dumps({"decision": "allow"}))
+        if is_claude_code:
+            print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}))
+        else:
+            print(json.dumps({"decision": "allow"}))
 except Exception:
     print(json.dumps({"decision": "allow"}))
 sys.exit(0)

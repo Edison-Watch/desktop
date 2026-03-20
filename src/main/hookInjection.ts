@@ -341,10 +341,15 @@ export async function getHookStatus(): Promise<
       if (existsSync(settingsPath)) {
         const content = await fs.readFile(settingsPath, 'utf-8')
         const settings = parseJsonc(content) as ClaudeCodeSettings
-        const hooks = settings.hooks?.UserPromptSubmit ?? []
-        claudeHasHook = hooks.some((group) =>
-          group.hooks?.some((h) => h.command?.includes('edison-hook'))
-        )
+        const promptHooks = settings.hooks?.UserPromptSubmit ?? []
+        const toolHooks = settings.hooks?.PreToolUse ?? []
+        claudeHasHook =
+          promptHooks.some((group) =>
+            group.hooks?.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook'))
+          ) &&
+          toolHooks.some((group) =>
+            group.hooks?.some((h) => h.command?.includes('edison-session-hook'))
+          )
       }
     } catch { /* ignore */ }
   }
@@ -362,10 +367,12 @@ export async function getHookStatus(): Promise<
         const sessionStart = hooksFile.hooks?.sessionStart ?? []
         const beforeMCP = hooksFile.hooks?.beforeMCPExecution ?? []
         const preToolUse = hooksFile.hooks?.preToolUse ?? []
+        const sessionEnd = hooksFile.hooks?.sessionEnd ?? []
         cursorHasHook =
-          sessionStart.some((h) => h.command?.includes('edison-hook')) ||
-          beforeMCP.some((h) => h.command?.includes('edison-session-hook')) ||
-          preToolUse.some((h) => h.command?.includes('edison-session-hook'))
+          sessionStart.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook')) &&
+          (beforeMCP.some((h) => h.command?.includes('edison-session-hook')) ||
+           preToolUse.some((h) => h.command?.includes('edison-session-hook'))) &&
+          sessionEnd.some((h) => h.command?.includes('edison-session-end'))
       }
     } catch { /* ignore */ }
   }

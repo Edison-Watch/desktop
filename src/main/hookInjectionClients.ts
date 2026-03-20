@@ -107,6 +107,7 @@ export function isClaudeCodeInstalled(): boolean {
 export async function injectClaudeCodeHook(): Promise<boolean> {
   const settingsPath = getClaudeCodeSettingsPath()
   const scriptPath = await ensureHookScript()
+  const sessionScriptPath = await ensureSessionHookScript()
 
   const settingsDir = dirname(settingsPath)
   if (!existsSync(settingsDir)) {
@@ -120,25 +121,49 @@ export async function injectClaudeCodeHook(): Promise<boolean> {
 
   const settings = parseJsonc(content) as ClaudeCodeSettings
 
-  const edisonHook: ClaudeCodeHookGroup = {
-    matcher: '*',
-    hooks: [{ type: 'command', command: `"${scriptPath}" claude-code` }]
-  }
+  let injected = false
 
-  const existingHooks = settings.hooks?.UserPromptSubmit ?? []
-  const hasEdisonHook = existingHooks.some((group) =>
-    group.hooks?.some((h) => h.command?.includes('edison-hook'))
+  // UserPromptSubmit hook (project registration)
+  const existingPromptHooks = settings.hooks?.UserPromptSubmit ?? []
+  const hasPromptHook = existingPromptHooks.some((group) =>
+    group.hooks?.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook'))
   )
 
-  if (hasEdisonHook) {
-    console.log('[HookInjection] Edison hook already exists in Claude Code settings')
-    return false
+  if (!hasPromptHook) {
+    const edisonHook: ClaudeCodeHookGroup = {
+      matcher: '*',
+      hooks: [{ type: 'command', command: `"${scriptPath}" claude-code` }]
+    }
+    const edits = modify(content, ['hooks', 'UserPromptSubmit'], [...existingPromptHooks, edisonHook], {
+      formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' }
+    })
+    content = applyEdits(content, edits)
+    injected = true
   }
 
-  const edits = modify(content, ['hooks', 'UserPromptSubmit'], [...existingHooks, edisonHook], {
-    formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' }
-  })
-  const newContent = applyEdits(content, edits)
+  // PreToolUse hook (session isolation)
+  const settingsAfterPrompt = parseJsonc(content) as ClaudeCodeSettings
+  const existingToolHooks = settingsAfterPrompt.hooks?.PreToolUse ?? []
+  const hasToolHook = existingToolHooks.some((group) =>
+    group.hooks?.some((h) => h.command?.includes('edison-session-hook'))
+  )
+
+  if (!hasToolHook) {
+    const sessionHook: ClaudeCodeHookGroup = {
+      matcher: 'mcp__*',
+      hooks: [{ type: 'command', command: `"${sessionScriptPath}"` }]
+    }
+    const edits = modify(content, ['hooks', 'PreToolUse'], [...existingToolHooks, sessionHook], {
+      formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' }
+    })
+    content = applyEdits(content, edits)
+    injected = true
+  }
+
+  if (!injected) {
+    console.log('[HookInjection] Edison hooks already exist in Claude Code settings')
+    return false
+  }
 
   if (existsSync(settingsPath)) {
     const backupPath = `${settingsPath}.backup.${Date.now()}`
@@ -146,8 +171,8 @@ export async function injectClaudeCodeHook(): Promise<boolean> {
     console.log(`[HookInjection] Backed up settings to ${backupPath}`)
   }
 
-  await fs.writeFile(settingsPath, newContent, 'utf-8')
-  console.log('[HookInjection] Injected Edison hook into Claude Code settings')
+  await fs.writeFile(settingsPath, content, 'utf-8')
+  console.log('[HookInjection] Injected Edison hooks into Claude Code settings')
   return true
 }
 
@@ -158,28 +183,64 @@ export async function removeClaudeCodeHook(): Promise<boolean> {
   const settingsPath = getClaudeCodeSettingsPath()
   if (!existsSync(settingsPath)) return false
 
-  const content = await fs.readFile(settingsPath, 'utf-8')
-  const settings = parseJsonc(content) as ClaudeCodeSettings
+  let content = await fs.readFile(settingsPath, 'utf-8')
+  let removed = false
 
-  const existingHooks = settings.hooks?.UserPromptSubmit ?? []
-  const filteredHooks = existingHooks.filter(
-    (group) => !group.hooks?.some((h) => h.command?.includes('edison-hook'))
+  // Remove UserPromptSubmit edison hooks
+  const settings = parseJsonc(content) as ClaudeCodeSettings
+  const existingPromptHooks = settings.hooks?.UserPromptSubmit ?? []
+  const filteredPromptHooks = existingPromptHooks.filter(
+    (group) => !group.hooks?.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook'))
   )
 
-  if (filteredHooks.length === existingHooks.length) {
+  if (filteredPromptHooks.length !== existingPromptHooks.length) {
+    const edits = modify(
+      content,
+      ['hooks', 'UserPromptSubmit'],
+      filteredPromptHooks.length > 0 ? filteredPromptHooks : undefined,
+      { formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' } }
+    )
+    content = applyEdits(content, edits)
+    removed = true
+  }
+
+  // Remove PreToolUse edison session hooks
+  const settingsAfter = parseJsonc(content) as ClaudeCodeSettings
+  const existingToolHooks = settingsAfter.hooks?.PreToolUse ?? []
+  const filteredToolHooks = existingToolHooks.filter(
+    (group) => !group.hooks?.some((h) => h.command?.includes('edison-session-hook'))
+  )
+
+  if (filteredToolHooks.length !== existingToolHooks.length) {
+    const edits = modify(
+      content,
+      ['hooks', 'PreToolUse'],
+      filteredToolHooks.length > 0 ? filteredToolHooks : undefined,
+      { formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' } }
+    )
+    content = applyEdits(content, edits)
+    removed = true
+  }
+
+  if (!removed) {
     console.log('[HookInjection] No Edison hook found in Claude Code settings')
     return false
   }
 
-  const edits = modify(
-    content,
-    ['hooks', 'UserPromptSubmit'],
-    filteredHooks.length > 0 ? filteredHooks : undefined,
-    { formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' } }
-  )
-  const newContent = applyEdits(content, edits)
-  await fs.writeFile(settingsPath, newContent, 'utf-8')
-  console.log('[HookInjection] Removed Edison hook from Claude Code settings')
+  // Clean up empty hooks object
+  const finalSettings = parseJsonc(content) as ClaudeCodeSettings
+  if (finalSettings.hooks && Object.keys(finalSettings.hooks).length === 0) {
+    const edits = modify(
+      content,
+      ['hooks'],
+      undefined,
+      { formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' } }
+    )
+    content = applyEdits(content, edits)
+  }
+
+  await fs.writeFile(settingsPath, content, 'utf-8')
+  console.log('[HookInjection] Removed Edison hooks from Claude Code settings')
   return true
 }
 
