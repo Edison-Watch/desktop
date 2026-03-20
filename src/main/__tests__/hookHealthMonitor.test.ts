@@ -29,6 +29,9 @@ vi.mock("../hookInjection", () => ({
   getPendingErrorsDir: vi
     .fn()
     .mockReturnValue(join(tmpdir(), "edison-test-errors")),
+  getPendingRegistrationsDir: vi
+    .fn()
+    .mockReturnValue(join(tmpdir(), "edison-test-pending")),
 }));
 
 import {

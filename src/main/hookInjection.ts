@@ -360,9 +360,11 @@ export async function getHookStatus(): Promise<
         const content = await fs.readFile(hooksPath, 'utf-8')
         const hooksFile = JSON.parse(content) as CursorHooksFile
         const sessionStart = hooksFile.hooks?.sessionStart ?? []
+        const beforeMCP = hooksFile.hooks?.beforeMCPExecution ?? []
         const preToolUse = hooksFile.hooks?.preToolUse ?? []
         cursorHasHook =
           sessionStart.some((h) => h.command?.includes('edison-hook')) ||
+          beforeMCP.some((h) => h.command?.includes('edison-session-hook')) ||
           preToolUse.some((h) => h.command?.includes('edison-session-hook'))
       }
     } catch { /* ignore */ }

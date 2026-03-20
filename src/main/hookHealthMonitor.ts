@@ -7,7 +7,7 @@
 
 import { watch } from 'chokidar'
 import { promises as fs, existsSync } from 'fs'
-import { getHookStatus, getPendingErrorsDir } from './hookInjection'
+import { getHookStatus, getPendingErrorsDir, getPendingRegistrationsDir } from './hookInjection'
 import type { McpClientId } from './mcpDiscovery'
 import { captureError } from './sentry'
 
@@ -17,6 +17,7 @@ export type HookStatusEntry = { client: McpClientId; installed: boolean; hasHook
 
 let statusCheckTimer: ReturnType<typeof setInterval> | null = null
 let errorsWatcher: ReturnType<typeof watch> | null = null
+let pendingWatcher: ReturnType<typeof watch> | null = null
 let lastKnownStatus: HookStatusEntry[] = []
 let onHooksMissing: ((entries: HookStatusEntry[]) => void) | null = null
 
@@ -39,6 +40,63 @@ export function getHookStatusLabel(): string {
   if (withHooks === total) return 'All MCP clients have Edison installed'
   if (withHooks === 0) return '0 MCP clients have Edison installed'
   return `${withHooks}/${total} MCP clients have Edison installed`
+}
+
+/**
+ * Process a single session-end file from the pending directory.
+ */
+async function processSessionEndFile(filePath: string): Promise<void> {
+  try {
+    const raw = await fs.readFile(filePath, 'utf-8')
+    const parsed = JSON.parse(raw) as { event?: string; conversation_id?: string; reason?: string }
+    if (parsed.event === 'session_end' && parsed.conversation_id) {
+      console.log('[HookHealthMonitor] Session ended: %s (reason: %s)', parsed.conversation_id, parsed.reason ?? 'unknown')
+    } else {
+      console.warn('[HookHealthMonitor] session-end file has unexpected shape, discarding:', filePath, parsed)
+    }
+  } catch {
+    captureError(new Error('Failed to process session-end file'), {
+      source: 'session_end_file',
+      filePath
+    })
+  } finally {
+    try {
+      await fs.unlink(filePath)
+    } catch {
+      // ignore
+    }
+  }
+}
+
+/**
+ * Start watching the pending directory for session-end files.
+ */
+function startPendingDirWatcher(): void {
+  const pendingDir = getPendingRegistrationsDir()
+  if (pendingWatcher) return
+
+  if (!existsSync(pendingDir)) {
+    fs.mkdir(pendingDir, { recursive: true }).catch(() => {})
+  }
+
+  pendingWatcher = watch(pendingDir, {
+    persistent: true,
+    ignoreInitial: false,
+    depth: 0
+  })
+
+  pendingWatcher.on('add', (path) => {
+    if (!path.endsWith('-session-end.json')) return
+    processSessionEndFile(path).catch(() => {})
+  })
+
+  pendingWatcher.on('error', (err: unknown) => {
+    captureError(err instanceof Error ? err : new Error(String(err)), {
+      context: 'hookHealthMonitor_pendingWatcher'
+    })
+  })
+
+  console.log('[HookHealthMonitor] Pending dir watcher started:', pendingDir)
 }
 
 /**
@@ -144,6 +202,7 @@ export function startHookHealthMonitor(): void {
   }, CHECK_INTERVAL_MS)
 
   startErrorsDirWatcher()
+  startPendingDirWatcher()
   console.log('[HookHealthMonitor] Started (interval %d ms)', CHECK_INTERVAL_MS)
 }
 
@@ -158,6 +217,10 @@ export async function stopHookHealthMonitor(): Promise<void> {
   if (errorsWatcher) {
     await errorsWatcher.close()
     errorsWatcher = null
+  }
+  if (pendingWatcher) {
+    await pendingWatcher.close()
+    pendingWatcher = null
   }
   onHooksMissing = null
   console.log('[HookHealthMonitor] Stopped')

@@ -6,7 +6,7 @@ import { promises as fs, existsSync } from 'fs'
 import { homedir } from 'os'
 import { join, dirname } from 'path'
 import { parse as parseJsonc, modify, applyEdits } from 'jsonc-parser'
-import { ensureHookScript, ensureSessionHookScript } from './hookInjectionCore'
+import { ensureHookScript, ensureSessionHookScript, ensureSessionEndHookScript } from './hookInjectionCore'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 
@@ -64,6 +64,7 @@ export interface CursorHookEntry {
 
 export interface CursorHooks {
   sessionStart?: CursorHookEntry[]
+  sessionEnd?: CursorHookEntry[]
   preToolUse?: CursorHookEntry[]
   postToolUse?: CursorHookEntry[]
   beforeMCPExecution?: CursorHookEntry[]
@@ -195,6 +196,7 @@ export async function injectCursorHook(): Promise<boolean> {
   const hooksPath = getCursorHooksPath()
   const scriptPath = await ensureHookScript()
   const sessionScriptPath = await ensureSessionHookScript()
+  const sessionEndScriptPath = await ensureSessionEndHookScript()
 
   const hooksDir = dirname(hooksPath)
   if (!existsSync(hooksDir)) {
@@ -225,12 +227,36 @@ export async function injectCursorHook(): Promise<boolean> {
     injected = true
   }
 
+  // beforeMCPExecution: inject conversation_id into MCP tool args
+  const existingBeforeMCP = hooksFile.hooks.beforeMCPExecution ?? []
+  const hasEdisonBeforeMCP = existingBeforeMCP.some((h) => h.command?.includes('edison-session-hook'))
+  if (!hasEdisonBeforeMCP) {
+    hooksFile.hooks.beforeMCPExecution = [
+      ...existingBeforeMCP,
+      { command: `"${sessionScriptPath}"`, type: 'command' }
+    ]
+    injected = true
+  }
+
+  // Migrate: remove old preToolUse entries if present
   const existingPreToolUse = hooksFile.hooks.preToolUse ?? []
-  const hasEdisonPreToolUse = existingPreToolUse.some((h) => h.command?.includes('edison-session-hook'))
-  if (!hasEdisonPreToolUse) {
-    hooksFile.hooks.preToolUse = [
-      ...existingPreToolUse,
-      { command: `"${sessionScriptPath}"`, type: 'command', matcher: 'MCP' }
+  const filteredPreToolUse = existingPreToolUse.filter((h) => !h.command?.includes('edison-session-hook'))
+  if (filteredPreToolUse.length !== existingPreToolUse.length) {
+    if (filteredPreToolUse.length > 0) {
+      hooksFile.hooks.preToolUse = filteredPreToolUse
+    } else {
+      delete hooksFile.hooks.preToolUse
+    }
+    injected = true
+  }
+
+  // sessionEnd: explicit session completion tracking
+  const existingSessionEnd = hooksFile.hooks.sessionEnd ?? []
+  const hasEdisonSessionEnd = existingSessionEnd.some((h) => h.command?.includes('edison-session-end'))
+  if (!hasEdisonSessionEnd) {
+    hooksFile.hooks.sessionEnd = [
+      ...existingSessionEnd,
+      { command: `"${sessionEndScriptPath}"`, type: 'command' }
     ]
     injected = true
   }
@@ -274,6 +300,19 @@ export async function removeCursorHook(): Promise<boolean> {
     }
   }
 
+  // Clean up beforeMCPExecution (current location)
+  const existingBeforeMCP = hooksFile.hooks?.beforeMCPExecution ?? []
+  const filteredBeforeMCP = existingBeforeMCP.filter((h) => !h.command?.includes('edison-session-hook'))
+  if (filteredBeforeMCP.length !== existingBeforeMCP.length) {
+    removed = true
+    if (filteredBeforeMCP.length > 0) {
+      hooksFile.hooks!.beforeMCPExecution = filteredBeforeMCP
+    } else {
+      delete hooksFile.hooks!.beforeMCPExecution
+    }
+  }
+
+  // Clean up old preToolUse entries (backward compat for users upgrading)
   const existingPreToolUse = hooksFile.hooks?.preToolUse ?? []
   const filteredPreToolUse = existingPreToolUse.filter((h) => !h.command?.includes('edison-session-hook'))
   if (filteredPreToolUse.length !== existingPreToolUse.length) {
@@ -282,6 +321,18 @@ export async function removeCursorHook(): Promise<boolean> {
       hooksFile.hooks!.preToolUse = filteredPreToolUse
     } else {
       delete hooksFile.hooks!.preToolUse
+    }
+  }
+
+  // Clean up sessionEnd entries
+  const existingSessionEnd = hooksFile.hooks?.sessionEnd ?? []
+  const filteredSessionEnd = existingSessionEnd.filter((h) => !h.command?.includes('edison-session-end'))
+  if (filteredSessionEnd.length !== existingSessionEnd.length) {
+    removed = true
+    if (filteredSessionEnd.length > 0) {
+      hooksFile.hooks!.sessionEnd = filteredSessionEnd
+    } else {
+      delete hooksFile.hooks!.sessionEnd
     }
   }
 

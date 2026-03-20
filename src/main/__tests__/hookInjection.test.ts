@@ -195,19 +195,29 @@ describe("hookInjection", () => {
   });
 
   describe("Cursor hook injection (file-based)", () => {
-    it("creates correct hooks.json structure", async () => {
+    it("creates correct hooks.json structure with beforeMCPExecution and sessionEnd", async () => {
       const hooksPath = join(testDir, "hooks.json");
 
-      // Simulate what injectCursorHook does
+      // Simulate what injectCursorHook does (migrated from preToolUse to beforeMCPExecution)
       const hooksFile = {
         version: 1,
         hooks: {
-          preToolUse: [
+          sessionStart: [
             {
-              command: "edison-watch-hook pre-tool-use",
-              type: "intercept",
-              timeout: 10000,
-              matcher: ".*mcp.*",
+              command: "edison-hook cursor",
+              type: "command",
+            },
+          ],
+          beforeMCPExecution: [
+            {
+              command: "edison-session-hook",
+              type: "command",
+            },
+          ],
+          sessionEnd: [
+            {
+              command: "edison-session-end",
+              type: "command",
             },
           ],
         },
@@ -221,10 +231,20 @@ describe("hookInjection", () => {
       const result = JSON.parse(await fs.readFile(hooksPath, "utf-8"));
 
       expect(result.version).toBe(1);
-      expect(result.hooks.preToolUse).toHaveLength(1);
-      expect(result.hooks.preToolUse[0].command).toContain("edison-watch");
-      expect(result.hooks.preToolUse[0].type).toBe("intercept");
-      expect(result.hooks.preToolUse[0].timeout).toBeGreaterThan(0);
+      expect(result.hooks.beforeMCPExecution).toHaveLength(1);
+      expect(result.hooks.beforeMCPExecution[0].command).toContain(
+        "edison-session-hook",
+      );
+      expect(result.hooks.beforeMCPExecution[0].type).toBe("command");
+      // No matcher needed — beforeMCPExecution is already MCP-specific
+      expect(result.hooks.beforeMCPExecution[0].matcher).toBeUndefined();
+      // sessionEnd hook for explicit session completion
+      expect(result.hooks.sessionEnd).toHaveLength(1);
+      expect(result.hooks.sessionEnd[0].command).toContain(
+        "edison-session-end",
+      );
+      // preToolUse should not be present (migrated away)
+      expect(result.hooks.preToolUse).toBeUndefined();
     });
   });
 

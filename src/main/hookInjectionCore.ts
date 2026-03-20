@@ -138,8 +138,85 @@ export async function ensureHookScript(): Promise<string> {
   }
 }
 
+// ── Session end hook ─────────────────────────────────────────────────────────
+
 /**
- * Get the path to the Edison Watch session hook script (preToolUse: inject conversation_id).
+ * Get the path to the Edison Watch session end hook script.
+ */
+function getSessionEndHookScriptPath(): string {
+  const scriptName = process.platform === 'win32' ? 'edison-session-end.cmd' : 'edison-session-end.py'
+  return join(homedir(), '.edison-watch', scriptName)
+}
+
+const SESSION_END_HOOK_PYTHON = `#!/usr/bin/env python3
+import json, sys, os, time, random
+try:
+    data = json.load(sys.stdin)
+    conv_id = data.get("conversation_id")
+    reason = data.get("reason", "unknown")
+    if conv_id:
+        pending_dir = os.path.expanduser("~/.edison-watch/pending")
+        os.makedirs(pending_dir, exist_ok=True)
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        fname = f"{ts}-{random.randint(0,99999)}-session-end.json"
+        tmp = os.path.join(pending_dir, f".{fname}.tmp")
+        final = os.path.join(pending_dir, fname)
+        with open(tmp, "w") as f:
+            json.dump({"event": "session_end", "conversation_id": conv_id,
+                        "reason": reason, "timestamp": ts}, f)
+        os.rename(tmp, final)
+except Exception:
+    pass
+sys.exit(0)
+`
+
+function generateSessionEndHookScript(): string {
+  if (process.platform === 'win32') {
+    return `@echo off
+REM Edison Watch - Session end hook: write session end event
+python "%~dp0edison-session-end.py" 2>nul || python3 "%~dp0edison-session-end.py"
+exit /b 0
+`
+  }
+  return SESSION_END_HOOK_PYTHON
+}
+
+/**
+ * Ensure the session end hook script exists and is executable.
+ */
+export async function ensureSessionEndHookScript(): Promise<string> {
+  const scriptPath = getSessionEndHookScriptPath()
+  const scriptDir = dirname(scriptPath)
+
+  try {
+    if (!existsSync(scriptDir)) {
+      await fs.mkdir(scriptDir, { recursive: true })
+    }
+
+    if (process.platform === 'win32') {
+      const pyPath = join(scriptDir, 'edison-session-end.py')
+      await fs.writeFile(pyPath, SESSION_END_HOOK_PYTHON, 'utf-8')
+      await fs.writeFile(scriptPath, generateSessionEndHookScript(), 'utf-8')
+    } else {
+      await fs.writeFile(scriptPath, generateSessionEndHookScript(), { mode: 0o755 })
+    }
+
+    console.log(`[HookInjection] Created session end hook script at ${scriptPath}`)
+    return scriptPath
+  } catch (err) {
+    captureError(err instanceof Error ? err : new Error(String(err)), {
+      operation: 'ensureSessionEndHookScript',
+      scriptPath,
+      platform: platform()
+    })
+    throw err
+  }
+}
+
+// ── Session hook (beforeMCPExecution: inject conversation_id) ────────────────
+
+/**
+ * Get the path to the Edison Watch session hook script (beforeMCPExecution: inject conversation_id).
  */
 function getSessionHookScriptPath(): string {
   const scriptName = process.platform === 'win32' ? 'edison-session-hook.cmd' : 'edison-session-hook.py'
