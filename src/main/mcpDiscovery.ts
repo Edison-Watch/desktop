@@ -6,6 +6,7 @@ import {
   getCursorWorkspaceStoragePath,
   getCursorProjectMcpPaths,
   getCursorPluginsInstalledPath,
+  getCursorPluginsInstalledPaths,
   getCursorPluginMcpPaths,
   getClaudeCodeProjectMcpPaths
 } from './mcpProjectPaths'
@@ -15,6 +16,7 @@ export {
   getCursorWorkspaceStoragePath,
   getCursorProjectMcpPaths,
   getCursorPluginsInstalledPath,
+  getCursorPluginsInstalledPaths,
   getCursorPluginMcpPaths,
   getClaudeCodeProjectMcpPaths
 }

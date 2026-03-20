@@ -8,7 +8,7 @@ import {
   getJetBrainsMcpConfigPaths,
   getCursorProjectMcpPaths,
   getCursorPluginMcpPaths,
-  getCursorPluginsInstalledPath,
+  getCursorPluginsInstalledPaths,
   getClaudeCodeProjectMcpPaths,
   getCursorWorkspaceStoragePath,
   getClaudeCodeHomeJsonPath,
@@ -18,6 +18,9 @@ import {
 } from './mcpDiscovery'
 import { SeenServersStore } from './seenServersStore'
 import { quarantineServer, type QuarantineResult } from './mcpConfigActions'
+
+// Cache static paths that only depend on homedir() (which doesn't change at runtime)
+const CURSOR_PLUGINS_INSTALLED_PATHS = getCursorPluginsInstalledPaths()
 
 const QUARANTINE_MAX_ATTEMPTS = 3
 const QUARANTINE_RETRY_DELAY_MS = 400
@@ -106,7 +109,7 @@ export class McpConfigMonitor extends EventEmitter {
       paths.vscodeInsiders,
       paths.claudeDesktop,
       paths.cursor,
-      getCursorPluginsInstalledPath(), // watch for new plugin installs
+      ...CURSOR_PLUGINS_INSTALLED_PATHS, // watch all plugin registry files (legacy + v1 + shared)
       ...paths.claudeCode,
       paths.windsurf,
       paths.zed,
@@ -345,8 +348,9 @@ export class McpConfigMonitor extends EventEmitter {
   }
 
   /**
-   * When ~/.cursor/plugins/installed.json changes (new plugin installed), register
+   * When a Cursor plugin registry file changes (new plugin installed), register
    * any .mcp.json files bundled by the newly-installed plugin.
+   * Handles both legacy installed.json and Cursor 2.5+ installed_plugins.json.
    */
   private async handleCursorPluginsInstalledChange(): Promise<void> {
     try {
@@ -397,7 +401,7 @@ export class McpConfigMonitor extends EventEmitter {
         if (path === getClaudeCodeHomeJsonPath()) {
           await this.handleClaudeHomeJsonChange()
         }
-        if (path === getCursorPluginsInstalledPath()) {
+        if (CURSOR_PLUGINS_INSTALLED_PATHS.includes(path)) {
           await this.handleCursorPluginsInstalledChange()
         }
         await this.checkForChanges()
