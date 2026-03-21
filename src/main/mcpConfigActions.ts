@@ -629,23 +629,38 @@ export async function restoreAllQuarantinedServers(): Promise<{
   errors: string[]
 }> {
   const { getAllConfigPaths } = await import('./mcpConfigPaths')
-  const { getJetBrainsMcpConfigPaths } = await import('./mcpDiscovery')
+  const {
+    getJetBrainsMcpConfigPaths,
+    getCursorPluginMcpPaths,
+    getCursorProjectMcpPaths,
+    getClaudeCodeProjectMcpPaths
+  } = await import('./mcpDiscovery')
 
-  // Collect all known config paths
+  // Collect all known config paths (including plugin, project, and workspace paths)
   const paths = getAllConfigPaths()
-  const jetbrainsPaths = await getJetBrainsMcpConfigPaths()
+  const [jetbrainsPaths, cursorPluginPaths, cursorProjectPaths, claudeCodeProjectPaths] =
+    await Promise.all([
+      getJetBrainsMcpConfigPaths(),
+      getCursorPluginMcpPaths(),
+      getCursorProjectMcpPaths(),
+      getClaudeCodeProjectMcpPaths()
+    ])
 
-  const allOriginalPaths = [
+  const allOriginalPaths = [...new Set([
     paths.vscode,
     paths.vscodeInsiders,
     paths.claudeDesktop,
+    paths.claudeCowork,
     paths.cursor,
     ...paths.claudeCode,
     paths.windsurf,
     paths.zed,
     paths.antigravity,
-    ...jetbrainsPaths.map((x) => x.path)
-  ]
+    ...jetbrainsPaths.map((x) => x.path),
+    ...cursorPluginPaths,
+    ...cursorProjectPaths,
+    ...claudeCodeProjectPaths
+  ])]
 
   let restored = 0
   const errors: string[] = []
@@ -721,12 +736,14 @@ export async function restoreAllQuarantinedServers(): Promise<{
  */
 function inferClientFromPath(configPath: string): McpClientId {
   const lower = configPath.toLowerCase()
-  if (lower.includes('code - insiders')) return 'vscode-insiders'
-  if (lower.includes('code') && lower.includes('user') && lower.includes('mcp.json'))
-    return 'vscode'
+  // Check specific patterns before generic ones to avoid false positives
+  // (e.g., /Users/alice/code/project/.cursor/mcp.json matching VS Code)
   if (lower.includes('.cursor')) return 'cursor'
   if (lower.includes('claude') && lower.includes('claude_desktop_config')) return 'claude-desktop'
   if (lower.includes('.claude')) return 'claude-code'
+  if (lower.includes('code - insiders')) return 'vscode-insiders'
+  if (lower.includes('code') && lower.includes('user') && lower.includes('mcp.json'))
+    return 'vscode'
   if (lower.includes('windsurf') || lower.includes('codeium')) return 'windsurf'
   if (lower.includes('zed')) return 'zed'
   if (lower.includes('antigravity') || lower.includes('.gemini')) return 'antigravity'

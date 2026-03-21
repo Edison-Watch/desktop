@@ -25,6 +25,7 @@ import {
   submitServerRequest,
   approveServerRequest,
   fetchUserRole,
+  restoreAllQuarantinedServers,
 } from "../mcpConfigActions";
 import type { DiscoveredMcpServer } from "../mcpDiscovery";
 
@@ -213,6 +214,88 @@ describe("mcpConfigActions", () => {
         "bad-key",
       );
       expect(role).toBeNull();
+    });
+  });
+
+  describe("restoreAllQuarantinedServers", () => {
+    it("restores servers from plugin-sourced disabled files", async () => {
+      // Create a fake plugin .mcp.json path and its disabled counterpart
+      const pluginDir = join(testDir, "plugin-mcp");
+      await fs.mkdir(pluginDir, { recursive: true });
+
+      const pluginMcpPath = join(pluginDir, ".mcp.json");
+      const disabledPath = getDisabledConfigPath(pluginMcpPath);
+
+      // Write a disabled file with a quarantined server
+      const disabledContent = {
+        _metadata: { version: 1 },
+        servers: {
+          "test-plugin-server": {
+            command: "node",
+            args: ["server.js"],
+            originalFile: pluginMcpPath,
+            quarantinedAt: "2026-03-20T00:00:00Z",
+          },
+        },
+      };
+      await fs.writeFile(
+        disabledPath,
+        JSON.stringify(disabledContent),
+        "utf-8",
+      );
+
+      // Mock all path functions for full isolation
+      const mcpConfigPaths = await import("../mcpConfigPaths");
+      const pathsSpy = vi
+        .spyOn(mcpConfigPaths, "getAllConfigPaths")
+        .mockReturnValue({
+          vscode: join(testDir, "vscode-mcp.json"),
+          vscodeInsiders: join(testDir, "vscode-insiders-mcp.json"),
+          claudeDesktop: join(testDir, "claude-desktop.json"),
+          claudeCowork: join(testDir, "claude-cowork.json"),
+          cursor: join(testDir, "cursor-mcp.json"),
+          cursorWorkspaceStorage: join(testDir, "cursor-ws"),
+          claudeCode: [],
+          windsurf: join(testDir, "windsurf-mcp.json"),
+          zed: join(testDir, "zed-mcp.json"),
+          antigravity: join(testDir, "antigravity-mcp.json"),
+        });
+      const mcpDiscovery = await import("../mcpDiscovery");
+      const pluginSpy = vi
+        .spyOn(mcpDiscovery, "getCursorPluginMcpPaths")
+        .mockResolvedValue([pluginMcpPath]);
+      const projectSpy = vi
+        .spyOn(mcpDiscovery, "getCursorProjectMcpPaths")
+        .mockResolvedValue([]);
+      const claudeCodeSpy = vi
+        .spyOn(mcpDiscovery, "getClaudeCodeProjectMcpPaths")
+        .mockResolvedValue([]);
+      const jetbrainsSpy = vi
+        .spyOn(mcpDiscovery, "getJetBrainsMcpConfigPaths")
+        .mockResolvedValue([]);
+
+      try {
+        const result = await restoreAllQuarantinedServers();
+
+        expect(result.restored).toBe(1);
+        expect(result.errors).toHaveLength(0);
+
+        // Verify the disabled file was deleted
+        await expect(fs.access(disabledPath)).rejects.toThrow();
+
+        // Verify the original config was written with the restored server
+        const restoredConfig = JSON.parse(
+          await fs.readFile(pluginMcpPath, "utf-8"),
+        );
+        expect(restoredConfig).toHaveProperty("mcpServers");
+        expect(restoredConfig.mcpServers).toHaveProperty("test-plugin-server");
+      } finally {
+        pathsSpy.mockRestore();
+        pluginSpy.mockRestore();
+        projectSpy.mockRestore();
+        claudeCodeSpy.mockRestore();
+        jetbrainsSpy.mockRestore();
+      }
     });
   });
 });

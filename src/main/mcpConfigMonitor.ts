@@ -24,6 +24,7 @@ const CURSOR_PLUGINS_INSTALLED_PATHS = getCursorPluginsInstalledPaths()
 
 const QUARANTINE_MAX_ATTEMPTS = 3
 const QUARANTINE_RETRY_DELAY_MS = 400
+const DEFAULT_RESCAN_INTERVAL_MS = 60_000 // Safety-net rescan every 60s
 
 async function quarantineWithRetry(server: DiscoveredMcpServer): Promise<QuarantineResult> {
   let lastErr: unknown
@@ -75,14 +76,19 @@ export class McpConfigMonitor extends EventEmitter {
   private seenStore: SeenServersStore
   private lastKnownServers: Map<string, DiscoveredMcpServer> = new Map()
   private debounceTimer: NodeJS.Timeout | null = null
+  private rescanTimer: NodeJS.Timeout | null = null
   private debounceMs: number
+  private rescanIntervalMs: number
   private isRunning = false
+  private isCheckingForChanges = false
+  private pendingRescan = false
   private configFiles: Set<string> = new Set()
 
-  constructor(seenStore: SeenServersStore, debounceMs = 500) {
+  constructor(seenStore: SeenServersStore, debounceMs = 500, rescanIntervalMs = DEFAULT_RESCAN_INTERVAL_MS) {
     super()
     this.seenStore = seenStore
     this.debounceMs = debounceMs
+    this.rescanIntervalMs = rescanIntervalMs
   }
 
   /**
@@ -108,6 +114,7 @@ export class McpConfigMonitor extends EventEmitter {
       paths.vscode,
       paths.vscodeInsiders,
       paths.claudeDesktop,
+      paths.claudeCowork,
       paths.cursor,
       ...CURSOR_PLUGINS_INSTALLED_PATHS, // watch all plugin registry files (legacy + v1 + shared)
       ...paths.claudeCode,
@@ -167,7 +174,14 @@ export class McpConfigMonitor extends EventEmitter {
     // new project in Cursor, the new workspace.json triggers discovery of its .cursor/mcp.json.
     await this.startWorkspaceStorageWatcher()
 
+    // Set isRunning before starting the rescan timer so the timer's guard
+    // doesn't skip the first tick.
     this.isRunning = true
+
+    // Start periodic safety-net rescan to catch MCP registrations that bypass config files
+    // (e.g., Cursor's Extension API or deeplink installs).
+    this.startRescanTimer()
+
     console.log('[McpConfigMonitor] Started watching:', existingPaths)
   }
 
@@ -178,6 +192,11 @@ export class McpConfigMonitor extends EventEmitter {
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer)
       this.debounceTimer = null
+    }
+
+    if (this.rescanTimer) {
+      clearInterval(this.rescanTimer)
+      this.rescanTimer = null
     }
 
     if (this.watcher) {
@@ -196,6 +215,8 @@ export class McpConfigMonitor extends EventEmitter {
 
   /**
    * Force a rescan of all config files and emit changes.
+   * Note: if a scan is already in progress this returns [] immediately;
+   * changes are still propagated via the 'serversQuarantined'/'serversChanged' events.
    */
   async forceRescan(): Promise<DetectedServerChange[]> {
     return this.checkForChanges()
@@ -300,6 +321,30 @@ export class McpConfigMonitor extends EventEmitter {
    */
   getMonitoredPaths(): string[] {
     return Array.from(this.configFiles)
+  }
+
+  /**
+   * Start a periodic rescan timer as a safety net to catch MCP registrations
+   * that bypass config file writes (e.g., Cursor Extension API, deeplinks).
+   */
+  private startRescanTimer(): void {
+    if (this.rescanTimer) {
+      clearInterval(this.rescanTimer)
+    }
+
+    this.rescanTimer = setInterval(async () => {
+      if (!this.isRunning) return // guard against in-flight calls after stop()
+      try {
+        await this.checkForChanges()
+      } catch (err) {
+        console.error('[McpConfigMonitor] Periodic rescan error:', err)
+        this.emit('error', err instanceof Error ? err : new Error(String(err)))
+      }
+    }, this.rescanIntervalMs)
+
+    // Don't keep the process alive just for the rescan timer
+    this.rescanTimer.unref()
+    console.log(`[McpConfigMonitor] Periodic rescan started (every ${this.rescanIntervalMs / 1000}s)`)
   }
 
   /**
@@ -480,6 +525,29 @@ export class McpConfigMonitor extends EventEmitter {
   }
 
   private async checkForChanges(): Promise<DetectedServerChange[]> {
+    if (this.isCheckingForChanges) {
+      // A scan is already in progress — mark that another pass is needed so
+      // file-change-triggered rescans aren't silently dropped.
+      this.pendingRescan = true
+      return []
+    }
+    this.isCheckingForChanges = true
+    try {
+      let result: DetectedServerChange[]
+      // Loop until no concurrent caller requested another pass while we were running.
+      // In practice this runs at most twice; if the periodic timer fires faster than
+      // _checkForChangesImpl completes the loop continues until stop() clears the timer.
+      do {
+        this.pendingRescan = false
+        result = await this._checkForChangesImpl()
+      } while (this.pendingRescan)
+      return result
+    } finally {
+      this.isCheckingForChanges = false
+    }
+  }
+
+  private async _checkForChangesImpl(): Promise<DetectedServerChange[]> {
     const currentServers = await discoverMcpServers()
     const currentMap = new Map<string, DiscoveredMcpServer>()
 

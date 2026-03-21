@@ -144,6 +144,10 @@ async function startQuarantineMonitor(): Promise<void> {
     // Regular users: quarantine is silent
   });
 
+  configMonitor.on("error", (err) => {
+    console.error("[McpConfigMonitor] Error:", err);
+  });
+
   await configMonitor.start();
 }
 

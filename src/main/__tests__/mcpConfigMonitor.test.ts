@@ -249,5 +249,60 @@ describe("mcpConfigMonitor", () => {
       await monitor.stop();
       // Should not throw
     });
+
+    it("accepts custom rescan interval", async () => {
+      const storePath = join(testDir, "seen-rescan.json");
+      const store = new SeenServersStore(storePath);
+      const monitor = new McpConfigMonitor(store, 500, 30_000);
+
+      expect(monitor).toBeDefined();
+      await monitor.stop();
+    });
+
+    it("periodic rescan triggers checkForChanges", async () => {
+      const storePath = join(testDir, "seen-periodic.json");
+      const store = new SeenServersStore(storePath);
+      // Use a very short rescan interval for testing (50ms)
+      const monitor = new McpConfigMonitor(store, 500, 50);
+
+      // Spy on the private checkForChanges method directly
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const checkSpy = vi
+        .spyOn(monitor as any, "checkForChanges")
+        .mockResolvedValue([]);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (monitor as any).isRunning = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (monitor as any).startRescanTimer();
+
+      try {
+        // Wait for at least one interval tick
+        await new Promise((r) => setTimeout(r, 120));
+
+        await monitor.stop();
+
+        expect(checkSpy).toHaveBeenCalled();
+      } finally {
+        checkSpy.mockRestore();
+      }
+    });
+
+    it("stop clears rescan timer", async () => {
+      const storePath = join(testDir, "seen-stop-rescan.json");
+      const store = new SeenServersStore(storePath);
+      const monitor = new McpConfigMonitor(store, 500, 100);
+
+      // isRunning defaults to false, so the timer's guard prevents checkForChanges
+      // from running even if a tick fires before stop() clears the interval.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (monitor as any).startRescanTimer();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((monitor as any).rescanTimer).not.toBeNull();
+
+      await monitor.stop();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((monitor as any).rescanTimer).toBeNull();
+    });
   });
 });
