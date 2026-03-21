@@ -368,12 +368,20 @@ export async function getHookStatus(): Promise<
         const settings = parseJsonc(content) as ClaudeCodeSettings
         const promptHooks = settings.hooks?.UserPromptSubmit ?? []
         const toolHooks = settings.hooks?.PreToolUse ?? []
+        const startHooks = settings.hooks?.SessionStart ?? []
+        const endHooks = settings.hooks?.SessionEnd ?? []
         claudeHasHook =
           promptHooks.some((group) =>
             group.hooks?.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook'))
           ) &&
           toolHooks.some((group) =>
             group.hooks?.some((h) => h.command?.includes('edison-session-hook'))
+          ) &&
+          startHooks.some((group) =>
+            group.hooks?.some((h) => h.command?.includes('edison-session-start'))
+          ) &&
+          endHooks.some((group) =>
+            group.hooks?.some((h) => h.command?.includes('edison-session-end'))
           )
       }
     } catch { /* ignore */ }

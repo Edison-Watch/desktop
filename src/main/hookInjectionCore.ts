@@ -138,6 +138,86 @@ export async function ensureHookScript(): Promise<string> {
   }
 }
 
+// ── Session start hook ───────────────────────────────────────────────────────
+
+/**
+ * Get the path to the Edison Watch session start hook script.
+ */
+function getSessionStartHookScriptPath(): string {
+  const scriptName = process.platform === 'win32' ? 'edison-session-start.cmd' : 'edison-session-start.py'
+  return join(homedir(), '.edison-watch', scriptName)
+}
+
+/** Python script for SessionStart hook.
+ *  Reads session_id from Claude Code's SessionStart hook data and persists it
+ *  to a PID-scoped file so PreToolUse can read the authoritative session ID. */
+const SESSION_START_HOOK_PYTHON = `#!/usr/bin/env python3
+import json, sys, os
+try:
+    data = json.load(sys.stdin)
+    session_id = data.get("session_id") or data.get("sessionId")
+    # Skip on Windows: .cmd wrapper means PPID is ephemeral cmd.exe, not Claude Code.
+    # PreToolUse falls back to hook payload session_id on Windows.
+    if session_id and sys.platform != "win32":
+        edison_dir = os.path.expanduser("~/.edison-watch")
+        os.makedirs(edison_dir, exist_ok=True)
+        # PPID = Claude Code process ID. Relies on Claude Code spawning hooks as
+        # direct children (execFile/spawn, not sh -c). Falls back gracefully if not.
+        ppid = os.getppid()
+        fname = f"active_session_{ppid}.json"
+        tmp = os.path.join(edison_dir, f".{fname}.tmp")
+        final = os.path.join(edison_dir, fname)
+        with open(tmp, "w") as f:
+            json.dump({"session_id": session_id}, f)
+        os.rename(tmp, final)
+except Exception:
+    pass
+sys.exit(0)
+`
+
+function generateSessionStartHookScript(): string {
+  if (process.platform === 'win32') {
+    return `@echo off
+REM Edison Watch - Session start hook: persist session_id to PID-scoped file
+python "%~dp0edison-session-start.py" 2>nul || python3 "%~dp0edison-session-start.py"
+exit /b 0
+`
+  }
+  return SESSION_START_HOOK_PYTHON
+}
+
+/**
+ * Ensure the session start hook script exists and is executable.
+ */
+export async function ensureSessionStartHookScript(): Promise<string> {
+  const scriptPath = getSessionStartHookScriptPath()
+  const scriptDir = dirname(scriptPath)
+
+  try {
+    if (!existsSync(scriptDir)) {
+      await fs.mkdir(scriptDir, { recursive: true })
+    }
+
+    if (process.platform === 'win32') {
+      const pyPath = join(scriptDir, 'edison-session-start.py')
+      await fs.writeFile(pyPath, SESSION_START_HOOK_PYTHON, 'utf-8')
+      await fs.writeFile(scriptPath, generateSessionStartHookScript(), 'utf-8')
+    } else {
+      await fs.writeFile(scriptPath, generateSessionStartHookScript(), { mode: 0o755 })
+    }
+
+    console.log(`[HookInjection] Created session start hook script at ${scriptPath}`)
+    return scriptPath
+  } catch (err) {
+    captureError(err instanceof Error ? err : new Error(String(err)), {
+      operation: 'ensureSessionStartHookScript',
+      scriptPath,
+      platform: platform()
+    })
+    throw err
+  }
+}
+
 // ── Session end hook ─────────────────────────────────────────────────────────
 
 /**
@@ -152,7 +232,7 @@ const SESSION_END_HOOK_PYTHON = `#!/usr/bin/env python3
 import json, sys, os, time, random
 try:
     data = json.load(sys.stdin)
-    conv_id = data.get("conversation_id") if data.get("conversation_id") is not None else data.get("sessionId")
+    conv_id = data.get("session_id") or data.get("conversation_id") or data.get("sessionId")
     reason = data.get("reason", "unknown")
     if conv_id:
         pending_dir = os.path.expanduser("~/.edison-watch/pending")
@@ -165,6 +245,16 @@ try:
             json.dump({"event": "session_end", "conversation_id": conv_id,
                         "reason": reason, "timestamp": ts}, f)
         os.rename(tmp, final)
+except Exception:
+    pass
+# Clean up PID-scoped active session file — runs regardless of pending-write outcome
+# Skip on Windows: .cmd wrapper means PPID is ephemeral cmd.exe, not Claude Code
+try:
+    if sys.platform != "win32":
+        ppid = os.getppid()
+        active_file = os.path.expanduser(f"~/.edison-watch/active_session_{ppid}.json")
+        if os.path.exists(active_file):
+            os.remove(active_file)
 except Exception:
     pass
 sys.exit(0)
@@ -224,10 +314,13 @@ function getSessionHookScriptPath(): string {
 }
 
 /** Python script content for the session hook (shared by Unix .py and Windows .py).
- *  Format-agnostic: detects VSCode Copilot (hookEventName), Claude Code (hook_event_name), or Cursor (conversation_id). */
+ *  Format-agnostic: detects VSCode Copilot (hookEventName), Claude Code (hook_event_name), or Cursor (conversation_id).
+ *  For Claude Code: reads PID-scoped active session file first (written by SessionStart hook),
+ *  falling back to session_id from hook payload data. */
 const SESSION_HOOK_PYTHON = `#!/usr/bin/env python3
 import json
 import sys
+import os
 
 try:
     data = json.load(sys.stdin)
@@ -239,7 +332,22 @@ try:
     if is_vscode:
         conv_id = data.get("sessionId")
     elif is_claude_code:
-        conv_id = data.get("session_id") or data.get("conversation_id")
+        # Try PID-scoped active session file first (authoritative, written by SessionStart hook)
+        # Skip on Windows: .cmd wrapper gives ephemeral PPID, file won't match
+        conv_id = None
+        try:
+            if sys.platform != "win32":
+                ppid = os.getppid()
+                active_file = os.path.expanduser(f"~/.edison-watch/active_session_{ppid}.json")
+                if os.path.exists(active_file):
+                    with open(active_file, "r") as f:
+                        active_data = json.load(f)
+                    conv_id = active_data.get("session_id")
+        except Exception:
+            pass
+        # Fall back to hook payload data
+        if not conv_id:
+            conv_id = data.get("session_id") or data.get("conversation_id")
     else:
         conv_id = data.get("conversation_id")
     # Extract tool input (VSCode uses camelCase toolInput)

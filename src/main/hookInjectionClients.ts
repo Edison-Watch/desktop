@@ -6,7 +6,7 @@ import { promises as fs, existsSync } from 'fs'
 import { homedir } from 'os'
 import { join, dirname } from 'path'
 import { parse as parseJsonc, modify, applyEdits } from 'jsonc-parser'
-import { ensureHookScript, ensureSessionHookScript, ensureSessionEndHookScript } from './hookInjectionCore'
+import { ensureHookScript, ensureSessionHookScript, ensureSessionEndHookScript, ensureSessionStartHookScript } from './hookInjectionCore'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 
@@ -51,6 +51,7 @@ export interface ClaudeCodeHooks {
   PreToolUse?: ClaudeCodeHookGroup[]
   PostToolUse?: ClaudeCodeHookGroup[]
   SessionStart?: ClaudeCodeHookGroup[]
+  SessionEnd?: ClaudeCodeHookGroup[]
   [key: string]: ClaudeCodeHookGroup[] | undefined
 }
 
@@ -112,6 +113,8 @@ export async function injectClaudeCodeHook(): Promise<boolean> {
   const settingsPath = getClaudeCodeSettingsPath()
   const scriptPath = await ensureHookScript()
   const sessionScriptPath = await ensureSessionHookScript()
+  const sessionStartScriptPath = await ensureSessionStartHookScript()
+  const sessionEndScriptPath = await ensureSessionEndHookScript()
 
   const settingsDir = dirname(settingsPath)
   if (!existsSync(settingsDir)) {
@@ -158,6 +161,44 @@ export async function injectClaudeCodeHook(): Promise<boolean> {
       hooks: [{ type: 'command', command: `"${sessionScriptPath}"` }]
     }
     const edits = modify(content, ['hooks', 'PreToolUse'], [...existingToolHooks, sessionHook], {
+      formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' }
+    })
+    content = applyEdits(content, edits)
+    injected = true
+  }
+
+  // SessionStart hook (persist authoritative session_id to PID-scoped file)
+  const settingsAfterTool = parseJsonc(content) as ClaudeCodeSettings
+  const existingStartHooks = settingsAfterTool.hooks?.SessionStart ?? []
+  const hasStartHook = existingStartHooks.some((group) =>
+    group.hooks?.some((h) => h.command?.includes('edison-session-start'))
+  )
+
+  if (!hasStartHook) {
+    const startHook: ClaudeCodeHookGroup = {
+      matcher: '*',
+      hooks: [{ type: 'command', command: `"${sessionStartScriptPath}"` }]
+    }
+    const edits = modify(content, ['hooks', 'SessionStart'], [...existingStartHooks, startHook], {
+      formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' }
+    })
+    content = applyEdits(content, edits)
+    injected = true
+  }
+
+  // SessionEnd hook (session completion tracking + cleanup active session file)
+  const settingsAfterStart = parseJsonc(content) as ClaudeCodeSettings
+  const existingEndHooks = settingsAfterStart.hooks?.SessionEnd ?? []
+  const hasEndHook = existingEndHooks.some((group) =>
+    group.hooks?.some((h) => h.command?.includes('edison-session-end'))
+  )
+
+  if (!hasEndHook) {
+    const endHook: ClaudeCodeHookGroup = {
+      matcher: '*',
+      hooks: [{ type: 'command', command: `"${sessionEndScriptPath}"` }]
+    }
+    const edits = modify(content, ['hooks', 'SessionEnd'], [...existingEndHooks, endHook], {
       formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' }
     })
     content = applyEdits(content, edits)
@@ -220,6 +261,42 @@ export async function removeClaudeCodeHook(): Promise<boolean> {
       content,
       ['hooks', 'PreToolUse'],
       filteredToolHooks.length > 0 ? filteredToolHooks : undefined,
+      { formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' } }
+    )
+    content = applyEdits(content, edits)
+    removed = true
+  }
+
+  // Remove SessionStart edison hooks
+  const settingsAfterTool = parseJsonc(content) as ClaudeCodeSettings
+  const existingStartHooks = settingsAfterTool.hooks?.SessionStart ?? []
+  const filteredStartHooks = existingStartHooks.filter(
+    (group) => !group.hooks?.some((h) => h.command?.includes('edison-session-start'))
+  )
+
+  if (filteredStartHooks.length !== existingStartHooks.length) {
+    const edits = modify(
+      content,
+      ['hooks', 'SessionStart'],
+      filteredStartHooks.length > 0 ? filteredStartHooks : undefined,
+      { formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' } }
+    )
+    content = applyEdits(content, edits)
+    removed = true
+  }
+
+  // Remove SessionEnd edison hooks
+  const settingsAfterStart = parseJsonc(content) as ClaudeCodeSettings
+  const existingEndHooks = settingsAfterStart.hooks?.SessionEnd ?? []
+  const filteredEndHooks = existingEndHooks.filter(
+    (group) => !group.hooks?.some((h) => h.command?.includes('edison-session-end'))
+  )
+
+  if (filteredEndHooks.length !== existingEndHooks.length) {
+    const edits = modify(
+      content,
+      ['hooks', 'SessionEnd'],
+      filteredEndHooks.length > 0 ? filteredEndHooks : undefined,
       { formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' } }
     )
     content = applyEdits(content, edits)
