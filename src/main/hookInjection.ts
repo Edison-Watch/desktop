@@ -23,18 +23,21 @@ import {
   isClaudeCodeInstalled, injectClaudeCodeHook, removeClaudeCodeHook,
   isCursorInstalled, injectCursorHook, removeCursorHook,
   isWindsurfInstalled, injectWindsurfHook, removeWindsurfHook,
-  isGeminiInstalled, injectGeminiHook, removeGeminiHook,
-  isCodexInstalled, injectCodexHook, removeCodexHook,
-  isVsCodeCopilotInstalled, injectVsCodeCopilotHook, removeVsCodeCopilotHook,
   getClaudeCodeSettingsPath, getCursorHooksPath, getWindsurfHooksPath,
   getGeminiSettingsPath, getCodexConfigPath, getVsCodeCopilotHooksPath,
   type ClaudeCodeSettings, type CursorHooksFile, type WindsurfHooksFile,
-  type VsCodeCopilotHooksFile,
 } from './hookInjectionClients'
+import {
+  isGeminiInstalled, injectGeminiHook, removeGeminiHook,
+  isCodexInstalled, injectCodexHook, removeCodexHook,
+  isVsCodeCopilotInstalled, injectVsCodeCopilotHook, removeVsCodeCopilotHook,
+  type VsCodeCopilotHooksFile, type GeminiSettings,
+} from './hookInjectionClientsExtra'
 
 // Re-export all helpers so existing imports of hookInjection still work.
 export * from './hookInjectionCore'
 export * from './hookInjectionClients'
+export * from './hookInjectionClientsExtra'
 
 /**
  * Result of hook injection for a client.
@@ -466,16 +469,16 @@ export async function getHookStatus(): Promise<HookStatusEntry[]> {
       const copilotInstalled = !copilotStatusHandled && isVsCodeCopilotInstalled() && (workspacePaths.length > 0 || isLastVariant)
       if (copilotInstalled) {
         copilotStatusHandled = true
-        vsTotalHooks++ // copilot hooks are applicable, so expect 2
+        vsTotalHooks += 4 // copilot hooks: SessionStart, UserPromptSubmit, PreToolUse, Stop
         try {
           const copilotHooksPath = getVsCodeCopilotHooksPath()
           if (existsSync(copilotHooksPath)) {
             const content = await fs.readFile(copilotHooksPath, 'utf-8')
             const hooksFile = JSON.parse(content) as VsCodeCopilotHooksFile
-            if (hooksFile.hooks?.PreToolUse?.some((h) => h.command?.includes('edison-session-hook') && !h.command?.includes('edison-session-end')) &&
-                hooksFile.hooks?.Stop?.some((h) => h.command?.includes('edison-session-end'))) {
-              vsHookCount++
-            }
+            if (hooksFile.hooks?.SessionStart?.some((h) => h.command?.includes('edison-session-start'))) vsHookCount++
+            if (hooksFile.hooks?.UserPromptSubmit?.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook'))) vsHookCount++
+            if (hooksFile.hooks?.PreToolUse?.some((h) => h.command?.includes('edison-session-hook') && !h.command?.includes('edison-session-end'))) vsHookCount++
+            if (hooksFile.hooks?.Stop?.some((h) => h.command?.includes('edison-session-end'))) vsHookCount++
           }
         } catch { /* ignore */ }
       }
@@ -487,37 +490,48 @@ export async function getHookStatus(): Promise<HookStatusEntry[]> {
     }
   }
 
-  // Gemini CLI — expects 1 hook
+  // Gemini CLI — expects 3 hooks: SessionStart, BeforeTool, SessionEnd
   const geminiInstalled = isGeminiInstalled()
-  let geminiHasHook = false
+  let geminiHookCount = 0
+  const geminiTotalHooks = 3
   if (geminiInstalled) {
     try {
       const settingsPath = getGeminiSettingsPath()
       if (existsSync(settingsPath)) {
         const content = await fs.readFile(settingsPath, 'utf-8')
-        const settings = parseJsonc(content) as ClaudeCodeSettings
-        const hooks = settings.hooks?.SessionStart ?? []
-        geminiHasHook = hooks.some((group) =>
-          group.hooks?.some((h) => h.command?.includes('edison-hook'))
-        )
+        const settings = parseJsonc(content) as GeminiSettings
+        const startHooks = settings.hooks?.SessionStart ?? []
+        const toolHooks = settings.hooks?.BeforeTool ?? []
+        const endHooks = settings.hooks?.SessionEnd ?? []
+        if (startHooks.some((group) =>
+          group.hooks?.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook'))
+        )) geminiHookCount++
+        if (toolHooks.some((group) =>
+          group.hooks?.some((h) => h.command?.includes('edison-session-hook'))
+        )) geminiHookCount++
+        if (endHooks.some((group) =>
+          group.hooks?.some((h) => h.command?.includes('edison-session-end'))
+        )) geminiHookCount++
       }
     } catch { /* ignore */ }
   }
-  results.push({ client: 'antigravity', installed: geminiInstalled, hasHook: geminiHasHook, hookCount: geminiHasHook ? 1 : 0, totalHooks: 1 })
+  results.push({ client: 'antigravity', installed: geminiInstalled, hasHook: geminiHookCount === geminiTotalHooks, hookCount: geminiHookCount, totalHooks: geminiTotalHooks })
 
-  // Codex CLI — expects 1 hook
+  // Codex CLI — expects 2 hooks: SessionStart + Stop (experimental, no PreToolUse available)
   const codexInstalled = isCodexInstalled()
-  let codexHasHook = false
+  let codexHookCount = 0
+  const codexTotalHooks = 2
   if (codexInstalled) {
     try {
       const configPath = getCodexConfigPath()
       if (existsSync(configPath)) {
         const content = await fs.readFile(configPath, 'utf-8')
-        codexHasHook = content.includes('edison-hook')
+        if (content.includes('edison-hook')) codexHookCount++
+        if (content.includes('edison-session-end')) codexHookCount++
       }
     } catch { /* ignore */ }
   }
-  results.push({ client: 'codex', installed: codexInstalled, hasHook: codexHasHook, hookCount: codexHasHook ? 1 : 0, totalHooks: 1 })
+  results.push({ client: 'codex', installed: codexInstalled, hasHook: codexHookCount === codexTotalHooks, hookCount: codexHookCount, totalHooks: codexTotalHooks })
 
   return results
 }
