@@ -127,7 +127,12 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     startHookHealthMonitor();
     _startUpdateChecker();
 
-    getMainWindow()?.close();
+    const win = getMainWindow();
+    if (win) {
+      win.hide();
+      // Re-show after a tick so the renderer can transition to MainMenu
+      setTimeout(() => { if (!win.isDestroyed()) win.show(); }, 500);
+    }
   });
 
   ipcMain.handle("setup:reset", () => {

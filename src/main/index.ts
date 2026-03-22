@@ -555,6 +555,10 @@ function createWindow(): void {
 
   mainWindowState.manage(mainWindow);
 
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
+
   mainWindow.on("ready-to-show", () => {
     slog("ready-to-show, showing window");
     mainWindow?.show();
@@ -752,7 +756,7 @@ app.whenReady().then(async () => {
 
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin" && !isRestarting) {
+  if (process.platform !== "darwin" && !isRestarting && !tray) {
     app.quit();
   }
 });
