@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { Button, Badge } from "@edison/shared/ui";
 import { supabase } from "@edison/shared/auth";
+import ClientsView from "./ClientsView";
+
+type MenuTab = "home" | "clients";
 
 interface SetupData {
   completed?: boolean;
@@ -27,6 +30,7 @@ export default function MainMenu(): React.ReactNode {
   const [accounts, setAccounts] = useState<SavedAccount[]>([]);
   const [showAccounts, setShowAccounts] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [activeTab, setActiveTab] = useState<MenuTab>("home");
 
   useEffect(() => {
     (async () => {
@@ -177,6 +181,38 @@ export default function MainMenu(): React.ReactNode {
             </Badge>
           </div>
 
+          {/* Tab navigation */}
+          <div className="flex gap-1 border-b border-[var(--border)] -mx-1">
+            {([
+              { key: "home" as const, label: "Home", icon: "M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" },
+              { key: "clients" as const, label: "Clients", icon: "M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" },
+            ]).map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => {
+                  setActiveTab(tab.key);
+                  // Resize window for clients tab (taller to fit list)
+                  const height = tab.key === "clients" ? 520 : (setupData.mcpBaseUrl && setupData.apiKey ? 420 : 380);
+                  window.api.menu.resizeWindow(400, height);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium border-b-2 -mb-px transition-colors ${
+                  activeTab === tab.key
+                    ? "border-[var(--accent)] text-[var(--accent)]"
+                    : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                <svg viewBox="0 0 24 24" fill="none" className="h-3 w-3" aria-hidden="true">
+                  <path d={tab.icon} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {activeTab === "clients" && <ClientsView />}
+
+          {activeTab === "home" && (<>
           {/* Account switcher */}
           {(() => {
             const otherAccounts = accounts.filter((a) => a.userId !== setupData.userId && a.userEmail !== setupData.userEmail);
@@ -296,6 +332,7 @@ export default function MainMenu(): React.ReactNode {
               </div>
             )}
           </div>
+          </>)}
         </div>
       </div>
 

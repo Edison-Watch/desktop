@@ -8,12 +8,12 @@
 import { watch } from 'chokidar'
 import { promises as fs, existsSync } from 'fs'
 import { getHookStatus, getPendingErrorsDir, getPendingRegistrationsDir } from './hookInjection'
-import type { McpClientId } from './mcpDiscovery'
+import type { HookStatusEntry } from './hookInjection'
 import { captureError } from './sentry'
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
 
-export type HookStatusEntry = { client: McpClientId; installed: boolean; hasHook: boolean }
+export type { HookStatusEntry }
 
 let statusCheckTimer: ReturnType<typeof setInterval> | null = null
 let errorsWatcher: ReturnType<typeof watch> | null = null

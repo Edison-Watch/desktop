@@ -352,14 +352,23 @@ export async function removeAllHooks(): Promise<HookInjectionResult[]> {
 /**
  * Get the status of Edison Watch hooks for all clients.
  */
-export async function getHookStatus(): Promise<
-  Array<{ client: McpClientId; installed: boolean; hasHook: boolean }>
-> {
-  const results: Array<{ client: McpClientId; installed: boolean; hasHook: boolean }> = []
+export interface HookStatusEntry {
+  client: McpClientId
+  installed: boolean
+  hasHook: boolean
+  /** Number of Edison hooks found in this client's config */
+  hookCount: number
+  /** Total number of hooks expected for full integration */
+  totalHooks: number
+}
 
-  // Claude Code
+export async function getHookStatus(): Promise<HookStatusEntry[]> {
+  const results: HookStatusEntry[] = []
+
+  // Claude Code — expects 4 hooks
   const claudeInstalled = isClaudeCodeInstalled()
-  let claudeHasHook = false
+  let claudeHookCount = 0
+  const claudeTotalHooks = 4
   if (claudeInstalled) {
     try {
       const settingsPath = getClaudeCodeSettingsPath()
@@ -370,27 +379,27 @@ export async function getHookStatus(): Promise<
         const toolHooks = settings.hooks?.PreToolUse ?? []
         const startHooks = settings.hooks?.SessionStart ?? []
         const endHooks = settings.hooks?.SessionEnd ?? []
-        claudeHasHook =
-          promptHooks.some((group) =>
-            group.hooks?.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook'))
-          ) &&
-          toolHooks.some((group) =>
-            group.hooks?.some((h) => h.command?.includes('edison-session-hook'))
-          ) &&
-          startHooks.some((group) =>
-            group.hooks?.some((h) => h.command?.includes('edison-session-start'))
-          ) &&
-          endHooks.some((group) =>
-            group.hooks?.some((h) => h.command?.includes('edison-session-end'))
-          )
+        if (promptHooks.some((group) =>
+          group.hooks?.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook'))
+        )) claudeHookCount++
+        if (toolHooks.some((group) =>
+          group.hooks?.some((h) => h.command?.includes('edison-session-hook'))
+        )) claudeHookCount++
+        if (startHooks.some((group) =>
+          group.hooks?.some((h) => h.command?.includes('edison-session-start'))
+        )) claudeHookCount++
+        if (endHooks.some((group) =>
+          group.hooks?.some((h) => h.command?.includes('edison-session-end'))
+        )) claudeHookCount++
       }
     } catch { /* ignore */ }
   }
-  results.push({ client: 'claude-code', installed: claudeInstalled, hasHook: claudeHasHook })
+  results.push({ client: 'claude-code', installed: claudeInstalled, hasHook: claudeHookCount === claudeTotalHooks, hookCount: claudeHookCount, totalHooks: claudeTotalHooks })
 
-  // Cursor
+  // Cursor — expects 3 hooks
   const cursorInstalled = isCursorInstalled()
-  let cursorHasHook = false
+  let cursorHookCount = 0
+  const cursorTotalHooks = 3
   if (cursorInstalled) {
     try {
       const hooksPath = getCursorHooksPath()
@@ -401,15 +410,14 @@ export async function getHookStatus(): Promise<
         const beforeMCP = hooksFile.hooks?.beforeMCPExecution ?? []
         const preToolUse = hooksFile.hooks?.preToolUse ?? []
         const sessionEnd = hooksFile.hooks?.sessionEnd ?? []
-        cursorHasHook =
-          sessionStart.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook')) &&
-          (beforeMCP.some((h) => h.command?.includes('edison-session-hook')) ||
-           preToolUse.some((h) => h.command?.includes('edison-session-hook'))) &&
-          sessionEnd.some((h) => h.command?.includes('edison-session-end'))
+        if (sessionStart.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook'))) cursorHookCount++
+        if (beforeMCP.some((h) => h.command?.includes('edison-session-hook')) ||
+            preToolUse.some((h) => h.command?.includes('edison-session-hook'))) cursorHookCount++
+        if (sessionEnd.some((h) => h.command?.includes('edison-session-end'))) cursorHookCount++
       }
     } catch { /* ignore */ }
   }
-  results.push({ client: 'cursor', installed: cursorInstalled, hasHook: cursorHasHook })
+  results.push({ client: 'cursor', installed: cursorInstalled, hasHook: cursorHookCount === cursorTotalHooks, hookCount: cursorHookCount, totalHooks: cursorTotalHooks })
 
   // Windsurf
   const windsurfInstalled = isWindsurfInstalled()
@@ -425,17 +433,21 @@ export async function getHookStatus(): Promise<
       }
     } catch { /* ignore */ }
   }
-  results.push({ client: 'windsurf', installed: windsurfInstalled, hasHook: windsurfHasHook })
+  // Windsurf — expects 1 hook
+  const windsurfTotal = 1
+  results.push({ client: 'windsurf', installed: windsurfInstalled, hasHook: windsurfHasHook, hookCount: windsurfHasHook ? 1 : 0, totalHooks: windsurfTotal })
 
   // VS Code — report true if any known workspace has the hook OR Copilot hooks exist
   let copilotStatusHandled = false
   for (const clientId of ['vscode', 'vscode-insiders'] as const) {
-    let hasHook = false
+    let vsHookCount = 0
+    let vsTotalHooks = 0
     try {
       const workspacePaths =
         clientId === 'vscode'
           ? await getVsCodeWorkspacePaths()
           : await getVsCodeInsidersWorkspacePaths()
+      if (workspacePaths.length > 0) vsTotalHooks++ // workspace task expected only if workspaces exist
       for (const wsPath of workspacePaths) {
         const tasksPath = join(wsPath, '.vscode', 'tasks.json')
         if (!existsSync(tasksPath)) continue
@@ -443,7 +455,7 @@ export async function getHookStatus(): Promise<
           const content = await fs.readFile(tasksPath, 'utf-8')
           const tasksFile = JSON.parse(content) as VsCodeTasksFile
           if (tasksFile.tasks?.some((t) => t.label === VSCODE_TASK_LABEL)) {
-            hasHook = true
+            vsHookCount++
             break
           }
         } catch { /* unreadable; skip */ }
@@ -454,29 +466,28 @@ export async function getHookStatus(): Promise<
       const copilotInstalled = !copilotStatusHandled && isVsCodeCopilotInstalled() && (workspacePaths.length > 0 || isLastVariant)
       if (copilotInstalled) {
         copilotStatusHandled = true
-        if (!hasHook) {
-          try {
-            const copilotHooksPath = getVsCodeCopilotHooksPath()
-            if (existsSync(copilotHooksPath)) {
-              const content = await fs.readFile(copilotHooksPath, 'utf-8')
-              const hooksFile = JSON.parse(content) as VsCodeCopilotHooksFile
-              hasHook = !!(
-                hooksFile.hooks?.PreToolUse?.some((h) => h.command?.includes('edison-session-hook') && !h.command?.includes('edison-session-end')) &&
-                hooksFile.hooks?.Stop?.some((h) => h.command?.includes('edison-session-end'))
-              )
+        vsTotalHooks++ // copilot hooks are applicable, so expect 2
+        try {
+          const copilotHooksPath = getVsCodeCopilotHooksPath()
+          if (existsSync(copilotHooksPath)) {
+            const content = await fs.readFile(copilotHooksPath, 'utf-8')
+            const hooksFile = JSON.parse(content) as VsCodeCopilotHooksFile
+            if (hooksFile.hooks?.PreToolUse?.some((h) => h.command?.includes('edison-session-hook') && !h.command?.includes('edison-session-end')) &&
+                hooksFile.hooks?.Stop?.some((h) => h.command?.includes('edison-session-end'))) {
+              vsHookCount++
             }
-          } catch { /* ignore */ }
-        }
+          }
+        } catch { /* ignore */ }
       }
 
       const installed = workspacePaths.length > 0 || copilotInstalled
-      results.push({ client: clientId, installed, hasHook })
+      results.push({ client: clientId, installed, hasHook: vsTotalHooks > 0 && vsHookCount === vsTotalHooks, hookCount: vsHookCount, totalHooks: vsTotalHooks })
     } catch {
-      results.push({ client: clientId, installed: false, hasHook: false })
+      results.push({ client: clientId, installed: false, hasHook: false, hookCount: 0, totalHooks: 1 })
     }
   }
 
-  // Gemini CLI
+  // Gemini CLI — expects 1 hook
   const geminiInstalled = isGeminiInstalled()
   let geminiHasHook = false
   if (geminiInstalled) {
@@ -492,9 +503,9 @@ export async function getHookStatus(): Promise<
       }
     } catch { /* ignore */ }
   }
-  results.push({ client: 'antigravity', installed: geminiInstalled, hasHook: geminiHasHook })
+  results.push({ client: 'antigravity', installed: geminiInstalled, hasHook: geminiHasHook, hookCount: geminiHasHook ? 1 : 0, totalHooks: 1 })
 
-  // Codex CLI
+  // Codex CLI — expects 1 hook
   const codexInstalled = isCodexInstalled()
   let codexHasHook = false
   if (codexInstalled) {
@@ -506,7 +517,7 @@ export async function getHookStatus(): Promise<
       }
     } catch { /* ignore */ }
   }
-  results.push({ client: 'codex', installed: codexInstalled, hasHook: codexHasHook })
+  results.push({ client: 'codex', installed: codexInstalled, hasHook: codexHasHook, hookCount: codexHasHook ? 1 : 0, totalHooks: 1 })
 
   return results
 }
