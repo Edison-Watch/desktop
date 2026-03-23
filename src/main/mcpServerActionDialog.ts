@@ -245,6 +245,8 @@ export function showQuarantinedServersDialog(
             }
           }
 
+          window.addEventListener('keydown', event => { if (event.ctrlKey && event.key === 'Enter') { event.preventDefault(); document.getElementById('request-all')?.click() } })
+
           function removeServerItem(fingerprint) {
             const item = findItemByFingerprint(fingerprint)
             if (!item) {
@@ -590,6 +592,8 @@ export async function showServerRegistrationDialog(
               countSpan.textContent = '(' + remaining + ')'
             }
           }
+
+          window.addEventListener('keydown', event => { if (event.ctrlKey && event.key === 'Enter') { event.preventDefault(); document.getElementById('request-all')?.click() } })
 
           function removeServerItem(fingerprint) {
             const item = findItemByFingerprint(fingerprint)
