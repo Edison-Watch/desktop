@@ -740,7 +740,9 @@ export function getClientDisplayName(client: McpClientId): string {
     case 'zed':
       return 'Zed'
     case 'antigravity':
-      return 'Antigravity'
+      return 'Gemini CLI'
+    case 'codex':
+      return 'Codex CLI'
     case 'intellij':
       return 'IntelliJ IDEA'
     case 'pycharm':

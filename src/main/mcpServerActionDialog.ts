@@ -1,5 +1,6 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'path'
+import { GEMINI_PATH, OPENAI_PATH } from '../shared/logoPaths'
 import type { QuarantinedServerEvent } from './mcpConfigMonitor'
 import { getClientDisplayName, filterOutEdisonWatchServers } from './mcpConfigMonitor'
 import type { ServerAction } from './seenServersStore'
@@ -31,7 +32,10 @@ export function escapeHtml(unsafe: string): string {
  * Get an SVG icon for a client.
  * Icons from Simple Icons (https://simpleicons.org) - official brand SVGs.
  */
-export function getClientIcon(client: McpClientId): string {
+export function getClientIcon(client: McpClientId, iconIdSuffix: string = client): string {
+  const safeIconIdSuffix = iconIdSuffix.replace(/[^a-zA-Z0-9_-]/g, '_')
+  const geminiGradientId = `gemini-gradient-${safeIconIdSuffix}`
+
   switch (client) {
     case 'vscode':
     case 'vscode-insiders':
@@ -51,8 +55,9 @@ export function getClientIcon(client: McpClientId): string {
       // Zed Industries icon (Simple Icons)
       return `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.25 1.5a.75.75 0 0 0-.75.75v16.5H0V2.25A2.25 2.25 0 0 1 2.25 0h20.095c1.002 0 1.504 1.212.795 1.92L10.764 14.298h3.486V12.75h1.5v1.922a1.125 1.125 0 0 1-1.125 1.125H9.264l-2.578 2.578h11.689V9h1.5v9.375a1.5 1.5 0 0 1-1.5 1.5H5.185L2.562 22.5H21.75a.75.75 0 0 0 .75-.75V5.25H24v16.5A2.25 2.25 0 0 1 21.75 24H1.655C.653 24 .151 22.788.86 22.08L13.19 9.75H9.75v1.5h-1.5V9.375A1.125 1.125 0 0 1 9.375 8.25h5.314l2.625-2.625H5.625V15h-1.5V5.625a1.5 1.5 0 0 1 1.5-1.5h13.19L21.438 1.5z"/></svg>`
     case 'antigravity':
-      // Google icon (Simple Icons) - Antigravity is Google's IDE
-      return `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>`
+      return `<svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="${geminiGradientId}" x1="4" y1="4" x2="20" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8B5CF6"/><stop offset="0.5" stop-color="#6366F1"/><stop offset="1" stop-color="#0EA5E9"/></linearGradient></defs><path d="${GEMINI_PATH}" fill="url(#${geminiGradientId})"/></svg>`
+    case 'codex':
+      return `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="${OPENAI_PATH}"/></svg>`
     case 'intellij':
     case 'pycharm':
     case 'webstorm':
@@ -135,7 +140,7 @@ export function showQuarantinedServersDialog(
         const server = event.server
         const config = server.config
         const clientName = getClientDisplayName(server.client)
-        const clientIcon = getClientIcon(server.client)
+        const clientIcon = getClientIcon(server.client, event.fingerprint)
 
         // Get command/url info - escape all user-controlled content to prevent XSS
         let serverInfo = ''
@@ -488,7 +493,7 @@ export async function showServerRegistrationDialog(
       .map(({ server, fingerprint }) => {
         const config = server.config
         const clientName = getClientDisplayName(server.client)
-        const clientIcon = getClientIcon(server.client)
+        const clientIcon = getClientIcon(server.client, fingerprint)
 
         let serverInfo = ''
         if ('command' in config && config.command) {

@@ -48,7 +48,7 @@ function buildDebugHtml(servers: DiscoveredMcpServer[]): string {
     .map((server) => {
       const safeName = escapeHtml(server.name)
       const clientName = getClientDisplayName(server.client)
-      const clientIcon = getClientIcon(server.client)
+      const clientIcon = getClientIcon(server.client, `${server.client}-${server.name}-${server.path}`)
       const serverInfo = getServerInfoHtml(server)
       const transport = getTransportLabel(server)
       const safePath = escapeHtml(server.path)
@@ -219,7 +219,7 @@ function buildRefreshData(servers: DiscoveredMcpServer[]): {
           .map((server) => {
             const safeName = escapeHtml(server.name)
             const clientName = getClientDisplayName(server.client)
-            const clientIcon = getClientIcon(server.client)
+            const clientIcon = getClientIcon(server.client, `${server.client}-${server.name}-${server.path}`)
             const serverInfo = getServerInfoHtml(server)
             const transport = getTransportLabel(server)
             const safePath = escapeHtml(server.path)

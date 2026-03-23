@@ -3,6 +3,8 @@
  * SVG paths sourced from simple-icons (https://simpleicons.org, MIT license).
  * VS Code icon extracted from the installed macOS app bundle.
  */
+import { useId } from "react";
+import { GEMINI_PATH, OPENAI_PATH } from "../../../shared/logoPaths";
 import vscodePng from "../assets/logo-vscode.png";
 import claudeCodePng from "../assets/logo-claude-code.png";
 import claudeCoworkPng from "../assets/logo-claude-cowork.png";
@@ -46,11 +48,6 @@ const SI_LOGOS: Record<string, { bg: string; path: string }> = {
     bg: "#000000",
     path: "M0 0v24h24V0H0zm17.889 2.889c1.444 0 2.667.444 3.667 1.278l-1.111 1.667c-.889-.611-1.722-1-2.556-1s-1.278.389-1.278.889v.056c0 .667.444.889 2.111 1.333 2 .556 3.111 1.278 3.111 3v.056c0 2-1.5 3.111-3.611 3.111-1.5-.056-3-.611-4.167-1.667l1.278-1.556c.889.722 1.833 1.222 2.944 1.222.889 0 1.389-.333 1.389-.944v-.056c0-.556-.333-.833-2-1.278-2-.5-3.222-1.056-3.222-3.056v-.056c0-1.833 1.444-3 3.444-3zm-16.111.222h2.278l1.5 5.778 1.722-5.778h1.667l1.667 5.778 1.5-5.778h2.333l-2.833 9.944H9.723L8.112 7.277l-1.667 5.778H4.612L1.779 3.111zm.5 16.389h9V21h-9v-1.5z",
   },
-  antigravity: {
-    // Google icon (Simple Icons) — Antigravity is Google's AI IDE
-    bg: "#4285F4",
-    path: "M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z",
-  },
 };
 
 // ---------------------------------------------------------------------------
@@ -58,6 +55,44 @@ const SI_LOGOS: Record<string, { bg: string; path: string }> = {
 // ---------------------------------------------------------------------------
 
 export function AppLogo({ id, name }: AppLogoProps) {
+  const uniqueId = useId();
+  const geminiGradientId = `geminiGradient-${uniqueId}`;
+
+  if (id === "codex") {
+    return (
+      <div
+        className="h-8 w-8 shrink-0 overflow-hidden rounded-lg flex items-center justify-center p-1.5 ring-1 ring-black/10"
+        style={{ background: "#FFFFFF" }}
+        aria-label={name}
+      >
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="h-full w-full" aria-hidden="true">
+          <path d={OPENAI_PATH} fill="#000000" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (id === "antigravity") {
+    return (
+      <div
+        className="h-8 w-8 shrink-0 overflow-hidden rounded-lg flex items-center justify-center p-1.5 ring-1 ring-black/10"
+        style={{ background: "#FFFFFF" }}
+        aria-label={name}
+      >
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="h-full w-full" aria-hidden="true">
+          <defs>
+            <linearGradient id={geminiGradientId} x1="4" y1="4" x2="20" y2="20" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stopColor="#8B5CF6" />
+              <stop offset="0.5" stopColor="#6366F1" />
+              <stop offset="1" stopColor="#0EA5E9" />
+            </linearGradient>
+          </defs>
+          <path d={GEMINI_PATH} fill={`url(#${geminiGradientId})`} />
+        </svg>
+      </div>
+    );
+  }
+
   const si = SI_LOGOS[id];
   if (si) {
     return (
