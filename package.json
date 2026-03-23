@@ -4,6 +4,7 @@
   "private": true,
   "description": "Edison Watch Desktop Client v2 — Electron + React 19",
   "main": "./out/main/index.js",
+  "author": "Edison Watch Team <hello@edison.watch>",
   "scripts": {
     "dev": "electron-vite dev",
     "dev:dry": "cross-env EDISON_DRY_RUN=1 electron-vite dev",
