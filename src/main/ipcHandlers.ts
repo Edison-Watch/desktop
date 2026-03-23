@@ -125,6 +125,9 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     // Start background services
     startEventSubscription();
     startHookHealthMonitor();
+    injectAllHooks().catch((err) =>
+      console.error("[HookInjection] Failed to inject hooks:", err),
+    );
     _startUpdateChecker();
 
     const win = getMainWindow();

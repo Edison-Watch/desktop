@@ -115,8 +115,6 @@ async function startQuarantineMonitor(): Promise<void> {
   autoQuarantineEnabled = true;
   updateTrayMenu();
 
-  await injectAllHooks();
-
   configMonitor = new McpConfigMonitor(new SeenServersStore());
 
   configMonitor.on("serversQuarantined", async (quarantinedEvents) => {
@@ -735,6 +733,9 @@ app.whenReady().then(async () => {
     createTray();
     startEventSubscription();
     startHookHealthMonitor();
+    injectAllHooks().catch((err) =>
+      console.error("[HookInjection] Failed to inject hooks:", err),
+    );
     startUpdateChecker();
     startQuarantineMonitorIfEnabled().catch((err) =>
       console.error("[Quarantine] Failed to start monitor:", err),
