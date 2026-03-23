@@ -95,6 +95,7 @@ export function showQuarantinedServersDialog(
     // Close existing window if open
     if (serverActionWindow && !serverActionWindow.isDestroyed()) {
       serverActionWindow.focus()
+      resolve([])
       return
     }
 
@@ -169,7 +170,7 @@ export function showQuarantinedServersDialog(
               Needs Approval
             </div>
             <div class="server-actions">
-              <button class="button button-request" data-action="requested" title="${isAdminOrOwner ? 'Add this server to Edison directly' : 'Submit request for IT admin approval'}">${isAdminOrOwner ? 'Add to Edison' : 'Request Approval'}</button>
+              <button class="button button-request" data-action="${isAdminOrOwner ? 'registered' : 'requested'}" title="${isAdminOrOwner ? 'Add this server to Edison directly' : 'Submit request for IT admin approval'}">${isAdminOrOwner ? 'Add to Edison' : 'Request Approval'}</button>
               <button class="button button-dismiss" data-action="dismissed" title="Skip for now without requesting">Skip for Now</button>
             </div>
           </div>
@@ -355,7 +356,7 @@ export function showQuarantinedServersDialog(
                   const fingerprint = item.dataset.fingerprint
                   const serverName = item.dataset.name
                   const sourceApp = item.dataset.source
-                  return handleAction(fingerprint, serverName, sourceApp, 'requested')
+                  return handleAction(fingerprint, serverName, sourceApp, '${isAdminOrOwner ? 'registered' : 'requested'}')
                 }))
                 if (i + 3 < items.length) await new Promise(r => setTimeout(r, 300))
               }
@@ -516,7 +517,7 @@ export async function showServerRegistrationDialog(
             </div>
             <div class="server-info">${serverInfo}</div>
             <div class="server-actions">
-              <button class="button button-request" data-action="requested" title="${isAdminOrOwner ? 'Add this server to Edison directly' : 'Submit request for IT admin approval'}">${isAdminOrOwner ? 'Add to Edison' : 'Request Approval'}</button>
+              <button class="button button-request" data-action="${isAdminOrOwner ? 'registered' : 'requested'}" title="${isAdminOrOwner ? 'Add this server to Edison directly' : 'Submit request for IT admin approval'}">${isAdminOrOwner ? 'Add to Edison' : 'Request Approval'}</button>
               <button class="button button-dismiss" data-action="skipped" title="Skip this server for now">Skip</button>
             </div>
           </div>
@@ -640,7 +641,7 @@ export async function showServerRegistrationDialog(
           async function handleAction(fingerprint, serverName, sourceApp, action) {
             const serverData = serverConfigs[fingerprint] || {}
             results.push({ fingerprint, serverName, sourceApp, action })
-            if (action === 'requested') {
+            if (action === 'requested' || action === 'registered') {
               let result
               try {
                 result = await ipcRenderer.invoke('mcp:handleServerAction', {
@@ -700,7 +701,7 @@ export async function showServerRegistrationDialog(
                   const fingerprint = item.dataset.fingerprint
                   const serverName = item.dataset.name
                   const sourceApp = item.dataset.source
-                  return handleAction(fingerprint, serverName, sourceApp, 'requested')
+                  return handleAction(fingerprint, serverName, sourceApp, '${isAdminOrOwner ? 'registered' : 'requested'}')
                 }))
                 if (i + 3 < items.length) await new Promise(r => setTimeout(r, 300))
               }

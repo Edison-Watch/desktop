@@ -8,9 +8,10 @@ import type { DiscoveredMcpServer, McpServerConfig } from './mcpDiscovery'
  * Server actions in the new auto-quarantine flow:
  * - 'quarantined': Server was auto-quarantined (moved to disabled file)
  * - 'requested': User requested access from IT admin
+ * - 'registered': Admin/owner added server directly (auto-approved)
  * - 'dismissed': User dismissed without requesting (stays quarantined)
  */
-export type ServerAction = 'quarantined' | 'requested' | 'dismissed'
+export type ServerAction = 'quarantined' | 'requested' | 'registered' | 'dismissed'
 
 export interface SeenServer {
   fingerprint: string

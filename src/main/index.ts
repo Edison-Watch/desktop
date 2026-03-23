@@ -488,6 +488,11 @@ function createWindow(): void {
   mainWindow.webContents.on("did-finish-load", () => { slog("did-finish-load"); logEnvConfig("startup"); });
   mainWindow.webContents.on("did-fail-load", (_e, code, desc) => slog(`did-fail-load code=${code} desc=${desc}`));
   mainWindow.webContents.on("render-process-gone", (_e, d) => slog(`render-process-gone reason=${d.reason} code=${d.exitCode}`));
+  if (process.env.EDISON_DEBUG_RENDERER === "true") {
+    mainWindow.webContents.on("console-message", (_e, level, message) => {
+      slog(`[renderer:${level}] ${message}`);
+    });
+  }
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url);
@@ -613,7 +618,7 @@ function logEnvConfig(context: string): void {
 slog("module loaded, waiting for app.whenReady");
 
 // Wire up the quarantine manager so it can trigger tray menu updates
-initQuarantineManager(updateTrayMenu);
+initQuarantineManager(updateTrayMenu, () => mainWindow);
 
 // Wire up the approvals handler so it can access mainWindow/approvalWindow
 initApprovalsHandler(

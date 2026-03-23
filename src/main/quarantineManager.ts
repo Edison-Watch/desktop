@@ -1,12 +1,10 @@
-import { Notification } from "electron";
+import { BrowserWindow } from "electron";
 import { McpConfigMonitor } from "./mcpConfigMonitor";
 import { SeenServersStore } from "./seenServersStore";
-import { fetchUserRole, submitServerRequest, approveServerRequest } from "./mcpConfigActions";
+import { showQuarantinedServersDialog } from "./mcpServerActionDialog";
+import { fetchUserRole } from "./mcpConfigActions";
 import { fetchAutoQuarantineEnabled } from "./domainConfig";
 import { getApiBaseUrl, getSetupData } from "./setupConfig";
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-import trayIconPath from "../../resources/icon_tray.png?asset";
 
 const LOG_FILE = "/tmp/ew-startup.log";
 import { appendFileSync } from "fs";
@@ -21,9 +19,14 @@ let autoQuarantineEnabled = false;
 let isHandlingQuarantine = false;
 
 let updateTrayMenuFn: (() => void) | null = null;
+let getMainWindowFn: (() => BrowserWindow | null) | null = null;
 
-export function initQuarantineManager(updateTrayMenu: () => void): void {
+export function initQuarantineManager(
+  updateTrayMenu: () => void,
+  getMainWindow: () => BrowserWindow | null,
+): void {
   updateTrayMenuFn = updateTrayMenu;
+  getMainWindowFn = getMainWindow;
 }
 
 export function getAutoQuarantineEnabled(): boolean {
@@ -67,35 +70,11 @@ async function startQuarantineMonitor(): Promise<void> {
       } catch { /* treat as regular user on error */ }
     }
 
-    // Submit quarantined servers to the backend for registration/approval
-    if (apiBaseUrl && setup.apiKey) {
-      for (const evt of quarantinedEvents) {
-        try {
-          const result = await submitServerRequest(evt.server, apiBaseUrl, setup.apiKey, setup.userId);
-          if (!result.alreadyPending && isAdminOrOwner) {
-            try {
-              await approveServerRequest(result.request_id, apiBaseUrl, setup.apiKey);
-              slog(`[Quarantine] Auto-approved server: ${evt.server.name}`);
-            } catch (approveErr) {
-              slog(`[Quarantine] Auto-approval failed for "${evt.server.name}": ${approveErr}`);
-            }
-          }
-        } catch (submitErr) {
-          slog(`[Quarantine] Failed to submit "${evt.server.name}" to backend: ${submitErr}`);
-        }
-      }
-    }
-
-    if (isAdminOrOwner && Notification.isSupported()) {
-      const names = quarantinedEvents.map((e) => e.server.name).join(", ");
-      const n = new Notification({
-        title: "Edison Watch — MCP Server Quarantined",
-        body: `New server(s) quarantined: ${names}. Review in dashboard.`,
-        ...(process.platform !== "darwin" && { icon: trayIconPath }),
-      });
-      n.show();
-    }
-    // Regular users: quarantine is silent
+    const parentWindow = getMainWindowFn?.() ?? undefined;
+    showQuarantinedServersDialog(quarantinedEvents, parentWindow ?? undefined, isAdminOrOwner).catch((err) => {
+      slog(`[Quarantine] Failed to show quarantine dialog: ${err}`);
+      console.error("[McpConfigMonitor] Failed to show quarantine dialog:", err);
+    });
   });
 
   configMonitor.on("error", (err) => {

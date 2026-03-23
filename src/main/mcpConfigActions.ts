@@ -455,7 +455,7 @@ export async function fetchUserRole(
   apiKey: string
 ): Promise<string | null> {
   try {
-    const url = `${apiBaseUrl.replace(/\/$/, '')}/user/info`
+    const url = `${apiBaseUrl.replace(/\/$/, '')}/api/v1/user/profile`
     const response = await fetch(url, {
       method: 'GET',
       headers: {
