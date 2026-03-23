@@ -36,9 +36,17 @@ import { showFeedbackWindow } from "./feedbackWindow";
 import { showServerRegistrationDialog } from "./mcpServerActionDialog";
 import { showUpdateKeysWindow } from "./updateKeysWindow";
 import { fetchUserRole } from "./mcpConfigActions";
-import { McpConfigMonitor } from "./mcpConfigMonitor";
-import { SeenServersStore } from "./seenServersStore";
 import { applyAppIntegrations } from "./mcpConfigWriter";
+import {
+  initQuarantineManager,
+  getAutoQuarantineEnabled,
+  startQuarantineMonitorIfEnabled,
+  handleQuarantineEnabled,
+  handleQuarantineDisabled,
+  stopQuarantineMonitor,
+  startQuarantinePolling,
+  stopQuarantinePolling,
+} from "./quarantineManager";
 import {
   DEBUG_ENV_NAMES,
   getBuildDefaultEnv,
@@ -79,120 +87,7 @@ let approvalWindow: BrowserWindow | null = null;
 let devAuthServer: ReturnType<typeof createServer> | null = null;
 let devAuthCallbackUrl: string | null = null;
 
-let configMonitor: McpConfigMonitor | null = null;
-let autoQuarantineEnabled = false;
-let isHandlingQuarantine = false;
 let isRestarting = false; // suppress app.quit() during intentional restarts
-
-// ── Quarantine monitor ───────────────────────────────────────────────
-
-async function startQuarantineMonitorIfEnabled(): Promise<void> {
-  const enabled = await fetchQuarantineFlag();
-  if (!enabled) return;
-  await startQuarantineMonitor();
-}
-
-async function startQuarantineMonitor(): Promise<void> {
-  if (configMonitor) return; // already running
-  autoQuarantineEnabled = true;
-  updateTrayMenu();
-
-  configMonitor = new McpConfigMonitor(new SeenServersStore());
-
-  configMonitor.on("serversQuarantined", async (quarantinedEvents) => {
-    if (quarantinedEvents.length === 0) return;
-
-    const apiBaseUrl = getApiBaseUrl();
-    const setup = getSetupData();
-    let isAdminOrOwner = false;
-    if (apiBaseUrl && setup.apiKey) {
-      try {
-        const role = await fetchUserRole(apiBaseUrl, setup.apiKey);
-        isAdminOrOwner = role === "admin" || role === "owner";
-      } catch { /* treat as regular user on error */ }
-    }
-
-    if (isAdminOrOwner && Notification.isSupported()) {
-      const names = quarantinedEvents.map((e) => e.server.name).join(", ");
-      const n = new Notification({
-        title: "Edison Watch — MCP Server Quarantined",
-        body: `New server(s) quarantined: ${names}. Review in dashboard.`,
-        ...(process.platform !== "darwin" && { icon: trayIconPath }),
-      });
-      n.show();
-    }
-    // Regular users: quarantine is silent
-  });
-
-  configMonitor.on("error", (err) => {
-    console.error("[McpConfigMonitor] Error:", err);
-  });
-
-  await configMonitor.start();
-}
-
-async function handleQuarantineEnabled(): Promise<void> {
-  if (configMonitor || isHandlingQuarantine) return;
-  isHandlingQuarantine = true;
-  try {
-    autoQuarantineEnabled = true;
-    updateTrayMenu();
-    await startQuarantineMonitor();
-  } finally {
-    isHandlingQuarantine = false;
-  }
-}
-
-function handleQuarantineDisabled(): void {
-  if (!configMonitor && !autoQuarantineEnabled) return;
-  stopQuarantineMonitor();
-  updateTrayMenu();
-}
-
-function stopQuarantineMonitor(): void {
-  configMonitor?.stop();
-  configMonitor = null;
-  autoQuarantineEnabled = false;
-}
-
-const QUARANTINE_POLL_INTERVAL_MS = 60_000;
-let quarantinePollTimer: ReturnType<typeof setInterval> | null = null;
-async function fetchQuarantineFlag(): Promise<boolean | null> {
-  const apiBaseUrl = getApiBaseUrl();
-  const setupData = getSetupData();
-  if (!apiBaseUrl || !setupData.apiKey) return null;
-  try {
-    const resp = await fetch(`${apiBaseUrl}/api/v1/user/domain-config`, {
-      headers: { Authorization: `Bearer ${setupData.apiKey}` },
-    });
-    if (!resp.ok) return null;
-    const config = (await resp.json()) as { auto_quarantine_other_mcp_servers?: boolean };
-    return Boolean(config.auto_quarantine_other_mcp_servers);
-  } catch {
-    return null;
-  }
-}
-
-async function pollQuarantineConfig(): Promise<void> {
-  const shouldBeEnabled = await fetchQuarantineFlag();
-  if (shouldBeEnabled === null) return;
-  if (shouldBeEnabled && !configMonitor) {
-    await handleQuarantineEnabled();
-  } else if (!shouldBeEnabled && (configMonitor || autoQuarantineEnabled)) {
-    handleQuarantineDisabled();
-  }
-}
-
-function startQuarantinePolling(): void {
-  if (quarantinePollTimer) return;
-  quarantinePollTimer = setInterval(() => { pollQuarantineConfig().catch(() => {}); }, QUARANTINE_POLL_INTERVAL_MS);
-}
-
-function stopQuarantinePolling(): void {
-  if (!quarantinePollTimer) return;
-  clearInterval(quarantinePollTimer);
-  quarantinePollTimer = null;
-}
 
 function startEventSubscription(): void {
   _startEventSubscription(handleQuarantineEnabled, handleQuarantineDisabled);
@@ -276,7 +171,7 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
     { type: "separator" },
     { label: getHookStatusLabel(), enabled: false },
     {
-      label: autoQuarantineEnabled
+      label: getAutoQuarantineEnabled()
         ? "MCP Auto-Quarantine: Enabled"
         : "MCP Auto-Quarantine: Disabled",
       enabled: false,
@@ -717,6 +612,9 @@ function logEnvConfig(context: string): void {
 
 slog("module loaded, waiting for app.whenReady");
 
+// Wire up the quarantine manager so it can trigger tray menu updates
+initQuarantineManager(updateTrayMenu);
+
 // Wire up the approvals handler so it can access mainWindow/approvalWindow
 initApprovalsHandler(
   () => mainWindow,
@@ -753,12 +651,8 @@ app.whenReady().then(async () => {
     getDevAuthCallbackUrl: () => devAuthCallbackUrl,
     createTray,
     startEventSubscription,
-    startQuarantineServices: () => {
-      startQuarantineMonitorIfEnabled().catch((err) =>
-        console.error("[Quarantine] Failed to start monitor:", err),
-      );
-      startQuarantinePolling();
-    },
+    startQuarantineMonitorIfEnabled,
+    startQuarantinePolling,
   });
   slog("registerIpcHandlers ok");
 

@@ -1,7 +1,14 @@
 import { EventEmitter } from 'events'
 import { watch, type FSWatcher } from 'chokidar'
-import { promises as fs } from 'fs'
+import { promises as fs, appendFileSync } from 'fs'
 import { dirname } from 'path'
+
+const MONITOR_LOG = '/tmp/ew-monitor.log'
+function mlog(msg: string): void {
+  const line = `[${new Date().toISOString()}] ${msg}\n`
+  try { appendFileSync(MONITOR_LOG, line) } catch { /* ignore */ }
+  console.log(msg)
+}
 import { getAllConfigPaths } from './mcpConfigPaths'
 import {
   discoverMcpServers,
@@ -95,7 +102,8 @@ export class McpConfigMonitor extends EventEmitter {
    * Start monitoring MCP config files for changes.
    */
   async start(): Promise<void> {
-    if (this.isRunning) return
+    mlog('[Monitor] start() called')
+    if (this.isRunning) { mlog('[Monitor] Already running, skipping'); return }
 
     // On startup, quarantine any existing non-Edison servers
     // This ensures all servers are secured even if they existed before the app started
@@ -182,7 +190,7 @@ export class McpConfigMonitor extends EventEmitter {
     // (e.g., Cursor's Extension API or deeplink installs).
     this.startRescanTimer()
 
-    console.log('[McpConfigMonitor] Started watching:', existingPaths)
+    mlog(`[Monitor] Started — watching ${existingPaths.length} paths, ${this.configFiles.size} config files, ${this.lastKnownServers.size} known servers`)
   }
 
   /**
@@ -430,10 +438,11 @@ export class McpConfigMonitor extends EventEmitter {
   private handleFileChange(path: string): void {
     // Only process changes to actual config files we care about
     if (!this.configFiles.has(path)) {
+      mlog(`[Monitor] handleFileChange IGNORED (not in configFiles): ${path}`)
       return
     }
 
-    console.log('[McpConfigMonitor] Config file changed:', path)
+    mlog(`[Monitor] handleFileChange MATCHED: ${path}`)
 
     // Debounce rapid changes
     if (this.debounceTimer) {
@@ -462,7 +471,9 @@ export class McpConfigMonitor extends EventEmitter {
    * This ensures all non-Edison servers are secured even if they existed before the app started.
    */
   private async quarantineExistingServers(): Promise<void> {
+    mlog('[Monitor] quarantineExistingServers() starting...')
     const servers = await discoverMcpServers()
+    mlog(`[Monitor] quarantineExistingServers: discovered ${servers.length} servers: ${servers.map(s => `${s.name}@${s.client}`).join(', ')}`)
     const quarantinedEvents: QuarantinedServerEvent[] = []
     const failedFingerprints = new Set<string>()
 
@@ -556,6 +567,11 @@ export class McpConfigMonitor extends EventEmitter {
       currentMap.set(fingerprint, server)
     }
 
+    mlog(`[Monitor] _checkForChangesImpl: discovered ${currentServers.length} servers, lastKnown=${this.lastKnownServers.size}`)
+    mlog(`[Monitor]   current: ${currentServers.map(s => `${s.name}@${s.client}`).join(', ')}`)
+    mlog(`[Monitor]   lastKnown fingerprints: ${[...this.lastKnownServers.keys()].join(', ')}`)
+    mlog(`[Monitor]   current fingerprints: ${[...currentMap.keys()].join(', ')}`)
+
     const changes: DetectedServerChange[] = []
     const addedServers: { server: DiscoveredMcpServer; fingerprint: string }[] = []
 
@@ -565,6 +581,7 @@ export class McpConfigMonitor extends EventEmitter {
 
       if (!previous) {
         // New server added - collect for quarantine
+        mlog(`[Monitor]   NEW server: ${server.name} (${fingerprint}) from ${server.path}`)
         addedServers.push({ server, fingerprint })
       } else if (this.hasServerConfigChanged(previous, server)) {
         // Server config modified
@@ -591,18 +608,19 @@ export class McpConfigMonitor extends EventEmitter {
     // Always quarantine ANY newly detected server, regardless of previous actions.
     // This ensures that if someone adds a server to their config, it's immediately
     // quarantined for security review - even if that server was seen before.
+    mlog(`[Monitor] addedServers: ${addedServers.length}, changes: ${changes.length}`)
     const quarantinedEvents: QuarantinedServerEvent[] = []
     const failedFingerprints = new Set<string>()
     for (const { server, fingerprint } of addedServers) {
       // Skip Edison Watch's own servers
       if (isEdisonWatchServer(server)) {
-        console.log(`[McpConfigMonitor] Skipping Edison Watch server: ${server.name}`)
+        mlog(`[Monitor] Skipping Edison Watch server: ${server.name}`)
         continue
       }
 
       try {
         // Auto-quarantine: move to disabled file, remove from original (with retries for transient I/O)
-        console.log(`[McpConfigMonitor] Auto-quarantining server: ${server.name}`)
+        mlog(`[Monitor] Auto-quarantining server: ${server.name} from ${server.path}`)
         const result: QuarantineResult = await quarantineWithRetry(server)
 
         // Mark as seen with quarantine action
@@ -620,6 +638,7 @@ export class McpConfigMonitor extends EventEmitter {
         })
       } catch (err) {
         failedFingerprints.add(fingerprint)
+        mlog(`[Monitor] FAILED to quarantine "${server.name}": ${err}`)
         console.error(
           `[McpConfigMonitor] Failed to quarantine server "${server.name}" after ${QUARANTINE_MAX_ATTEMPTS} attempts:`,
           err
@@ -628,6 +647,8 @@ export class McpConfigMonitor extends EventEmitter {
         // Do not mark as quarantined; exclude from lastKnownServers so we retry on next cycle.
       }
     }
+
+    mlog(`[Monitor] Quarantined ${quarantinedEvents.length} servers, failed ${failedFingerprints.size}`)
 
     // Update last known state - but clear quarantined servers since they're now in disabled files.
     // Exclude failed fingerprints so they are treated as "added" again next cycle and we retry.

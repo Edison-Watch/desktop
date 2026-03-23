@@ -29,7 +29,7 @@ import { injectAllHooks, removeAllHooks, getHookStatus, injectVsCodeWorkspaceHoo
 import { startHookHealthMonitor } from "./hookHealthMonitor";
 import { startUpdateChecker as _startUpdateChecker } from "./updateChecker";
 import { showFeedbackWindow } from "./feedbackWindow";
-import { fetchUserRole, submitServerRequest, approveServerRequest } from "./mcpConfigActions";
+import { fetchUserRole, submitServerRequest, approveServerRequest, removeServerFromConfig } from "./mcpConfigActions";
 import { filterOutEdisonWatchServers } from "./mcpConfigMonitor";
 import { applyAppIntegrations } from "./mcpConfigWriter";
 import { deduplicateServers } from "./serverDeduplication";
@@ -57,11 +57,12 @@ export interface IpcHandlerDeps {
   getDevAuthCallbackUrl: () => string | null;
   createTray: () => void;
   startEventSubscription: () => void;
-  startQuarantineServices: () => void;
+  startQuarantineMonitorIfEnabled: () => Promise<void>;
+  startQuarantinePolling: () => void;
 }
 
 export function registerIpcHandlers(deps: IpcHandlerDeps): void {
-  const { getMainWindow, getDevAuthCallbackUrl, createTray, startEventSubscription, startQuarantineServices } = deps;
+  const { getMainWindow, getDevAuthCallbackUrl, createTray, startEventSubscription, startQuarantineMonitorIfEnabled, startQuarantinePolling } = deps;
 
   // Auth: open SAML/SSO URL in a separate BrowserWindow
   ipcMain.on("auth:open-saml", (_event, samlUrl: string) => {
@@ -143,7 +144,10 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
       console.error("[HookInjection] Failed to inject hooks:", err),
     );
     _startUpdateChecker();
-    startQuarantineServices();
+    startQuarantineMonitorIfEnabled().catch((err) =>
+      console.error("[Quarantine] Failed to start monitor after setup:", err),
+    );
+    startQuarantinePolling();
 
     const win = getMainWindow();
     if (win) {
@@ -178,7 +182,10 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     startEventSubscription();
     startHookHealthMonitor();
     _startUpdateChecker();
-    startQuarantineServices();
+    startQuarantineMonitorIfEnabled().catch((err) =>
+      console.error("[Quarantine] Failed to start monitor on account switch:", err),
+    );
+    startQuarantinePolling();
     return { ok: true };
   });
 
@@ -422,6 +429,13 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
             errors.push(`${server.name}: auto-approval failed — ${msg}`);
             console.error(`[mcp:submitAllDiscovered] Auto-approval failed for "${server.name}":`, approveErr);
           }
+        }
+
+        // Remove the server from the agent's config after successful submission
+        try {
+          await removeServerFromConfig(server);
+        } catch (removeErr) {
+          console.error(`[mcp:submitAllDiscovered] Failed to remove "${server.name}" from config:`, removeErr);
         }
       } catch (e) {
         const msg = server.name + ": " + (e instanceof Error ? e.message : String(e));
