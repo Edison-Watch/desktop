@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button, Badge } from "@edison/shared/ui";
 import { supabase } from "@edison/shared/auth";
+import edisonIcon from "../assets/edison-icon.png";
 import ClientsView from "./ClientsView";
 
 type MenuTab = "home" | "clients";
@@ -150,11 +151,7 @@ export default function MainMenu(): React.ReactNode {
         <div className="mx-auto flex max-w-sm flex-col gap-4">
           {/* Header */}
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
-              <svg viewBox="0 0 12 12" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
-                <path d="M2.5 6l2.5 2.5 4.5-4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
+            <img src={edisonIcon} alt="Edison Watch" className="h-8 w-8 rounded-lg" />
             <div className="flex-1 min-w-0">
               <h2 className="text-sm font-semibold text-[var(--text-primary)] leading-tight">
                 Edison Watch
@@ -163,22 +160,41 @@ export default function MainMenu(): React.ReactNode {
                 {setupData.userEmail || ""}
               </p>
             </div>
-            <Badge
-              variant={
-                online === true
-                  ? "success"
+            <div className="flex items-center gap-1.5">
+              <Badge
+                variant={
+                  online === true
+                    ? "success"
+                    : online === false
+                      ? "danger"
+                      : "warning"
+                }
+                size="sm"
+              >
+                {online === true
+                  ? "Connected"
                   : online === false
-                    ? "danger"
-                    : "warning"
-              }
-              size="sm"
-            >
-              {online === true
-                ? "Connected"
-                : online === false
-                  ? "Disconnected"
-                  : "Checking"}
-            </Badge>
+                    ? "Disconnected"
+                    : "Checking…"}
+              </Badge>
+              {online === false && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setOnline(null);
+                    const status = await window.api.health.check();
+                    setOnline(status);
+                  }}
+                  className="flex items-center justify-center h-5 w-5 rounded text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors"
+                  title="Recheck connection"
+                >
+                  <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3" aria-hidden="true">
+                    <path d="M13.65 2.35A7.96 7.96 0 008 0a8 8 0 108 8h-2a6 6 0 11-1.76-4.24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M14 1v3.5h-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Tab navigation */}

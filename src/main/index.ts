@@ -79,34 +79,16 @@ let approvalWindow: BrowserWindow | null = null;
 let devAuthServer: ReturnType<typeof createServer> | null = null;
 let devAuthCallbackUrl: string | null = null;
 
-// ── Server status state ─────────────────────────────────────────────
-
 let configMonitor: McpConfigMonitor | null = null;
 let autoQuarantineEnabled = false;
 let isHandlingQuarantine = false;
-
-// ── Flag to suppress app.quit() during intentional restarts ─────────
-
-let isRestarting = false;
+let isRestarting = false; // suppress app.quit() during intentional restarts
 
 // ── Quarantine monitor ───────────────────────────────────────────────
 
 async function startQuarantineMonitorIfEnabled(): Promise<void> {
-  const apiBaseUrl = getApiBaseUrl();
-  const setupData = getSetupData();
-  if (!apiBaseUrl || !setupData.apiKey) return;
-
-  try {
-    const resp = await fetch(`${apiBaseUrl}/api/v1/user/domain-config`, {
-      headers: { Authorization: `Bearer ${setupData.apiKey}` },
-    });
-    if (!resp.ok) return;
-    const config = (await resp.json()) as { auto_quarantine_other_mcp_servers?: boolean };
-    if (!config.auto_quarantine_other_mcp_servers) return;
-  } catch {
-    return;
-  }
-
+  const enabled = await fetchQuarantineFlag();
+  if (!enabled) return;
   await startQuarantineMonitor();
 }
 
@@ -161,14 +143,59 @@ async function handleQuarantineEnabled(): Promise<void> {
   }
 }
 
+function handleQuarantineDisabled(): void {
+  if (!configMonitor && !autoQuarantineEnabled) return;
+  stopQuarantineMonitor();
+  updateTrayMenu();
+}
+
 function stopQuarantineMonitor(): void {
   configMonitor?.stop();
   configMonitor = null;
   autoQuarantineEnabled = false;
 }
 
+const QUARANTINE_POLL_INTERVAL_MS = 60_000;
+let quarantinePollTimer: ReturnType<typeof setInterval> | null = null;
+async function fetchQuarantineFlag(): Promise<boolean | null> {
+  const apiBaseUrl = getApiBaseUrl();
+  const setupData = getSetupData();
+  if (!apiBaseUrl || !setupData.apiKey) return null;
+  try {
+    const resp = await fetch(`${apiBaseUrl}/api/v1/user/domain-config`, {
+      headers: { Authorization: `Bearer ${setupData.apiKey}` },
+    });
+    if (!resp.ok) return null;
+    const config = (await resp.json()) as { auto_quarantine_other_mcp_servers?: boolean };
+    return Boolean(config.auto_quarantine_other_mcp_servers);
+  } catch {
+    return null;
+  }
+}
+
+async function pollQuarantineConfig(): Promise<void> {
+  const shouldBeEnabled = await fetchQuarantineFlag();
+  if (shouldBeEnabled === null) return;
+  if (shouldBeEnabled && !configMonitor) {
+    await handleQuarantineEnabled();
+  } else if (!shouldBeEnabled && (configMonitor || autoQuarantineEnabled)) {
+    handleQuarantineDisabled();
+  }
+}
+
+function startQuarantinePolling(): void {
+  if (quarantinePollTimer) return;
+  quarantinePollTimer = setInterval(() => { pollQuarantineConfig().catch(() => {}); }, QUARANTINE_POLL_INTERVAL_MS);
+}
+
+function stopQuarantinePolling(): void {
+  if (!quarantinePollTimer) return;
+  clearInterval(quarantinePollTimer);
+  quarantinePollTimer = null;
+}
+
 function startEventSubscription(): void {
-  _startEventSubscription(handleQuarantineEnabled);
+  _startEventSubscription(handleQuarantineEnabled, handleQuarantineDisabled);
 }
 
 // ── Tray ────────────────────────────────────────────────────────────
@@ -517,6 +544,7 @@ async function handleLogoutAndRestart(): Promise<void> {
   stopEventSubscription();
   stopHookHealthMonitor();
   stopQuarantineMonitor();
+  stopQuarantinePolling();
   pendingApprovals.clear();
   markSetupIncomplete();
   updateTrayMenu();
@@ -725,6 +753,12 @@ app.whenReady().then(async () => {
     getDevAuthCallbackUrl: () => devAuthCallbackUrl,
     createTray,
     startEventSubscription,
+    startQuarantineServices: () => {
+      startQuarantineMonitorIfEnabled().catch((err) =>
+        console.error("[Quarantine] Failed to start monitor:", err),
+      );
+      startQuarantinePolling();
+    },
   });
   slog("registerIpcHandlers ok");
 
@@ -740,6 +774,7 @@ app.whenReady().then(async () => {
     startQuarantineMonitorIfEnabled().catch((err) =>
       console.error("[Quarantine] Failed to start monitor:", err),
     );
+    startQuarantinePolling();
     slog("tray/subscription/monitor ok");
   } else {
     slog("setup not complete");

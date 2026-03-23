@@ -44,10 +44,11 @@ export interface IpcHandlerDeps {
   getDevAuthCallbackUrl: () => string | null;
   createTray: () => void;
   startEventSubscription: () => void;
+  startQuarantineServices: () => void;
 }
 
 export function registerIpcHandlers(deps: IpcHandlerDeps): void {
-  const { getMainWindow, getDevAuthCallbackUrl, createTray, startEventSubscription } = deps;
+  const { getMainWindow, getDevAuthCallbackUrl, createTray, startEventSubscription, startQuarantineServices } = deps;
 
   // Auth: open SAML/SSO URL in a separate BrowserWindow
   ipcMain.on("auth:open-saml", (_event, samlUrl: string) => {
@@ -129,6 +130,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
       console.error("[HookInjection] Failed to inject hooks:", err),
     );
     _startUpdateChecker();
+    startQuarantineServices();
 
     const win = getMainWindow();
     if (win) {
@@ -163,6 +165,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     startEventSubscription();
     startHookHealthMonitor();
     _startUpdateChecker();
+    startQuarantineServices();
     return { ok: true };
   });
 

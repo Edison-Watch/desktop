@@ -9,7 +9,7 @@ import { app, BrowserWindow, Notification } from "electron";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import trayIconPath from "../../resources/icon_tray.png?asset";
 
-import { getApprovalUrl, getEventsUrl, getSetupData } from "./setupConfig";
+import { getApiBaseUrl, getApprovalUrl, getEventsUrl, getSetupData } from "./setupConfig";
 import { BASE_CSS, HEADER_CSS, BUTTON_CSS } from "./dialogStyles";
 
 // ── SSE state ───────────────────────────────────────────────────────
@@ -19,7 +19,10 @@ let eventSource: any = null;
 export const pendingApprovals: Map<string, PendingApproval> = new Map();
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
+let desktopLoginRegistered = false;
 const RECONNECT_DELAY_MS = 1000;
+const APPROVAL_EXPIRY_MS = 2 * 60 * 1000; // 2 minutes — matches backend pending cutoff
+let expiryTimer: ReturnType<typeof setInterval> | null = null;
 
 export interface PendingApproval {
   id: string;
@@ -58,7 +61,10 @@ export function initApprovalsHandler(
 
 // ── SSE event subscription ──────────────────────────────────────────
 
-export function startEventSubscription(onQuarantineEnabled: (domain?: string) => void): void {
+export function startEventSubscription(
+  onQuarantineEnabled: (domain?: string) => void,
+  onQuarantineDisabled?: (domain?: string) => void,
+): void {
   const setupData = getSetupData();
   const apiKey = setupData.apiKey;
   const userId = setupData.userId;
@@ -78,6 +84,8 @@ export function startEventSubscription(onQuarantineEnabled: (domain?: string) =>
     eventSource.close();
     eventSource = null;
   }
+  // desktopLoginRegistered is intentionally NOT reset here; it is a
+  // one-per-launch flag that should survive reconnects.
 
   console.log(`Connecting to SSE endpoint: ${eventsUrl.replace(/api_key=[^&]+/, "api_key=***")}`);
 
@@ -99,6 +107,11 @@ export function startEventSubscription(onQuarantineEnabled: (domain?: string) =>
           if (!data.domain || data.domain === userDomain) {
             onQuarantineEnabled(data.domain);
           }
+        } else if (data.type === "quarantine_disabled") {
+          const userDomain = getSetupData().userEmail?.split("@")[1];
+          if (!data.domain || data.domain === userDomain) {
+            onQuarantineDisabled?.(data.domain);
+          }
         }
       } catch (err) {
         console.error("Failed to parse SSE event:", err);
@@ -106,16 +119,29 @@ export function startEventSubscription(onQuarantineEnabled: (domain?: string) =>
     };
 
     eventSource.onerror = () => {
-      handleReconnect(onQuarantineEnabled);
+      handleReconnect(onQuarantineEnabled, onQuarantineDisabled);
     };
 
     eventSource.onopen = () => {
       console.log("SSE connection established");
       reconnectAttempts = 0;
+
+      // Register desktop login once per app launch so the onboarding
+      // checklist knows the user has signed in to the desktop app.
+      if (!desktopLoginRegistered) {
+        desktopLoginRegistered = true;
+        const baseUrl = getApiBaseUrl();
+        if (baseUrl && apiKey) {
+          fetch(`${baseUrl.replace(/\/$/, "")}/api/v1/user/register-desktop-login`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${apiKey}` },
+          }).catch((err) => console.warn("Failed to register desktop login:", err));
+        }
+      }
     };
   } catch (err) {
     console.error("Failed to create EventSource:", err);
-    handleReconnect(onQuarantineEnabled);
+    handleReconnect(onQuarantineEnabled, onQuarantineDisabled);
   }
 }
 
@@ -125,9 +151,13 @@ export function stopEventSubscription(): void {
     eventSource = null;
   }
   reconnectAttempts = 0;
+  desktopLoginRegistered = false; // allow re-registration after logout/account switch
 }
 
-function handleReconnect(onQuarantineEnabled: (domain?: string) => void): void {
+function handleReconnect(
+  onQuarantineEnabled: (domain?: string) => void,
+  onQuarantineDisabled?: (domain?: string) => void,
+): void {
   if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
     console.error("Max reconnect attempts reached, stopping SSE subscription");
     return;
@@ -138,7 +168,7 @@ function handleReconnect(onQuarantineEnabled: (domain?: string) => void): void {
   console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
 
   setTimeout(() => {
-    startEventSubscription(onQuarantineEnabled);
+    startEventSubscription(onQuarantineEnabled, onQuarantineDisabled);
   }, delay);
 }
 
@@ -163,6 +193,7 @@ function handleTrifectaEvent(data: TrifectaEventData): void {
   };
   pendingApprovals.set(approvalId, pending);
   _onPendingChanged?.();
+  startExpirySweep();
 
   // Notify approval window if open
   if (isAlive(approvalWindow)) {
@@ -253,6 +284,49 @@ function handleRemoteApprovalDismiss(data: {
       }
       break;
     }
+  }
+}
+
+// ── Auto-expiry sweep ───────────────────────────────────────────────
+
+function sweepExpiredApprovals(): void {
+  const now = Date.now();
+  const expired: string[] = [];
+  for (const [id, approval] of pendingApprovals) {
+    if (now - approval.timestamp >= APPROVAL_EXPIRY_MS) {
+      expired.push(id);
+    }
+  }
+  if (expired.length === 0) return;
+
+  const approvalWindow = _getApprovalWindow();
+  for (const id of expired) {
+    pendingApprovals.delete(id);
+    if (isAlive(approvalWindow)) {
+      approvalWindow.webContents.send("approval:removed", id);
+    }
+  }
+  _onPendingChanged?.();
+
+  if (pendingApprovals.size === 0) {
+    stopExpirySweep();
+    if (isAlive(approvalWindow)) {
+      setTimeout(() => {
+        if (isAlive(approvalWindow) && pendingApprovals.size === 0) approvalWindow.close();
+      }, 500);
+    }
+  }
+}
+
+function startExpirySweep(): void {
+  if (expiryTimer) return;
+  expiryTimer = setInterval(sweepExpiredApprovals, 15_000); // check every 15s
+}
+
+function stopExpirySweep(): void {
+  if (expiryTimer) {
+    clearInterval(expiryTimer);
+    expiryTimer = null;
   }
 }
 
