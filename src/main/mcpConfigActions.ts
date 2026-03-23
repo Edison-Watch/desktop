@@ -3,6 +3,13 @@ import { existsSync } from 'fs'
 import { dirname, basename, join } from 'path'
 import * as jsonc from 'jsonc-parser'
 import type { DiscoveredMcpServer, McpServerConfig, McpClientId } from './mcpDiscovery'
+import {
+  getJetBrainsMcpConfigPaths,
+  getCursorPluginMcpPaths,
+  getCursorProjectMcpPaths,
+  getClaudeCodeProjectMcpPaths,
+} from './mcpDiscovery'
+import { getAllConfigPaths } from './mcpConfigPaths'
 import { detectSecrets } from './secretDetection'
 
 /**
@@ -628,13 +635,6 @@ export async function restoreAllQuarantinedServers(): Promise<{
   restored: number
   errors: string[]
 }> {
-  const { getAllConfigPaths } = await import('./mcpConfigPaths')
-  const {
-    getJetBrainsMcpConfigPaths,
-    getCursorPluginMcpPaths,
-    getCursorProjectMcpPaths,
-    getClaudeCodeProjectMcpPaths
-  } = await import('./mcpDiscovery')
 
   // Collect all known config paths (including plugin, project, and workspace paths)
   const paths = getAllConfigPaths()

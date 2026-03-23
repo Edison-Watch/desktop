@@ -10,7 +10,20 @@ import { promises as fs } from "fs";
 import { homedir } from "os";
 import { dirname, join, resolve, sep } from "path";
 
-import { discoverMcpServers, getJetBrainsMcpConfigPaths, macAppExists } from "./mcpDiscovery";
+import {
+  discoverMcpServers,
+  getJetBrainsMcpConfigPaths,
+  macAppExists,
+  getVscodeUserMcpPath,
+  getVscodeInsidersUserMcpPath,
+  getCursorConfigPath,
+  getClaudeCodeUserSettingsPath,
+  getWindsurfConfigPath,
+  getZedConfigPath,
+  getClaudeDesktopConfigPath,
+  getClaudeCoworkConfigPath,
+  getAntigravityConfigPath,
+} from "./mcpDiscovery";
 import type { DiscoveredMcpServer, McpClientId, McpServerConfig } from "./mcpDiscovery";
 import { injectAllHooks, removeAllHooks, getHookStatus, injectVsCodeWorkspaceHook, removeVsCodeWorkspaceHook } from "./hookInjection";
 import { startHookHealthMonitor } from "./hookHealthMonitor";
@@ -243,28 +256,28 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
       {
         id: "vscode",
         name: "VS Code",
-        getPath: () => import("./mcpDiscovery").then(m => m.getVscodeUserMcpPath()),
+        getPath: () => Promise.resolve(getVscodeUserMcpPath()),
         detectDir: (configPath) => dirname(dirname(configPath)), // ~/Library/Application Support/Code/
       },
       {
         id: "vscode-insiders",
         name: "VS Code Insiders",
-        getPath: () => import("./mcpDiscovery").then(m => m.getVscodeInsidersUserMcpPath()),
+        getPath: () => Promise.resolve(getVscodeInsidersUserMcpPath()),
         detectDir: (configPath) => dirname(dirname(configPath)), // ~/Library/Application Support/Code - Insiders/
       },
-      { id: "cursor", name: "Cursor", getPath: () => import("./mcpDiscovery").then(m => m.getCursorConfigPath()) },
-      { id: "claude-code", name: "Claude Code", getPath: () => import("./mcpDiscovery").then(m => m.getClaudeCodeUserSettingsPath()) },
-      { id: "windsurf", name: "Windsurf", getPath: () => import("./mcpDiscovery").then(m => m.getWindsurfConfigPath()) },
-      { id: "zed", name: "Zed", getPath: () => import("./mcpDiscovery").then(m => m.getZedConfigPath()) },
-      { id: "claude-desktop", name: "Claude Desktop", getPath: () => import("./mcpDiscovery").then(m => m.getClaudeDesktopConfigPath()) },
+      { id: "cursor", name: "Cursor", getPath: () => Promise.resolve(getCursorConfigPath()) },
+      { id: "claude-code", name: "Claude Code", getPath: () => Promise.resolve(getClaudeCodeUserSettingsPath()) },
+      { id: "windsurf", name: "Windsurf", getPath: () => Promise.resolve(getWindsurfConfigPath()) },
+      { id: "zed", name: "Zed", getPath: () => Promise.resolve(getZedConfigPath()) },
+      { id: "claude-desktop", name: "Claude Desktop", getPath: () => Promise.resolve(getClaudeDesktopConfigPath()) },
       {
         id: "claude-cowork",
         name: "Claude Cowork",
-        getPath: () => import("./mcpDiscovery").then(m => m.getClaudeCoworkConfigPath()),
+        getPath: () => Promise.resolve(getClaudeCoworkConfigPath()),
         // Cowork is detected by the presence of vm_bundles/ (downloaded on first Cowork launch)
         detectDir: (configPath) => join(dirname(configPath), 'vm_bundles'),
       },
-      { id: "antigravity", name: "Antigravity", getPath: () => import("./mcpDiscovery").then(m => m.getAntigravityConfigPath()) },
+      { id: "antigravity", name: "Antigravity", getPath: () => Promise.resolve(getAntigravityConfigPath()) },
     ];
 
     for (const check of checks) {
