@@ -78,7 +78,7 @@ async function fetchLatestVersion(): Promise<UpdateInfo | null> {
   if (!manifestFile) return null
 
   try {
-    const res = await fetch(`${RELEASES_BASE_URL}/${manifestFile}`, {
+    const res = await fetch(`${RELEASES_BASE_URL}/client/latest/${manifestFile}`, {
       signal: AbortSignal.timeout(10_000)
     })
     if (!res.ok) return null
@@ -87,14 +87,24 @@ async function fetchLatestVersion(): Promise<UpdateInfo | null> {
 
     // electron-builder manifests are simple YAML; we only need two fields.
     const versionMatch = text.match(/^version:\s*(.+)$/m)
-    const pathMatch = text.match(/^path:\s*(.+)$/m)
-
     if (!versionMatch?.[1]) return null
 
     const version = versionMatch[1].replace(/#.*$/, '').trim()
-    const filename = pathMatch?.[1]?.replace(/#.*$/, '').trim()
+
+    // Prefer the .dmg installer from the files list over the path field (which
+    // typically points to a .zip used by electron-updater auto-update).
+    const dmgMatch = text.match(/^\s*-\s*url:\s*(.+\.dmg)\s*$/m)
+    let filename: string | undefined
+    if (dmgMatch?.[1]) {
+      filename = dmgMatch[1].replace(/#.*$/, '').trim()
+    } else {
+      const pathMatch = text.match(/^path:\s*(.+)$/m)
+      filename = pathMatch?.[1]?.replace(/#.*$/, '').trim()
+    }
+
+    // Binaries live under client/latest/ in the release bucket.
     const downloadUrl = filename
-      ? `${RELEASES_BASE_URL}/${filename}`
+      ? `${RELEASES_BASE_URL}/client/latest/${filename}`
       : RELEASES_BASE_URL
 
     return { version, downloadUrl }
