@@ -8,6 +8,8 @@ interface HookStatus {
   hasHook: boolean;
   hookCount: number;
   totalHooks: number;
+  mcpConnected: boolean;
+  mcpApplicable: boolean;
 }
 
 interface ClientInfo {
@@ -17,6 +19,8 @@ interface ClientInfo {
   hasHook: boolean;
   hookCount: number;
   totalHooks: number;
+  mcpConnected: boolean;
+  mcpApplicable: boolean;
 }
 
 // Map client IDs (from McpClientId) to display names
@@ -30,18 +34,18 @@ const CLIENT_NAMES: Record<string, string> = {
   "vscode-insiders": "VS Code Insiders",
 };
 
-type ClientStatus = "active" | "partial" | "installed" | "missing";
+type ClientStatus = "connected" | "partial-setup" | "installed" | "missing";
 
 function StatusDot({ status }: { status: ClientStatus }) {
   const colors: Record<ClientStatus, string> = {
-    active: "bg-emerald-400",
-    partial: "bg-amber-400",
+    connected: "bg-emerald-400",
+    "partial-setup": "bg-amber-400",
     installed: "bg-red-400",
     missing: "bg-gray-500",
   };
   return (
     <span className="relative flex h-2 w-2">
-      {status === "active" && (
+      {status === "connected" && (
         <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
       )}
       <span
@@ -53,9 +57,22 @@ function StatusDot({ status }: { status: ClientStatus }) {
 
 function getClientStatus(client: ClientInfo): ClientStatus {
   if (!client.installed) return "missing";
-  if (client.hasHook) return "active";
-  if (client.hookCount > 0) return "partial";
+  const needsMcp = client.mcpApplicable;
+  if (client.hasHook && (!needsMcp || client.mcpConnected)) return "connected";
+  if (client.hasHook || client.hookCount > 0 || (needsMcp && client.mcpConnected)) return "partial-setup";
   return "installed";
+}
+
+/** Describes what's missing for a partial-setup client. */
+function getIssueDetail(client: ClientInfo): string {
+  const issues: string[] = [];
+  if (client.mcpApplicable && !client.mcpConnected) issues.push("MCP gateway not configured");
+  if (!client.hasHook && client.hookCount > 0) {
+    issues.push(`${client.hookCount}/${client.totalHooks} hooks installed`);
+  } else if (!client.hasHook) {
+    issues.push("Hooks not installed");
+  }
+  return issues.join(" · ");
 }
 
 export default function ClientsView(): React.ReactNode {
@@ -74,6 +91,8 @@ export default function ClientsView(): React.ReactNode {
           hasHook: s.hasHook,
           hookCount: s.hookCount ?? 0,
           totalHooks: s.totalHooks ?? 1,
+          mcpConnected: s.mcpConnected ?? false,
+          mcpApplicable: s.mcpApplicable ?? true,
         })),
       );
       setError(null);
@@ -107,9 +126,9 @@ export default function ClientsView(): React.ReactNode {
   }
 
   const installedClients = clients.filter((c) => c.installed);
-  const active = clients.filter((c) => getClientStatus(c) === "active");
-  const partial = clients.filter((c) => getClientStatus(c) === "partial");
-  const noHooks = clients.filter((c) => getClientStatus(c) === "installed");
+  const connected = clients.filter((c) => getClientStatus(c) === "connected");
+  const partialSetup = clients.filter((c) => getClientStatus(c) === "partial-setup");
+  const noSetup = clients.filter((c) => getClientStatus(c) === "installed");
   const notInstalled = clients.filter((c) => getClientStatus(c) === "missing");
 
   return (
@@ -117,24 +136,24 @@ export default function ClientsView(): React.ReactNode {
       {/* Summary */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-2 py-1">
-          <StatusDot status="active" />
+          <StatusDot status="connected" />
           <span className="text-[11px] font-medium text-emerald-400">
-            {active.length} active
+            {connected.length} connected
           </span>
         </div>
-        {partial.length > 0 && (
+        {partialSetup.length > 0 && (
           <div className="flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2 py-1">
-            <StatusDot status="partial" />
+            <StatusDot status="partial-setup" />
             <span className="text-[11px] font-medium text-amber-400">
-              {partial.length} partial
+              {partialSetup.length} incomplete
             </span>
           </div>
         )}
-        {noHooks.length > 0 && (
+        {noSetup.length > 0 && (
           <div className="flex items-center gap-1.5 rounded-md bg-red-500/10 px-2 py-1">
             <StatusDot status="installed" />
             <span className="text-[11px] font-medium text-red-400">
-              {noHooks.length} no hooks
+              {noSetup.length} not set up
             </span>
           </div>
         )}
@@ -154,25 +173,27 @@ export default function ClientsView(): React.ReactNode {
           const status = getClientStatus(client);
 
           const statusLabel: Record<ClientStatus, string> = {
-            active: "All Hooks Active",
-            partial: `${client.hookCount}/${client.totalHooks} Hooks`,
-            installed: "No Hooks",
+            connected: "Connected",
+            "partial-setup": "Incomplete",
+            installed: "Not Set Up",
             missing: "Not Installed",
           };
 
           const badgeVariant: Record<ClientStatus, "success" | "warning" | "danger" | "neutral"> = {
-            active: "success",
-            partial: "warning",
+            connected: "success",
+            "partial-setup": "warning",
             installed: "danger",
             missing: "neutral",
           };
 
           const borderStyle: Record<ClientStatus, string> = {
-            active: "border-emerald-500/20 bg-emerald-500/5",
-            partial: "border-amber-500/15 bg-amber-500/5",
+            connected: "border-emerald-500/20 bg-emerald-500/5",
+            "partial-setup": "border-amber-500/15 bg-amber-500/5",
             installed: "border-red-500/15 bg-red-500/5",
             missing: "border-[var(--border)] bg-[var(--bg-raised)] opacity-60",
           };
+
+          const issueDetail = status === "partial-setup" ? getIssueDetail(client) : null;
 
           return (
             <div
@@ -186,6 +207,11 @@ export default function ClientsView(): React.ReactNode {
                 <span className="text-xs font-medium text-[var(--text-primary)]">
                   {client.name}
                 </span>
+                {issueDetail && (
+                  <span className="block text-[10px] text-amber-400/70">
+                    {issueDetail}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-1.5">
                 <StatusDot status={status} />

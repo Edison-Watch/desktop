@@ -13,6 +13,14 @@ import { platform } from 'os'
 import { join } from 'path'
 import { parse as parseJsonc } from 'jsonc-parser'
 import type { McpClientId } from './mcpDiscovery'
+import {
+  getVscodeUserMcpPath,
+  getVscodeInsidersUserMcpPath,
+  getCursorConfigPath,
+  getWindsurfConfigPath,
+  getClaudeCodeHomeJsonPath,
+  getAntigravityConfigPath,
+} from './mcpDiscovery'
 import { captureError } from './sentry'
 import {
   getVsCodeWorkspacePaths,
@@ -364,9 +372,39 @@ export interface HookStatusEntry {
   hookCount: number
   /** Total number of hooks expected for full integration */
   totalHooks: number
+  /** Whether the edison-watch MCP server entry is configured with the correct URL */
+  mcpConnected: boolean
+  /** Whether MCP config is applicable for this client (false for hooks-only clients like Codex) */
+  mcpApplicable: boolean
 }
 
-export async function getHookStatus(): Promise<HookStatusEntry[]> {
+/**
+ * Check if a client's MCP config contains an edison-watch entry with the expected URL.
+ * Returns true if the entry exists and its URL starts with the expected MCP base URL.
+ */
+async function checkMcpEntry(
+  configPath: string,
+  serversKey: 'servers' | 'mcpServers',
+  expectedMcpUrl: string | null,
+): Promise<boolean> {
+  if (!expectedMcpUrl) return false
+  try {
+    if (!existsSync(configPath)) return false
+    const raw = await fs.readFile(configPath, 'utf-8')
+    const json = parseJsonc(raw) as Record<string, unknown>
+    const servers = json[serversKey] as Record<string, { url?: string }> | undefined
+    const entry = servers?.['edison-watch']
+    if (!entry?.url) return false
+    // Normalize trailing slashes for comparison
+    const normalizedExpected = expectedMcpUrl.replace(/\/+$/, '')
+    const normalizedActual = entry.url.replace(/\/+$/, '')
+    return normalizedActual === normalizedExpected
+  } catch {
+    return false
+  }
+}
+
+export async function getHookStatus(expectedMcpUrl?: string | null): Promise<HookStatusEntry[]> {
   const results: HookStatusEntry[] = []
 
   // Claude Code — expects 4 hooks
@@ -398,7 +436,10 @@ export async function getHookStatus(): Promise<HookStatusEntry[]> {
       }
     } catch { /* ignore */ }
   }
-  results.push({ client: 'claude-code', installed: claudeInstalled, hasHook: claudeHookCount === claudeTotalHooks, hookCount: claudeHookCount, totalHooks: claudeTotalHooks })
+  const claudeMcpConnected = claudeInstalled
+    ? await checkMcpEntry(getClaudeCodeHomeJsonPath(), 'mcpServers', expectedMcpUrl ?? null)
+    : false
+  results.push({ client: 'claude-code', installed: claudeInstalled, hasHook: claudeHookCount === claudeTotalHooks, hookCount: claudeHookCount, totalHooks: claudeTotalHooks, mcpConnected: claudeMcpConnected, mcpApplicable: true })
 
   // Cursor — expects 3 hooks
   const cursorInstalled = isCursorInstalled()
@@ -421,7 +462,10 @@ export async function getHookStatus(): Promise<HookStatusEntry[]> {
       }
     } catch { /* ignore */ }
   }
-  results.push({ client: 'cursor', installed: cursorInstalled, hasHook: cursorHookCount === cursorTotalHooks, hookCount: cursorHookCount, totalHooks: cursorTotalHooks })
+  const cursorMcpConnected = cursorInstalled
+    ? await checkMcpEntry(getCursorConfigPath(), 'mcpServers', expectedMcpUrl ?? null)
+    : false
+  results.push({ client: 'cursor', installed: cursorInstalled, hasHook: cursorHookCount === cursorTotalHooks, hookCount: cursorHookCount, totalHooks: cursorTotalHooks, mcpConnected: cursorMcpConnected, mcpApplicable: true })
 
   // Windsurf
   const windsurfInstalled = isWindsurfInstalled()
@@ -439,7 +483,10 @@ export async function getHookStatus(): Promise<HookStatusEntry[]> {
   }
   // Windsurf — expects 1 hook
   const windsurfTotal = 1
-  results.push({ client: 'windsurf', installed: windsurfInstalled, hasHook: windsurfHasHook, hookCount: windsurfHasHook ? 1 : 0, totalHooks: windsurfTotal })
+  const windsurfMcpConnected = windsurfInstalled
+    ? await checkMcpEntry(getWindsurfConfigPath(), 'mcpServers', expectedMcpUrl ?? null)
+    : false
+  results.push({ client: 'windsurf', installed: windsurfInstalled, hasHook: windsurfHasHook, hookCount: windsurfHasHook ? 1 : 0, totalHooks: windsurfTotal, mcpConnected: windsurfMcpConnected, mcpApplicable: true })
 
   // VS Code — report true if any known workspace has the hook OR Copilot hooks exist
   const vsAppNames: Record<string, string[]> = {
@@ -449,7 +496,7 @@ export async function getHookStatus(): Promise<HookStatusEntry[]> {
   let copilotStatusHandled = false
   for (const clientId of ['vscode', 'vscode-insiders'] as const) {
     if (!appBundleExists(vsAppNames[clientId])) {
-      results.push({ client: clientId, installed: false, hasHook: false, hookCount: 0, totalHooks: 1 })
+      results.push({ client: clientId, installed: false, hasHook: false, hookCount: 0, totalHooks: 1, mcpConnected: false, mcpApplicable: true })
       continue
     }
     let vsHookCount = 0
@@ -493,9 +540,13 @@ export async function getHookStatus(): Promise<HookStatusEntry[]> {
       }
 
       const installed = workspacePaths.length > 0 || copilotInstalled
-      results.push({ client: clientId, installed, hasHook: vsTotalHooks > 0 && vsHookCount === vsTotalHooks, hookCount: vsHookCount, totalHooks: vsTotalHooks })
+      const vsMcpPath = clientId === 'vscode' ? getVscodeUserMcpPath() : getVscodeInsidersUserMcpPath()
+      const vsMcpConnected = installed
+        ? await checkMcpEntry(vsMcpPath, 'servers', expectedMcpUrl ?? null)
+        : false
+      results.push({ client: clientId, installed, hasHook: vsTotalHooks > 0 && vsHookCount === vsTotalHooks, hookCount: vsHookCount, totalHooks: vsTotalHooks, mcpConnected: vsMcpConnected, mcpApplicable: true })
     } catch {
-      results.push({ client: clientId, installed: false, hasHook: false, hookCount: 0, totalHooks: 1 })
+      results.push({ client: clientId, installed: false, hasHook: false, hookCount: 0, totalHooks: 1, mcpConnected: false, mcpApplicable: true })
     }
   }
 
@@ -524,7 +575,10 @@ export async function getHookStatus(): Promise<HookStatusEntry[]> {
       }
     } catch { /* ignore */ }
   }
-  results.push({ client: 'antigravity', installed: geminiInstalled, hasHook: geminiHookCount === geminiTotalHooks, hookCount: geminiHookCount, totalHooks: geminiTotalHooks })
+  const geminiMcpConnected = geminiInstalled
+    ? await checkMcpEntry(getAntigravityConfigPath(), 'mcpServers', expectedMcpUrl ?? null)
+    : false
+  results.push({ client: 'antigravity', installed: geminiInstalled, hasHook: geminiHookCount === geminiTotalHooks, hookCount: geminiHookCount, totalHooks: geminiTotalHooks, mcpConnected: geminiMcpConnected, mcpApplicable: true })
 
   // Codex CLI — expects 2 hooks: SessionStart + Stop (experimental, no PreToolUse available)
   const codexInstalled = isCodexInstalled()
@@ -540,7 +594,8 @@ export async function getHookStatus(): Promise<HookStatusEntry[]> {
       }
     } catch { /* ignore */ }
   }
-  results.push({ client: 'codex', installed: codexInstalled, hasHook: codexHookCount === codexTotalHooks, hookCount: codexHookCount, totalHooks: codexTotalHooks })
+  // Codex has no standard MCP config file — MCP check not applicable
+  results.push({ client: 'codex', installed: codexInstalled, hasHook: codexHookCount === codexTotalHooks, hookCount: codexHookCount, totalHooks: codexTotalHooks, mcpConnected: false, mcpApplicable: false })
 
   return results
 }
