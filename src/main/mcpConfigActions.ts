@@ -50,7 +50,7 @@ export interface ConfigFileFormat {
  * Check if a client supports JSONC (JSON with Comments).
  */
 function supportsJsonc(client: McpClientId): boolean {
-  return client === 'vscode' || client === 'vscode-insiders'
+  return client === 'vscode' || client === 'vscode-insiders' || client === 'cursor'
 }
 
 /**

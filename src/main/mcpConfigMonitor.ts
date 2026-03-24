@@ -618,6 +618,12 @@ export class McpConfigMonitor extends EventEmitter {
         continue
       }
 
+      // Skip marketplace servers — they're managed by the IDE internally and can't be quarantined via file edits
+      if (server.source === 'marketplace') {
+        console.log(`[McpConfigMonitor] Skipping marketplace server (read-only): ${server.name}`)
+        continue
+      }
+
       try {
         // Auto-quarantine: move to disabled file, remove from original (with retries for transient I/O)
         mlog(`[Monitor] Auto-quarantining server: ${server.name} from ${server.path}`)

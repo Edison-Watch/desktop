@@ -3,10 +3,33 @@
  */
 
 import { promises as fs, existsSync } from 'fs'
-import { homedir } from 'os'
+import { homedir, platform } from 'os'
 import { join, dirname } from 'path'
+import { spawnSync } from 'child_process'
 import { parse as parseJsonc, modify, applyEdits } from 'jsonc-parser'
 import { ensureHookScript, ensureSessionHookScript, ensureSessionEndHookScript, ensureSessionStartHookScript } from './hookInjectionCore'
+
+// ── App / CLI detection helpers ─────────────────────────────────────────────
+
+/** Check whether a macOS .app bundle exists in /Applications or ~/Applications. Non-darwin always returns true. */
+export function appBundleExists(appNames: string[]): boolean {
+  if (platform() !== 'darwin') return true
+  return appNames.some(name =>
+    existsSync(join('/Applications', name)) ||
+    existsSync(join(homedir(), 'Applications', name))
+  )
+}
+
+/** Check whether a CLI binary is on PATH. */
+export function cliBinaryExists(binary: string): boolean {
+  const cmd = platform() === 'win32' ? 'where' : 'which'
+  try {
+    const result = spawnSync(cmd, [binary], { timeout: 2000, stdio: 'pipe' })
+    return result.status === 0
+  } catch {
+    return false
+  }
+}
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 
@@ -102,7 +125,7 @@ export interface WindsurfHooksFile {
 // ── Claude Code ──────────────────────────────────────────────────────────────
 
 export function isClaudeCodeInstalled(): boolean {
-  return existsSync(join(homedir(), '.claude'))
+  return existsSync(join(homedir(), '.claude')) && cliBinaryExists('claude')
 }
 
 /**
@@ -328,7 +351,7 @@ export async function removeClaudeCodeHook(): Promise<boolean> {
 // ── Cursor ───────────────────────────────────────────────────────────────────
 
 export function isCursorInstalled(): boolean {
-  return existsSync(join(homedir(), '.cursor'))
+  return existsSync(join(homedir(), '.cursor')) && appBundleExists(['Cursor.app'])
 }
 
 /**
@@ -491,7 +514,7 @@ export async function removeCursorHook(): Promise<boolean> {
 // ── Windsurf ─────────────────────────────────────────────────────────────────
 
 export function isWindsurfInstalled(): boolean {
-  return existsSync(join(homedir(), '.codeium', 'windsurf'))
+  return existsSync(join(homedir(), '.codeium', 'windsurf')) && appBundleExists(['Windsurf.app'])
 }
 
 /**

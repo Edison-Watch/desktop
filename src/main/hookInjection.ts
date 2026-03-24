@@ -25,6 +25,7 @@ import {
   isWindsurfInstalled, injectWindsurfHook, removeWindsurfHook,
   getClaudeCodeSettingsPath, getCursorHooksPath, getWindsurfHooksPath,
   getGeminiSettingsPath, getCodexConfigPath, getVsCodeCopilotHooksPath,
+  appBundleExists,
   type ClaudeCodeSettings, type CursorHooksFile, type WindsurfHooksFile,
 } from './hookInjectionClients'
 import {
@@ -441,8 +442,16 @@ export async function getHookStatus(): Promise<HookStatusEntry[]> {
   results.push({ client: 'windsurf', installed: windsurfInstalled, hasHook: windsurfHasHook, hookCount: windsurfHasHook ? 1 : 0, totalHooks: windsurfTotal })
 
   // VS Code — report true if any known workspace has the hook OR Copilot hooks exist
+  const vsAppNames: Record<string, string[]> = {
+    vscode: ['Visual Studio Code.app'],
+    'vscode-insiders': ['Visual Studio Code - Insiders.app'],
+  }
   let copilotStatusHandled = false
   for (const clientId of ['vscode', 'vscode-insiders'] as const) {
+    if (!appBundleExists(vsAppNames[clientId])) {
+      results.push({ client: clientId, installed: false, hasHook: false, hookCount: 0, totalHooks: 1 })
+      continue
+    }
     let vsHookCount = 0
     let vsTotalHooks = 0
     try {

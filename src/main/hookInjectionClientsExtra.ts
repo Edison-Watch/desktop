@@ -9,7 +9,7 @@ import { join, dirname } from 'path'
 import { parse as parseJsonc, modify, applyEdits } from 'jsonc-parser'
 import { ensureHookScript, ensureSessionHookScript, ensureSessionEndHookScript, ensureSessionStartHookScript } from './hookInjectionCore'
 import type { ClaudeCodeHook, ClaudeCodeHookGroup } from './hookInjectionClients'
-import { getGeminiSettingsPath, getCodexConfigPath, getVsCodeCopilotHooksPath } from './hookInjectionClients'
+import { getGeminiSettingsPath, getCodexConfigPath, getVsCodeCopilotHooksPath, cliBinaryExists } from './hookInjectionClients'
 
 // ── Gemini hook types ────────────────────────────────────────────────────────
 
@@ -27,7 +27,7 @@ export interface GeminiSettings {
 // ── Gemini CLI ───────────────────────────────────────────────────────────────
 
 export function isGeminiInstalled(): boolean {
-  return existsSync(join(homedir(), '.gemini'))
+  return existsSync(join(homedir(), '.gemini')) && cliBinaryExists('gemini')
 }
 
 /**
@@ -214,7 +214,7 @@ export async function removeGeminiHook(): Promise<boolean> {
 // ── Codex CLI ────────────────────────────────────────────────────────────────
 
 export function isCodexInstalled(): boolean {
-  return existsSync(join(homedir(), '.codex'))
+  return existsSync(join(homedir(), '.codex')) && cliBinaryExists('codex')
 }
 
 function buildCodexHookToml(scriptPath: string, sessionEndScriptPath: string): string {

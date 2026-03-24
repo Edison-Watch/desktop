@@ -12,25 +12,14 @@ import {
 } from './mcpProjectPaths'
 
 // Re-export so callers don't need to know about the split
-export {
-  getCursorWorkspaceStoragePath,
-  getCursorProjectMcpPaths,
-  getCursorPluginsInstalledPath,
-  getCursorPluginsInstalledPaths,
-  getCursorPluginMcpPaths,
-  getClaudeCodeProjectMcpPaths
-}
-
-// Re-export fingerprinting utility from seenServersStore
+export { getCursorWorkspaceStoragePath, getCursorProjectMcpPaths, getCursorPluginsInstalledPath, getCursorPluginsInstalledPaths, getCursorPluginMcpPaths, getClaudeCodeProjectMcpPaths }
 export { getServerFingerprint } from './seenServersStore'
-
-// Re-export Cowork helpers and dedup (split to stay within line limits)
 export { getClaudeCoworkConfigPath, parseClaudeCoworkConfig } from './mcpDiscoveryCowork'
-import { discoverClaudeCowork, deduplicateByNameAndConfig } from './mcpDiscoveryCowork'
-
-// Re-export Antigravity helpers (split to stay within line limits)
 export { getAntigravityConfigPath, parseAntigravityMcpJson } from './mcpDiscoveryAntigravity'
+export { getCursorStateDbPath, discoverCursorMarketplaceMcps } from './mcpDiscoveryCursorMarketplace'
+import { discoverClaudeCowork, deduplicateByNameAndConfig } from './mcpDiscoveryCowork'
 import { discoverAntigravity } from './mcpDiscoveryAntigravity'
+import { discoverCursorMarketplaceMcps } from './mcpDiscoveryCursorMarketplace'
 
 // Standardized structures we return to the renderer. Designed to be easily extensible
 // to additional MCP clients beyond VS Code.
@@ -73,11 +62,15 @@ export type McpServerConfig =
       url: string
       headers?: Record<string, string>
     }
+  | {
+      // IDE-managed server with no accessible launch config (e.g. Cursor marketplace MCPs)
+      type: 'opaque'
+    }
 
 export interface DiscoveredMcpServer {
   name: string
   client: McpClientId
-  source: 'user' | 'workspace' | 'remote' | 'unknown' | 'enterprise' | 'project'
+  source: 'user' | 'workspace' | 'remote' | 'unknown' | 'enterprise' | 'project' | 'marketplace'
   path: string
   config: McpServerConfig
   projectName?: string
@@ -599,6 +592,16 @@ async function discoverCursor(): Promise<DiscoveredMcpServer[]> {
       results.push(...servers)
     } catch {
       // Plugin doesn't define MCP servers; ignore
+    }
+  }
+
+  // Marketplace MCP apps (OAuth + plugin- prefixed) — read-only from Cursor's internal state
+  const marketplaceMcps = await discoverCursorMarketplaceMcps()
+  // Deduplicate: marketplace servers already in mcp.json should not appear twice
+  const existingNames = new Set(results.map((s) => s.name.toLowerCase()))
+  for (const mcp of marketplaceMcps) {
+    if (!existingNames.has(mcp.name.toLowerCase())) {
+      results.push(mcp)
     }
   }
 
