@@ -41,6 +41,9 @@ mac:
     - target: dmg
       arch:
         - universal
+    - target: zip
+      arch:
+        - universal
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.plist
   hardenedRuntime: true
