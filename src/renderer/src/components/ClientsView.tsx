@@ -75,10 +75,45 @@ function getIssueDetail(client: ClientInfo): string {
   return issues.join(" · ");
 }
 
+/** Tooltip showing connection condition checklist on hover. */
+function ConditionTooltip({ client }: { client: ClientInfo }) {
+  const conditions = [
+    { label: "Installed", met: client.installed },
+    {
+      label: `Hooks (${client.hookCount}/${client.totalHooks})`,
+      met: client.hasHook,
+    },
+    ...(client.mcpApplicable
+      ? [{ label: "MCP gateway", met: client.mcpConnected }]
+      : []),
+  ];
+
+  return (
+    <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-50 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-raised)] px-3 py-2 shadow-lg whitespace-nowrap">
+        <p className="text-[10px] font-semibold text-[var(--text-muted)] mb-1.5 uppercase tracking-wider">
+          Connection status
+        </p>
+        {conditions.map((c) => (
+          <div key={c.label} className="flex items-center gap-1.5 py-0.5">
+            <span className={`text-[11px] ${c.met ? "text-emerald-400" : "text-red-400"}`}>
+              {c.met ? "✓" : "✗"}
+            </span>
+            <span className={`text-[11px] ${c.met ? "text-[var(--text-secondary)]" : "text-[var(--text-muted)]"}`}>
+              {c.label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ClientsView(): React.ReactNode {
   const [clients, setClients] = useState<ClientInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedCategory, setExpandedCategory] = useState<ClientStatus | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -109,6 +144,14 @@ export default function ClientsView(): React.ReactNode {
     return () => clearInterval(interval);
   }, [refresh]);
 
+  // Clear expanded category when it becomes empty after a data refresh
+  useEffect(() => {
+    if (expandedCategory !== null) {
+      const count = clients.filter((c) => getClientStatus(c) === expandedCategory).length;
+      if (count === 0) setExpandedCategory(null);
+    }
+  }, [clients, expandedCategory]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -135,37 +178,62 @@ export default function ClientsView(): React.ReactNode {
     <div className="flex flex-col gap-3">
       {/* Summary */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-2 py-1">
-          <StatusDot status="connected" />
-          <span className="text-[11px] font-medium text-emerald-400">
-            {connected.length} connected
-          </span>
-        </div>
-        {partialSetup.length > 0 && (
-          <div className="flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2 py-1">
-            <StatusDot status="partial-setup" />
-            <span className="text-[11px] font-medium text-amber-400">
-              {partialSetup.length} incomplete
+        {([
+          { status: "connected" as ClientStatus, items: connected, label: "connected",
+            bg: "bg-emerald-500/10", text: "text-emerald-400",
+            activeBorder: "border-emerald-500/40 ring-1 ring-emerald-500/20", show: true },
+          { status: "partial-setup" as ClientStatus, items: partialSetup, label: "incomplete",
+            bg: "bg-amber-500/10", text: "text-amber-400",
+            activeBorder: "border-amber-500/40 ring-1 ring-amber-500/20", show: partialSetup.length > 0 },
+          { status: "installed" as ClientStatus, items: noSetup, label: "not set up",
+            bg: "bg-red-500/10", text: "text-red-400",
+            activeBorder: "border-red-500/40 ring-1 ring-red-500/20", show: noSetup.length > 0 },
+          { status: "missing" as ClientStatus, items: notInstalled, label: "not found",
+            bg: "bg-gray-500/10", text: "text-gray-400",
+            activeBorder: "border-gray-500/40 ring-1 ring-gray-500/20", show: notInstalled.length > 0 },
+        ] as const).filter(b => b.show).map((badge) => (
+          <button
+            key={badge.status}
+            type="button"
+            onClick={() => badge.items.length > 0 ? setExpandedCategory(expandedCategory === badge.status ? null : badge.status) : undefined}
+            className={`flex items-center gap-1.5 rounded-md ${badge.bg} px-2 py-1 transition-all cursor-pointer border ${
+              expandedCategory === badge.status ? badge.activeBorder : "border-transparent"
+            }`}
+          >
+            <StatusDot status={badge.status} />
+            <span className={`text-[11px] font-medium ${badge.text}`}>
+              {badge.items.length} {badge.label}
             </span>
-          </div>
-        )}
-        {noSetup.length > 0 && (
-          <div className="flex items-center gap-1.5 rounded-md bg-red-500/10 px-2 py-1">
-            <StatusDot status="installed" />
-            <span className="text-[11px] font-medium text-red-400">
-              {noSetup.length} not set up
-            </span>
-          </div>
-        )}
-        {notInstalled.length > 0 && (
-          <div className="flex items-center gap-1.5 rounded-md bg-gray-500/10 px-2 py-1">
-            <StatusDot status="missing" />
-            <span className="text-[11px] font-medium text-gray-400">
-              {notInstalled.length} not found
-            </span>
-          </div>
-        )}
+          </button>
+        ))}
       </div>
+
+      {/* Expanded category */}
+      {expandedCategory && (() => {
+        const categoryClients = clients.filter(c => getClientStatus(c) === expandedCategory);
+        if (categoryClients.length === 0) return null;
+        const colorMap: Record<ClientStatus, string> = {
+          connected: "border-emerald-500/20",
+          "partial-setup": "border-amber-500/20",
+          installed: "border-red-500/20",
+          missing: "border-gray-500/20",
+        };
+        return (
+          <div className={`flex flex-col gap-1.5 rounded-lg border ${colorMap[expandedCategory]} bg-[var(--bg-raised)] p-2.5`}>
+            {categoryClients.map((client) => (
+              <div key={client.id} className="group relative flex items-center gap-3 px-1 py-1">
+                <ConditionTooltip client={client} />
+                <div className="h-8 w-8 shrink-0">
+                  <AppLogo id={client.id} name={client.name} />
+                </div>
+                <span className="text-xs font-medium text-[var(--text-secondary)]">
+                  {client.name}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Client list */}
       <div className="flex flex-col gap-1.5">
@@ -198,8 +266,9 @@ export default function ClientsView(): React.ReactNode {
           return (
             <div
               key={client.id}
-              className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${borderStyle[status]}`}
+              className={`group relative flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${borderStyle[status]}`}
             >
+              <ConditionTooltip client={client} />
               <div className="h-8 w-8 shrink-0">
                 <AppLogo id={client.id} name={client.name} />
               </div>
