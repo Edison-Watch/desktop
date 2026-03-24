@@ -696,13 +696,14 @@ export class McpConfigMonitor extends EventEmitter {
  * other localhost dev servers.
  */
 export function isEdisonWatchServer(server: DiscoveredMcpServer): boolean {
-  // Name we write to configs via mcpConfigWriter
-  if (server.name === 'edison-watch') return true
+  // Filter out any server with "edison-watch" in its name or URL
+  if (server.name.includes('edison-watch')) return true
 
   const config = server.config
   if ('command' in config && config.command) {
     const args = config.args?.join(' ') ?? ''
     const argsList = config.args ?? []
+    if (argsList.some((arg) => String(arg).includes('edison-watch'))) return true
     return (
       config.command === 'npx' &&
       args.includes('mcp-remote') &&
@@ -711,6 +712,7 @@ export function isEdisonWatchServer(server: DiscoveredMcpServer): boolean {
     )
   }
   if ('url' in config && config.url) {
+    if (config.url.includes('edison-watch')) return true
     return (
       config.url.includes('edison.watch') ||
       (config.url.includes('localhost') && /\/mcp(?:\/|$)/.test(config.url))

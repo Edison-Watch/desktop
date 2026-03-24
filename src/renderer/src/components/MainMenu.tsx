@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button, Badge } from "@edison/shared/ui";
 import { supabase } from "@edison/shared/auth";
+import { clearCachedSecretKey } from "@edison/shared/crypto";
 import edisonIcon from "../assets/edison-icon.png";
 import ClientsView from "./ClientsView";
 
@@ -127,6 +128,7 @@ export default function MainMenu(): React.ReactNode {
       // fall through to reload regardless — main process may already
       // be operating as the new account after a successful switch
     }
+    clearCachedSecretKey();
     window.location.reload();
   };
 
@@ -141,6 +143,7 @@ export default function MainMenu(): React.ReactNode {
     } catch {
       // best-effort sign-out; always continue to reset
     }
+    clearCachedSecretKey();
     await window.api.setup.reset();
     window.location.reload();
   };

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Button, Input, Badge } from "@edison/shared/ui";
 import { supabase } from "@edison/shared/auth";
+import { clearCachedSecretKey } from "@edison/shared/crypto";
 import type { AuthState } from "../hooks/useAuth";
 
 function GoogleIcon() {
@@ -111,6 +112,7 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
             } catch {
               // best-effort sign-out; always continue to reset
             }
+            clearCachedSecretKey();
             await window.api.setup.reset();
             window.location.reload();
           }}
