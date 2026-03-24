@@ -106,6 +106,7 @@ export default function ClientsView(): React.ReactNode {
     );
   }
 
+  const installedClients = clients.filter((c) => c.installed);
   const active = clients.filter((c) => getClientStatus(c) === "active");
   const partial = clients.filter((c) => getClientStatus(c) === "partial");
   const noHooks = clients.filter((c) => getClientStatus(c) === "installed");
@@ -137,17 +138,19 @@ export default function ClientsView(): React.ReactNode {
             </span>
           </div>
         )}
-        <div className="flex items-center gap-1.5 rounded-md bg-gray-500/10 px-2 py-1">
-          <StatusDot status="missing" />
-          <span className="text-[11px] font-medium text-gray-400">
-            {notInstalled.length} not found
-          </span>
-        </div>
+        {notInstalled.length > 0 && (
+          <div className="flex items-center gap-1.5 rounded-md bg-gray-500/10 px-2 py-1">
+            <StatusDot status="missing" />
+            <span className="text-[11px] font-medium text-gray-400">
+              {notInstalled.length} not found
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Client list */}
       <div className="flex flex-col gap-1.5">
-        {clients.map((client) => {
+        {installedClients.map((client) => {
           const status = getClientStatus(client);
 
           const statusLabel: Record<ClientStatus, string> = {
@@ -198,6 +201,11 @@ export default function ClientsView(): React.ReactNode {
       {clients.length === 0 && (
         <p className="text-center text-xs text-[var(--text-muted)] py-4">
           No MCP clients detected on this machine.
+        </p>
+      )}
+      {clients.length > 0 && installedClients.length === 0 && (
+        <p className="text-center text-xs text-[var(--text-muted)] py-4">
+          No installed MCP clients found.
         </p>
       )}
     </div>
