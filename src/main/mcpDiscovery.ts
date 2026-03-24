@@ -71,6 +71,8 @@ export type McpServerConfig =
 
 export interface DiscoveredMcpServer {
   name: string
+  /** Original key in the config file (before deduplication suffix). Falls back to `name` when absent. */
+  originalName?: string
   client: McpClientId
   source: 'user' | 'workspace' | 'remote' | 'unknown' | 'enterprise' | 'project' | 'marketplace'
   path: string

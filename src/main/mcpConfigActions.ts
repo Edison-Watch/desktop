@@ -554,7 +554,7 @@ async function readQuarantinedServersFile(disabledPath: string): Promise<Quarant
  *
  * @returns QuarantineResult with paths and timestamp for notification
  */
-export async function quarantineServer(server: DiscoveredMcpServer): Promise<QuarantineResult> {
+export async function quarantineServer(server: DiscoveredMcpServer): Promise<QuarantineResult | null> {
   // Marketplace servers (Cursor OAuth, VS Code extensions) are stored in SQLite databases
   if (server.source === 'marketplace') {
     return quarantineMarketplaceServer(server)
@@ -563,21 +563,23 @@ export async function quarantineServer(server: DiscoveredMcpServer): Promise<Qua
   const disabledPath = getDisabledConfigPath(originalPath)
   const quarantinedAt = new Date().toISOString()
 
-  console.log(`[MCP Quarantine] Quarantining server "${server.name}" from ${originalPath}`)
+  // Use originalName (pre-deduplication) to match the actual key in the config file.
+  // Must be computed before both steps so disabled file and original use the same key.
+  const configKey = server.originalName ?? server.name
 
-  // Step 1: Add to disabled file
+  console.log(`[MCP Quarantine] Quarantining server "${configKey}" from ${originalPath}`)
+
+  // Step 1: Add to disabled file (using the real config key, not the dedup display name)
   const disabledFile = await readQuarantinedServersFile(disabledPath)
 
-  // Add the server with metadata
-  disabledFile.servers[server.name] = {
+  disabledFile.servers[configKey] = {
     ...server.config,
     originalFile: originalPath,
     quarantinedAt
   }
 
-  // Write disabled file (no backup needed, it's our own file)
   await fs.writeFile(disabledPath, JSON.stringify(disabledFile, null, 2), 'utf-8')
-  console.log(`[MCP Quarantine] Added server "${server.name}" to ${disabledPath}`)
+  console.log(`[MCP Quarantine] Added server "${configKey}" to ${disabledPath}`)
 
   // Step 2: Remove from original config
   // Wrapped in try/catch to rollback step 1 if this fails
@@ -585,7 +587,7 @@ export async function quarantineServer(server: DiscoveredMcpServer): Promise<Qua
     const config = await readConfigFile(originalPath, server.client)
     const servers = getServersFromConfig(config, server.client)
 
-    if (servers && server.name in servers) {
+    if (servers && configKey in servers) {
       // Create backup first
       if (existsSync(originalPath)) {
         const now = new Date()
@@ -596,16 +598,21 @@ export async function quarantineServer(server: DiscoveredMcpServer): Promise<Qua
       }
 
       // Delete the server entry
-      delete servers[server.name]
+      delete servers[configKey]
       setServersInConfig(config, server.client, servers)
 
       // Write the modified config back
       await fs.writeFile(originalPath, JSON.stringify(config, null, 2), 'utf-8')
-      console.log(`[MCP Quarantine] Removed server "${server.name}" from ${originalPath}`)
+      console.log(`[MCP Quarantine] Removed server "${configKey}" from ${originalPath}`)
     } else {
-      console.log(
-        `[MCP Quarantine] Server "${server.name}" not found in original config, skipping removal`
-      )
+      // Server already absent from config (likely removed between discovery and quarantine).
+      // Roll back the disabled-file entry so state stays consistent, but don't throw —
+      // this is a benign race, not a quarantine failure.
+      const rollbackFile = await readQuarantinedServersFile(disabledPath)
+      delete rollbackFile.servers[configKey]
+      await fs.writeFile(disabledPath, JSON.stringify(rollbackFile, null, 2), 'utf-8')
+      console.log(`[MCP Quarantine] Server "${configKey}" already absent from ${originalPath} — skipped`)
+      return null
     }
   } catch (err) {
     // Rollback: remove server from disabled file so it does not exist in both places.
@@ -615,7 +622,7 @@ export async function quarantineServer(server: DiscoveredMcpServer): Promise<Qua
     )
     try {
       const rollbackDisabledFile = await readQuarantinedServersFile(disabledPath)
-      delete rollbackDisabledFile.servers[server.name]
+      delete rollbackDisabledFile.servers[configKey]
       await fs.writeFile(disabledPath, JSON.stringify(rollbackDisabledFile, null, 2), 'utf-8')
       console.log(`[MCP Quarantine] Rolled back: removed server from ${disabledPath}`)
     } catch (rollbackErr) {

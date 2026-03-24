@@ -27,13 +27,14 @@ import { SeenServersStore } from './seenServersStore'
 import { quarantineServer, type QuarantineResult } from './mcpConfigActions'
 
 // Cache static paths that only depend on homedir() (which doesn't change at runtime)
+const CLAUDE_HOME_JSON_PATH = getClaudeCodeHomeJsonPath()
 const CURSOR_PLUGINS_INSTALLED_PATHS = getCursorPluginsInstalledPaths()
 
 const QUARANTINE_MAX_ATTEMPTS = 3
 const QUARANTINE_RETRY_DELAY_MS = 400
 const DEFAULT_RESCAN_INTERVAL_MS = 60_000 // Safety-net rescan every 60s
 
-async function quarantineWithRetry(server: DiscoveredMcpServer): Promise<QuarantineResult> {
+async function quarantineWithRetry(server: DiscoveredMcpServer): Promise<QuarantineResult | null> {
   let lastErr: unknown
   for (let attempt = 1; attempt <= QUARANTINE_MAX_ATTEMPTS; attempt++) {
     try {
@@ -487,24 +488,35 @@ export class McpConfigMonitor extends EventEmitter {
         continue
       }
 
+      // Skip project-scoped MCPs from ~/.claude.json — the nested projects structure
+      // can't be safely modified (volatile runtime file, race condition with Claude Code).
+      // Only .mcp.json project files are safe to quarantine.
+      if (server.source === 'project' && server.path === CLAUDE_HOME_JSON_PATH) {
+        console.log(`[McpConfigMonitor] Skipping ~/.claude.json project-scoped server on startup: ${server.name}`)
+        this.lastKnownServers.set(fingerprint, server)
+        continue
+      }
+
       try {
         // Auto-quarantine: move to disabled file, remove from original (with retries for transient I/O)
         console.log(`[McpConfigMonitor] Auto-quarantining existing server: ${server.name}`)
-        const result: QuarantineResult = await quarantineWithRetry(server)
+        const result = await quarantineWithRetry(server)
 
-        // Mark as seen with quarantine action
-        await this.seenStore.markSeen(server, 'quarantined', {
-          disabledPath: result.disabledPath,
-          quarantinedAt: result.quarantinedAt
-        })
+        // null means server was already absent (benign race) — skip notification
+        if (result) {
+          await this.seenStore.markSeen(server, 'quarantined', {
+            disabledPath: result.disabledPath,
+            quarantinedAt: result.quarantinedAt
+          })
 
-        quarantinedEvents.push({
-          server,
-          fingerprint,
-          originalPath: result.originalPath,
-          disabledPath: result.disabledPath,
-          quarantinedAt: result.quarantinedAt
-        })
+          quarantinedEvents.push({
+            server,
+            fingerprint,
+            originalPath: result.originalPath,
+            disabledPath: result.disabledPath,
+            quarantinedAt: result.quarantinedAt
+          })
+        }
       } catch (err) {
         failedFingerprints.add(fingerprint)
         console.error(
@@ -625,24 +637,33 @@ export class McpConfigMonitor extends EventEmitter {
         continue
       }
 
+      // Skip project-scoped MCPs from ~/.claude.json — the nested projects structure
+      // can't be safely modified (volatile runtime file, race condition with Claude Code).
+      if (server.source === 'project' && server.path === CLAUDE_HOME_JSON_PATH) {
+        mlog(`[Monitor] Skipping ~/.claude.json project-scoped server: ${server.name}`)
+        continue
+      }
+
       try {
         // Auto-quarantine: move to disabled file, remove from original (with retries for transient I/O)
         mlog(`[Monitor] Auto-quarantining server: ${server.name} from ${server.path}`)
-        const result: QuarantineResult = await quarantineWithRetry(server)
+        const result = await quarantineWithRetry(server)
 
-        // Mark as seen with quarantine action
-        await this.seenStore.markSeen(server, 'quarantined', {
-          disabledPath: result.disabledPath,
-          quarantinedAt: result.quarantinedAt
-        })
+        // null means server was already absent (benign race) — skip notification
+        if (result) {
+          await this.seenStore.markSeen(server, 'quarantined', {
+            disabledPath: result.disabledPath,
+            quarantinedAt: result.quarantinedAt
+          })
 
-        quarantinedEvents.push({
-          server,
-          fingerprint,
-          originalPath: result.originalPath,
-          disabledPath: result.disabledPath,
-          quarantinedAt: result.quarantinedAt
-        })
+          quarantinedEvents.push({
+            server,
+            fingerprint,
+            originalPath: result.originalPath,
+            disabledPath: result.disabledPath,
+            quarantinedAt: result.quarantinedAt
+          })
+        }
       } catch (err) {
         failedFingerprints.add(fingerprint)
         mlog(`[Monitor] FAILED to quarantine "${server.name}": ${err}`)

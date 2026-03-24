@@ -107,7 +107,7 @@ export function deduplicateByNameAndConfig(servers: DiscoveredMcpServer[]): Disc
       // Different configs under the same name — keep all, suffix _2, _3, …
       result.push(unique[0])
       for (let i = 1; i < unique.length; i++) {
-        result.push({ ...unique[i], name: `${unique[i].name}_${i + 1}` })
+        result.push({ ...unique[i], name: `${unique[i].name}_${i + 1}`, originalName: unique[i].name })
       }
     }
   }

@@ -8,6 +8,10 @@
  */
 import { promises as fs, existsSync } from 'fs'
 import { dirname } from 'path'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+
+const execFileAsync = promisify(execFile)
 
 import type { McpClientId, McpServerConfig } from './mcpDiscovery'
 import {
@@ -15,7 +19,7 @@ import {
   getVscodeInsidersUserMcpPath,
   getCursorConfigPath,
   getClaudeDesktopConfigPath,
-  getClaudeCodeUserSettingsPath,
+  getClaudeCodeHomeJsonPath,
   getWindsurfConfigPath,
   getZedConfigPath,
   getAntigravityConfigPath,
@@ -76,13 +80,13 @@ function buildEdisonEntry(
 async function getPathForApp(
   appId: string,
 ): Promise<{ configPath: string; clientId: McpClientId } | null> {
+  // claude-code is handled separately via applyToClaudeCode() — not in this map
   const STATIC_MAP: Record<string, () => string> = {
     vscode: getVscodeUserMcpPath,
     'vscode-insiders': getVscodeInsidersUserMcpPath,
     cursor: getCursorConfigPath,
     'claude-desktop': getClaudeDesktopConfigPath,
     'claude-cowork': getClaudeCoworkConfigPath,
-    'claude-code': getClaudeCodeUserSettingsPath,
     windsurf: getWindsurfConfigPath,
     zed: getZedConfigPath,
     antigravity: getAntigravityConfigPath,
@@ -101,6 +105,88 @@ async function getPathForApp(
   }
 
   return null
+}
+
+/**
+ * Apply Edison Watch MCP to Claude Code using the `claude` CLI.
+ * Claude Code reads MCPs from ~/.claude.json, NOT from ~/.claude/settings.json.
+ * The `claude mcp add` CLI is the safe way to register servers without risking
+ * race conditions with the volatile ~/.claude.json runtime state file.
+ *
+ * Falls back to direct ~/.claude.json write if CLI is unavailable.
+ */
+async function applyToClaudeCode(
+  url: string,
+  headers: Record<string, string> | undefined,
+  timestamp: string,
+  dryRun: boolean,
+): Promise<ModifiedConfig | null> {
+  if (dryRun) {
+    console.log(`[dry-run] Would add edison-watch to Claude Code via CLI: ${url}`)
+    return { appId: 'claude-code', configPath: '(via claude mcp add)', backupPath: '' }
+  }
+
+  // First, try to remove any existing edison-watch entry (ignore errors)
+  try {
+    await execFileAsync('claude', ['mcp', 'remove', 'edison-watch', '--scope', 'user'], { timeout: 10_000 })
+  } catch {
+    // Ignore — entry may not exist
+  }
+
+  // Try `claude mcp add` CLI, forwarding any auth headers via --header flags
+  const headerArgs = headers
+    ? Object.entries(headers).flatMap(([k, v]) => ['--header', `${k}: ${v}`])
+    : []
+  const args = ['mcp', 'add', '--transport', 'http', '--scope', 'user', ...headerArgs, 'edison-watch', url]
+
+  try {
+    await execFileAsync('claude', args, { timeout: 10_000 })
+    console.log('[mcpConfigWriter] Added edison-watch to Claude Code via CLI')
+    return { appId: 'claude-code', configPath: getClaudeCodeHomeJsonPath(), backupPath: '' }
+  } catch (err) {
+    // CLI failed — fall back to direct ~/.claude.json write
+    console.warn(
+      `[mcpConfigWriter] claude mcp add failed, falling back to direct write: ${err instanceof Error ? err.message : String(err)}`
+    )
+    return await applyToClaudeCodeFallback(url, headers, timestamp)
+  }
+}
+
+/** Fallback: write directly to ~/.claude.json top-level mcpServers. */
+async function applyToClaudeCodeFallback(
+  url: string,
+  headers: Record<string, string> | undefined,
+  timestamp: string,
+): Promise<ModifiedConfig> {
+  const configPath = getClaudeCodeHomeJsonPath()
+  const backupPath = `${configPath}.backup.${timestamp}.json`
+
+  // Backup existing file
+  if (existsSync(configPath)) {
+    await fs.copyFile(configPath, backupPath)
+  }
+
+  // Read, merge, write
+  let json: Record<string, unknown> = {}
+  try {
+    const raw = await fs.readFile(configPath, 'utf-8')
+    json = JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    // File doesn't exist or is invalid — start fresh
+  }
+
+  const mcpServers = (json.mcpServers ?? {}) as Record<string, unknown>
+  mcpServers['edison-watch'] = { url, ...(headers && { headers }) }
+  json.mcpServers = mcpServers
+
+  await fs.writeFile(configPath, JSON.stringify(json, null, 2), 'utf-8')
+  console.log('[mcpConfigWriter] Added edison-watch to ~/.claude.json (fallback)')
+
+  return {
+    appId: 'claude-code',
+    configPath,
+    backupPath: existsSync(backupPath) ? backupPath : '',
+  }
 }
 
 /** For merge clients: read existing config, add edison-watch, write back. */
@@ -130,6 +216,11 @@ async function applyToApp(
   timestamp: string,
   dryRun: boolean,
 ): Promise<ModifiedConfig | null> {
+  // Claude Code needs special handling: CLI-based add to ~/.claude.json
+  if (appId === 'claude-code') {
+    return applyToClaudeCode(url, headers, timestamp, dryRun)
+  }
+
   const resolved = await getPathForApp(appId)
   if (!resolved) return null
 
