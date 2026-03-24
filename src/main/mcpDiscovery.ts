@@ -17,9 +17,11 @@ export { getServerFingerprint } from './seenServersStore'
 export { getClaudeCoworkConfigPath, parseClaudeCoworkConfig } from './mcpDiscoveryCowork'
 export { getAntigravityConfigPath, parseAntigravityMcpJson } from './mcpDiscoveryAntigravity'
 export { getCursorStateDbPath, discoverCursorMarketplaceMcps } from './mcpDiscoveryCursorMarketplace'
+export { getVscodeStateDbPath, getVscodeInsidersStateDbPath, discoverVscodeStateMcps } from './mcpDiscoveryVscodeState'
 import { discoverClaudeCowork, deduplicateByNameAndConfig } from './mcpDiscoveryCowork'
 import { discoverAntigravity } from './mcpDiscoveryAntigravity'
 import { discoverCursorMarketplaceMcps } from './mcpDiscoveryCursorMarketplace'
+import { discoverVscodeStateMcps } from './mcpDiscoveryVscodeState'
 
 // Standardized structures we return to the renderer. Designed to be easily extensible
 // to additional MCP clients beyond VS Code.
@@ -714,24 +716,21 @@ export async function macAppExists(clientId: string): Promise<boolean> {
 export async function discoverMcpServers(): Promise<DiscoveredMcpServer[]> {
   const results: DiscoveredMcpServer[] = []
 
-  // VS Code (stable) - user-level configuration.
-  try {
-    const userPath = getVscodeUserMcpPath()
-    await fs.access(userPath)
-    const vsUser = await parseVscodeMcpJson(userPath, 'vscode')
-    results.push(...vsUser)
-  } catch {
-    // File not found or unreadable; ignore for now.
+  // VS Code (stable + Insiders) - user-level mcp.json files
+  for (const [path, client] of [
+    [getVscodeUserMcpPath(), 'vscode'],
+    [getVscodeInsidersUserMcpPath(), 'vscode-insiders'],
+  ] as const) {
+    try { await fs.access(path); results.push(...await parseVscodeMcpJson(path, client)) } catch { /* */ }
   }
 
-  // VS Code Insiders - user-level configuration.
-  try {
-    const insidersPath = getVscodeInsidersUserMcpPath()
-    await fs.access(insidersPath)
-    const vsInsiders = await parseVscodeMcpJson(insidersPath, 'vscode-insiders')
-    results.push(...vsInsiders)
-  } catch {
-    // File not found or unreadable; ignore for now.
+  // VS Code & Insiders state.vscdb — extension-provided MCP servers (marketplace)
+  for (const variant of ['vscode', 'vscode-insiders'] as const) {
+    const stateMcps = await discoverVscodeStateMcps(variant)
+    const known = new Set(results.map((s) => s.name.toLowerCase()))
+    for (const mcp of stateMcps) {
+      if (!known.has(mcp.name.toLowerCase())) results.push(mcp)
+    }
   }
 
   // Claude Code discovery

@@ -461,4 +461,54 @@ export const DEBUG_CSS = `
     font-size: 11px;
     opacity: 0.7;
   }
+
+  .path-group {
+    margin-bottom: 10px;
+  }
+
+  .path-group:last-child {
+    margin-bottom: 0;
+  }
+
+  .path-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .path-group-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  .path-group-count {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-dim);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  .path-item {
+    font-size: 11px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    color: var(--text-secondary);
+    padding: 3px 8px;
+    margin-left: 4px;
+    border-left: 2px solid var(--border);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .path-empty {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 3px 8px;
+    margin-left: 4px;
+  }
 `

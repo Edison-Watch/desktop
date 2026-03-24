@@ -24,6 +24,24 @@ const RECONNECT_DELAY_MS = 1000;
 const APPROVAL_EXPIRY_MS = 2 * 60 * 1000; // 2 minutes — matches backend pending cutoff
 let expiryTimer: ReturnType<typeof setInterval> | null = null;
 
+// SSE connection status — exposed for tray menu
+let sseConnected = false;
+let _onSseStatusChanged: (() => void) | null = null;
+
+export function isSseConnected(): boolean {
+  return sseConnected;
+}
+
+export function setSseStatusCallback(cb: () => void): void {
+  _onSseStatusChanged = cb;
+}
+
+function updateSseStatus(connected: boolean): void {
+  if (sseConnected === connected) return;
+  sseConnected = connected;
+  _onSseStatusChanged?.();
+}
+
 export interface PendingApproval {
   id: string;
   sessionId: string;
@@ -64,6 +82,7 @@ export function initApprovalsHandler(
 export function startEventSubscription(
   onQuarantineEnabled: (domain?: string) => void,
   onQuarantineDisabled?: (domain?: string) => void,
+  onReconnected?: () => void,
 ): void {
   const setupData = getSetupData();
   const apiKey = setupData.apiKey;
@@ -119,12 +138,20 @@ export function startEventSubscription(
     };
 
     eventSource.onerror = () => {
-      handleReconnect(onQuarantineEnabled, onQuarantineDisabled);
+      updateSseStatus(false);
+      handleReconnect(onQuarantineEnabled, onQuarantineDisabled, onReconnected);
     };
 
     eventSource.onopen = () => {
       console.log("SSE connection established");
+      const wasReconnect = reconnectAttempts > 0;
       reconnectAttempts = 0;
+      updateSseStatus(true);
+
+      // Sync quarantine state on reconnect — we may have missed events while disconnected
+      if (wasReconnect) {
+        onReconnected?.();
+      }
 
       // Register desktop login once per app launch so the onboarding
       // checklist knows the user has signed in to the desktop app.
@@ -141,7 +168,8 @@ export function startEventSubscription(
     };
   } catch (err) {
     console.error("Failed to create EventSource:", err);
-    handleReconnect(onQuarantineEnabled, onQuarantineDisabled);
+    updateSseStatus(false);
+    handleReconnect(onQuarantineEnabled, onQuarantineDisabled, onReconnected);
   }
 }
 
@@ -152,11 +180,13 @@ export function stopEventSubscription(): void {
   }
   reconnectAttempts = 0;
   desktopLoginRegistered = false; // allow re-registration after logout/account switch
+  updateSseStatus(false);
 }
 
 function handleReconnect(
   onQuarantineEnabled: (domain?: string) => void,
   onQuarantineDisabled?: (domain?: string) => void,
+  onReconnected?: () => void,
 ): void {
   if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
     console.error("Max reconnect attempts reached, stopping SSE subscription");
@@ -168,7 +198,7 @@ function handleReconnect(
   console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
 
   setTimeout(() => {
-    startEventSubscription(onQuarantineEnabled, onQuarantineDisabled);
+    startEventSubscription(onQuarantineEnabled, onQuarantineDisabled, onReconnected);
   }, delay);
 }
 

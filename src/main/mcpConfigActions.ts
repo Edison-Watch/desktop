@@ -11,6 +11,10 @@ import {
 } from './mcpDiscovery'
 import { getAllConfigPaths } from './mcpConfigPaths'
 import { detectSecrets } from './secretDetection'
+import {
+  quarantineMarketplaceServer,
+  restoreAllMarketplaceServers,
+} from './mcpQuarantineSqlite'
 
 /**
  * Structure for the disabled/quarantined servers file.
@@ -546,9 +550,15 @@ async function readQuarantinedServersFile(disabledPath: string): Promise<Quarant
  * 2. Removes the server from the original config file
  * 3. Creates a backup of the original before modification
  *
+ * Marketplace servers (stored in state.vscdb) are handled separately via SQLite operations.
+ *
  * @returns QuarantineResult with paths and timestamp for notification
  */
 export async function quarantineServer(server: DiscoveredMcpServer): Promise<QuarantineResult> {
+  // Marketplace servers (Cursor OAuth, VS Code extensions) are stored in SQLite databases
+  if (server.source === 'marketplace') {
+    return quarantineMarketplaceServer(server)
+  }
   const originalPath = server.path
   const disabledPath = getDisabledConfigPath(originalPath)
   const quarantinedAt = new Date().toISOString()
@@ -665,6 +675,12 @@ export async function restoreAllQuarantinedServers(): Promise<{
   let restored = 0
   const errors: string[] = []
 
+  // Restore marketplace (state.vscdb) servers
+  const marketplace = await restoreAllMarketplaceServers()
+  restored += marketplace.restored
+  errors.push(...marketplace.errors)
+
+  // Restore file-based servers
   for (const originalPath of allOriginalPaths) {
     const disabledPath = getDisabledConfigPath(originalPath)
 

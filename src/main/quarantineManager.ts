@@ -111,7 +111,7 @@ export function stopQuarantineMonitor(): void {
   autoQuarantineEnabled = false;
 }
 
-const QUARANTINE_POLL_INTERVAL_MS = 60_000;
+const QUARANTINE_POLL_INTERVAL_MS = 5 * 60_000; // 5 min — safety-net only; SSE push is primary
 let quarantinePollTimer: ReturnType<typeof setInterval> | null = null;
 
 async function fetchQuarantineFlag(): Promise<boolean | null> {
@@ -130,7 +130,7 @@ async function fetchQuarantineFlag(): Promise<boolean | null> {
   }
 }
 
-async function pollQuarantineConfig(): Promise<void> {
+export async function pollQuarantineConfig(): Promise<void> {
   const shouldBeEnabled = await fetchQuarantineFlag();
   if (shouldBeEnabled === null) return;
   if (shouldBeEnabled && !configMonitor) {

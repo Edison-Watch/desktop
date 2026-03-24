@@ -46,6 +46,7 @@ import {
   stopQuarantineMonitor,
   startQuarantinePolling,
   stopQuarantinePolling,
+  pollQuarantineConfig,
 } from "./quarantineManager";
 import {
   DEBUG_ENV_NAMES,
@@ -71,6 +72,8 @@ import {
   stopEventSubscription,
   showPendingApprovalsDialog,
   initApprovalsHandler,
+  isSseConnected,
+  setSseStatusCallback,
 } from "./approvalsHandler";
 import { registerIpcHandlers } from "./ipcHandlers";
 
@@ -90,7 +93,10 @@ let devAuthCallbackUrl: string | null = null;
 let isRestarting = false; // suppress app.quit() during intentional restarts
 
 function startEventSubscription(): void {
-  _startEventSubscription(handleQuarantineEnabled, handleQuarantineDisabled);
+  _startEventSubscription(handleQuarantineEnabled, handleQuarantineDisabled, () => {
+    // SSE reconnected — sync quarantine state to catch any events missed while disconnected
+    pollQuarantineConfig().catch(() => {});
+  });
 }
 
 // ── Tray ────────────────────────────────────────────────────────────
@@ -102,7 +108,8 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
 
   const items: MenuItemConstructorOptions[] = [
     { label: "Enabled", type: "checkbox", checked: true, click: () => {} },
-    { label: getIsServerOnline() ? "Connected" : "Disconnected", enabled: false },
+    { label: getIsServerOnline() ? "Backend: Connected" : "Backend: Disconnected", enabled: false },
+    { label: isSseConnected() ? "Live updates: Connected" : "Live updates: Disconnected", enabled: false },
     { label: userDisplayName, enabled: false },
     { type: "separator" },
     {
@@ -619,6 +626,9 @@ slog("module loaded, waiting for app.whenReady");
 
 // Wire up the quarantine manager so it can trigger tray menu updates
 initQuarantineManager(updateTrayMenu, () => mainWindow);
+
+// Wire up SSE connection status changes to refresh tray menu
+setSseStatusCallback(updateTrayMenu);
 
 // Wire up the approvals handler so it can access mainWindow/approvalWindow
 initApprovalsHandler(

@@ -19,6 +19,15 @@ vi.mock("../sentry", () => ({
   captureError: vi.fn(),
 }));
 
+// Mock marketplace restore so it doesn't touch real state.vscdb files during tests
+vi.mock("../mcpQuarantineSqlite", async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../mcpQuarantineSqlite')>();
+  return {
+    ...actual,
+    restoreAllMarketplaceServers: vi.fn().mockResolvedValue({ restored: 0, errors: [] }),
+  };
+});
+
 import {
   getDisabledConfigPath,
   getServerConfigForImport,

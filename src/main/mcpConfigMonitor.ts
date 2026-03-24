@@ -618,9 +618,10 @@ export class McpConfigMonitor extends EventEmitter {
         continue
       }
 
-      // Skip marketplace servers — they're managed by the IDE internally and can't be quarantined via file edits
-      if (server.source === 'marketplace') {
-        console.log(`[McpConfigMonitor] Skipping marketplace server (read-only): ${server.name}`)
+      // Skip opaque marketplace servers (e.g. Cursor plugin-installed MCPs with no accessible config).
+      // Non-opaque marketplace servers (Cursor OAuth, VS Code extensions) ARE quarantined via SQLite.
+      if (server.source === 'marketplace' && 'type' in server.config && server.config.type === 'opaque') {
+        console.log(`[McpConfigMonitor] Skipping opaque marketplace server (IDE-managed): ${server.name}`)
         continue
       }
 
