@@ -20,15 +20,28 @@ export function appBundleExists(appNames: string[]): boolean {
   )
 }
 
-/** Check whether a CLI binary is on PATH. */
+/** Check whether a CLI binary is on PATH or at known install locations. */
 export function cliBinaryExists(binary: string): boolean {
   const cmd = platform() === 'win32' ? 'where' : 'which'
   try {
     const result = spawnSync(cmd, [binary], { timeout: 2000, stdio: 'pipe' })
-    return result.status === 0
+    if (result.status === 0) return true
   } catch {
-    return false
+    // fall through to known-path checks
   }
+  // Packaged macOS Electron apps get a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin),
+  // so CLI-only tools like `claude` aren't found by `which`. Check known locations.
+  if (platform() === 'darwin' || platform() === 'linux') {
+    const home = homedir()
+    const knownPaths = [
+      join(home, '.local', 'bin', binary),
+      join('/usr', 'local', 'bin', binary),
+      join('/opt', 'homebrew', 'bin', binary),
+      ...(binary === 'claude' ? [join('/Applications', 'cmux.app', 'Contents', 'Resources', 'bin', binary)] : []),
+    ]
+    return knownPaths.some(p => existsSync(p))
+  }
+  return false
 }
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
