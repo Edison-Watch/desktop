@@ -7,6 +7,7 @@
 import { app } from "electron";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import { join } from "path";
+import { getEnvByName } from "@edison/shared/config";
 
 // ── Dry-run mode ────────────────────────────────────────────────────
 
@@ -37,6 +38,12 @@ export const DEV_API_BASE_URL = "http://localhost:3001";
 export const ENV_API_URL: string = import.meta.env.VITE_API_BASE_URL ?? "";
 export const ENV_MCP_URL: string = import.meta.env.VITE_MCP_BASE_URL ?? "";
 export const ENV_DOCS_URL: string = import.meta.env.VITE_DOCS_BASE_URL ?? "https://docs.edison.watch";
+
+// Derive per-env URLs from the shared config (single source of truth).
+function getEnvUrls(env: string): { api: string; mcp: string } | null {
+  const cfg = getEnvByName(env);
+  return cfg ? { api: cfg.API_BASE_URL, mcp: cfg.MCP_BASE_URL } : null;
+}
 
 export function getDebugEnvOverridePath(): string {
   return join(app.getPath("userData"), "edison_debug_env.json");
@@ -215,26 +222,40 @@ export function getActiveEnv(): string {
 
 export function getApiBaseUrl(): string | null {
   const activeEnv = getActiveEnv();
+  // When a debug env override is active, always use the per-env URL map
+  // so that switching environments actually changes the API endpoint.
+  // This must come before the is.dev check — in dev mode app.isPackaged is
+  // false, which would otherwise always short-circuit to localhost.
+  const debugOverride = getDebugEnvOverride();
+  const overrideUrls = debugOverride ? getEnvUrls(debugOverride) : null;
+  if (overrideUrls) return overrideUrls.api;
   const is = { get dev() { return !app.isPackaged; } };
   if (activeEnv === "dev" || is.dev) return DEV_API_BASE_URL;
   const setupData = getSetupData();
   if (setupData.apiBaseUrl) return setupData.apiBaseUrl;
   if (setupData.serverAddress) return `https://${setupData.serverAddress}`;
   // Self-serve: look up default for the active env.
-  const url = ENV_API_URL || null;
+  const url = getEnvUrls(activeEnv)?.api || ENV_API_URL || null;
   if (!url) console.warn(`[getApiBaseUrl] No API URL for env "${activeEnv}".`);
   return url;
 }
 
 export function getMcpBaseUrl(): string | null {
   const activeEnv = getActiveEnv();
+  // When a debug env override is active, always use the per-env URL map
+  // so that switching environments actually changes the MCP endpoint.
+  // This must come before the is.dev check — in dev mode app.isPackaged is
+  // false, which would otherwise always short-circuit to localhost.
+  const debugOverride = getDebugEnvOverride();
+  const overrideUrls = debugOverride ? getEnvUrls(debugOverride) : null;
+  if (overrideUrls) return overrideUrls.mcp;
   const is = { get dev() { return !app.isPackaged; } };
   if (activeEnv === "dev" || is.dev) return DEV_MCP_BASE_URL;
   const setupData = getSetupData();
   if (setupData.mcpBaseUrl) return setupData.mcpBaseUrl;
   if (setupData.serverAddress) return `https://${setupData.serverAddress}`;
   // Self-serve: look up default for the active env.
-  const url = ENV_MCP_URL || null;
+  const url = getEnvUrls(activeEnv)?.mcp || ENV_MCP_URL || null;
   if (!url) console.warn(`[getMcpBaseUrl] No MCP URL for env "${activeEnv}".`);
   return url;
 }

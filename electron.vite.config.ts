@@ -14,12 +14,17 @@ export default defineConfig(({ mode }) => {
 
   return {
     main: {
-      plugins: [externalizeDepsPlugin()],
+      plugins: [externalizeDepsPlugin({ exclude: ["@edison/shared"] })],
       // Expose env vars to the main process at build time.
       define: {
         "import.meta.env.VITE_DEPLOY_ENV": JSON.stringify(env["VITE_DEPLOY_ENV"] ?? ""),
         "import.meta.env.VITE_API_BASE_URL": JSON.stringify(env["VITE_API_BASE_URL"] ?? ""),
         "import.meta.env.VITE_MCP_BASE_URL": JSON.stringify(env["VITE_MCP_BASE_URL"] ?? ""),
+      },
+      resolve: {
+        alias: {
+          "@edison/shared": resolve(projectRoot, "packages/shared/src"),
+        },
       },
     },
     preload: {

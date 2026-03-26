@@ -37,17 +37,23 @@ export default function MainMenu(): React.ReactNode {
   useEffect(() => {
     (async () => {
       const data = (await window.api.setup.getData()) as SetupData;
-      setSetupData(data);
       const status = await window.api.health.check();
       setOnline(status);
       const ver = await window.api.menu.getVersion();
       setVersion(ver);
       const urls = await window.api.config.getEffectiveBaseUrls();
       setDocsUrl(urls.docsBaseUrl);
+      // Override setup.json URLs with environment-aware values from main process
+      const mergedData: SetupData = {
+        ...data,
+        ...(urls.mcpBaseUrl ? { mcpBaseUrl: urls.mcpBaseUrl } : {}),
+        ...(urls.apiBaseUrl ? { apiBaseUrl: urls.apiBaseUrl } : {}),
+      };
+      setSetupData(mergedData);
       const saved = await window.api.accounts.list();
       setAccounts(saved);
       // Resize window to fit the compact menu — taller when MCP buttons are shown
-      const hasMcp = Boolean(data.mcpBaseUrl && data.apiKey);
+      const hasMcp = Boolean(mergedData.mcpBaseUrl && mergedData.apiKey);
       await window.api.menu.resizeWindow(400, hasMcp ? 420 : 380);
     })();
     const interval = setInterval(async () => {

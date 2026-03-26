@@ -3,10 +3,14 @@
   "include": [
     "src/main/**/*",
     "src/shared/**/*",
-    "src/preload/**/*"
+    "src/preload/**/*",
+    "../packages/shared/src/config/**/*"
   ],
   "compilerOptions": {
     "composite": true,
-    "types": ["electron-vite/node"]
+    "types": ["electron-vite/node"],
+    "paths": {
+      "@edison/shared/*": ["../packages/shared/src/*"]
+    }
   }
 }
