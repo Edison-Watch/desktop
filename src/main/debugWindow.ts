@@ -3,7 +3,7 @@ import { join } from 'path'
 import { discoverMcpServers } from './mcpDiscovery'
 import type { DiscoveredMcpServer } from './mcpDiscovery'
 import { getClientDisplayName } from './mcpConfigMonitor'
-import { escapeHtml, getClientIcon } from './mcpServerActionDialog'
+import { escapeHtml, getClientIcon } from './dialogIcons'
 import { BASE_CSS, HEADER_CSS, SERVER_CARD_CSS, DEBUG_CSS } from './dialogStyles'
 import {
   getCursorProjectMcpPaths,

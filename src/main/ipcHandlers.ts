@@ -415,7 +415,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     for (const server of servers) {
       try {
         const submitResult = await submitServerRequest(server, apiBaseUrl, apiKey, userId);
-        if (submitResult.alreadyPending) {
+        if (submitResult.alreadyPending || submitResult.alreadyExists) {
           continue;
         }
         submitted++;
@@ -487,6 +487,9 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
 
     if (submitResult.alreadyPending) {
       return { action: params.action, alreadyPending: true };
+    }
+    if (submitResult.alreadyExists) {
+      return { action: params.action, alreadyExists: true, errorMessage: submitResult.errorMessage };
     }
 
     const { request_id } = submitResult;

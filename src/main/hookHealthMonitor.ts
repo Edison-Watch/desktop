@@ -55,10 +55,8 @@ async function processSessionEndFile(filePath: string): Promise<void> {
       console.warn('[HookHealthMonitor] session-end file has unexpected shape, discarding:', filePath, parsed)
     }
   } catch {
-    captureError(new Error('Failed to process session-end file'), {
-      source: 'session_end_file',
-      filePath
-    })
+    // Likely a race condition where chokidar fired before the file was fully written.
+    console.warn('[HookHealthMonitor] Could not parse session-end file, discarding:', filePath)
   } finally {
     try {
       await fs.unlink(filePath)
