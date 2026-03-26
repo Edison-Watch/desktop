@@ -253,7 +253,7 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
             if (!mcpBaseUrl || !apiKey) return;
             const allApps = [
               "vscode", "vscode-insiders", "cursor", "claude-desktop",
-              "claude-code", "windsurf", "zed", "antigravity",
+              "claude-code", "windsurf", "zed", "antigravity", "codex",
               "intellij", "pycharm", "webstorm",
             ];
             await applyAppIntegrations({
@@ -346,7 +346,7 @@ function buildAppMenu(): Electron.Menu {
       if (mcpBaseUrl && apiKey) {
         const allApps = [
           "vscode", "vscode-insiders", "cursor", "claude-desktop",
-          "claude-code", "windsurf", "zed", "antigravity",
+          "claude-code", "windsurf", "zed", "antigravity", "codex",
           "intellij", "pycharm", "webstorm",
         ];
         try {

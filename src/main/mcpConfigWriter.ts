@@ -26,6 +26,7 @@ import {
   getClaudeCoworkConfigPath,
   getJetBrainsMcpConfigPaths,
 } from './mcpDiscovery'
+import { getCodexConfigPath } from './hookInjectionClients'
 import {
   readConfigFile,
   getServersFromConfig,
@@ -208,6 +209,62 @@ async function mergeEdisonEntry(
   await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8')
 }
 
+/**
+ * Apply Edison Watch MCP to Codex CLI by writing to ~/.codex/config.toml.
+ * Merges with existing content (preserving hooks and other settings).
+ */
+async function applyToCodex(
+  url: string,
+  headers: Record<string, string> | undefined,
+  timestamp: string,
+  dryRun: boolean,
+): Promise<ModifiedConfig | null> {
+  const configPath = getCodexConfigPath()
+  const backupPath = `${configPath}.backup.${timestamp}.toml`
+
+  if (dryRun) {
+    console.log(`[dry-run] Would write edison-watch MCP to Codex config.toml: ${url}`)
+    return { appId: 'codex', configPath, backupPath: '' }
+  }
+
+  // Ensure parent directory exists
+  await fs.mkdir(dirname(configPath), { recursive: true })
+
+  // Read existing content
+  let existing = ''
+  if (existsSync(configPath)) {
+    existing = await fs.readFile(configPath, 'utf-8')
+    await fs.copyFile(configPath, backupPath)
+  }
+
+  // Remove any existing [mcp_servers.edison-watch] section
+  // Use negative lookahead to match section body (handles URLs with '[' e.g. IPv6)
+  const sectionRegex = /\n?\[mcp_servers\.edison-watch\][^\n]*\n(?:(?!\n\[)[\s\S])*?(?=\n\[|\s*$)/g
+  let cleaned = existing.replace(sectionRegex, '')
+
+  // Build the new TOML section (escape values for valid TOML)
+  const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  let tomlSection = '\n[mcp_servers.edison-watch]\nurl = "' + esc(url) + '"\n'
+  if (headers) {
+    for (const [key, value] of Object.entries(headers)) {
+      tomlSection += `http_headers."${esc(key)}" = "${esc(value)}"\n`
+    }
+  }
+
+  // Append the new section (avoid leading blank line on fresh files)
+  cleaned = cleaned.replace(/\n*$/, '') // trim trailing newlines
+  const final = cleaned ? cleaned + '\n' + tomlSection : tomlSection.replace(/^\n/, '')
+
+  await fs.writeFile(configPath, final, 'utf-8')
+  console.log('[mcpConfigWriter] Added edison-watch MCP to Codex config.toml')
+
+  return {
+    appId: 'codex',
+    configPath,
+    backupPath: existsSync(backupPath) ? backupPath : '',
+  }
+}
+
 /** Apply Edison Watch config to a single app. Returns modified config info. */
 async function applyToApp(
   appId: string,
@@ -219,6 +276,11 @@ async function applyToApp(
   // Claude Code needs special handling: CLI-based add to ~/.claude.json
   if (appId === 'claude-code') {
     return applyToClaudeCode(url, headers, timestamp, dryRun)
+  }
+
+  // Codex CLI needs special handling: TOML format config
+  if (appId === 'codex') {
+    return applyToCodex(url, headers, timestamp, dryRun)
   }
 
   const resolved = await getPathForApp(appId)

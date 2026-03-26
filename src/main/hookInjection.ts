@@ -406,6 +406,34 @@ async function checkMcpEntry(
   }
 }
 
+/**
+ * Check if Codex CLI's TOML config contains an edison-watch MCP entry with the expected URL.
+ */
+async function checkCodexMcpEntry(
+  configPath: string,
+  expectedMcpUrl: string | null,
+): Promise<boolean> {
+  if (!expectedMcpUrl) return false
+  try {
+    if (!existsSync(configPath)) return false
+    const content = await fs.readFile(configPath, 'utf-8')
+    // Look for [mcp_servers.edison-watch] section and extract its url value
+    // Use negative lookahead to match section body (handles URLs with '[' e.g. IPv6)
+    const sectionMatch = content.match(/\[mcp_servers\.edison-watch\][^\n]*\n((?:(?!\n\[)[\s\S])*?)(?=\n\[|\s*$)/)
+    if (!sectionMatch) return false
+    const sectionBody = sectionMatch[1]
+    const urlMatch = sectionBody.match(/url\s*=\s*"([^"]*)"/)
+    if (!urlMatch) return false
+    // Unescape TOML basic string sequences to match the raw URL that was escaped on write
+    const unescaped = urlMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+    const normalizedExpected = expectedMcpUrl.replace(/\/+$/, '')
+    const normalizedActual = unescaped.replace(/\/+$/, '')
+    return normalizedActual === normalizedExpected
+  } catch {
+    return false
+  }
+}
+
 export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAlive = false): Promise<HookStatusEntry[]> {
   const results: HookStatusEntry[] = []
 
@@ -596,8 +624,10 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
       }
     } catch { /* ignore */ }
   }
-  // Codex has no standard MCP config file — MCP check not applicable
-  results.push({ client: 'codex', installed: codexInstalled, hasHook: codexHookCount === codexTotalHooks, hookCount: codexHookCount, totalHooks: codexTotalHooks, mcpConnected: false, mcpConfigured: false, mcpApplicable: false })
+  const codexMcpConfigured = codexInstalled
+    ? await checkCodexMcpEntry(getCodexConfigPath(), expectedMcpUrl ?? null)
+    : false
+  results.push({ client: 'codex', installed: codexInstalled, hasHook: codexHookCount === codexTotalHooks, hookCount: codexHookCount, totalHooks: codexTotalHooks, mcpConnected: codexMcpConfigured && mcpServerAlive, mcpConfigured: codexMcpConfigured, mcpApplicable: true })
 
   return results
 }
