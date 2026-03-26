@@ -378,6 +378,8 @@ export interface HookStatusEntry {
   mcpConfigured: boolean
   /** Whether MCP config is applicable for this client (false for hooks-only clients like Codex) */
   mcpApplicable: boolean
+  /** Actual runtime MCP connection status from the client CLI (only set for clients that support it) */
+  mcpRuntimeStatus?: import('../main/setupConfig').ClaudeCodeMcpStatus
 }
 
 /**
@@ -434,7 +436,7 @@ async function checkCodexMcpEntry(
   }
 }
 
-export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAlive = false): Promise<HookStatusEntry[]> {
+export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAlive = false, claudeCodeMcpStatus?: import('../main/setupConfig').ClaudeCodeMcpStatus): Promise<HookStatusEntry[]> {
   const results: HookStatusEntry[] = []
 
   // Claude Code — expects 4 hooks
@@ -469,7 +471,12 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
   const claudeMcpConfigured = claudeInstalled
     ? await checkMcpEntry(getClaudeCodeHomeJsonPath(), 'mcpServers', expectedMcpUrl ?? null)
     : false
-  results.push({ client: 'claude-code', installed: claudeInstalled, hasHook: claudeHookCount === claudeTotalHooks, hookCount: claudeHookCount, totalHooks: claudeTotalHooks, mcpConnected: claudeMcpConfigured && mcpServerAlive, mcpConfigured: claudeMcpConfigured, mcpApplicable: true })
+  // Use runtime status from `claude mcp get` when available; fall back to config+health heuristic
+  // "unknown" means the CLI was unavailable or produced unrecognised output — use the fallback
+  const claudeMcpConnected = claudeCodeMcpStatus && claudeCodeMcpStatus !== 'unknown'
+    ? claudeCodeMcpStatus === 'connected'
+    : claudeMcpConfigured && mcpServerAlive
+  results.push({ client: 'claude-code', installed: claudeInstalled, hasHook: claudeHookCount === claudeTotalHooks, hookCount: claudeHookCount, totalHooks: claudeTotalHooks, mcpConnected: claudeMcpConnected, mcpConfigured: claudeMcpConfigured, mcpApplicable: true, mcpRuntimeStatus: claudeCodeMcpStatus })
 
   // Cursor — expects 3 hooks
   const cursorInstalled = isCursorInstalled()

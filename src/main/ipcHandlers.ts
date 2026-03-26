@@ -44,6 +44,7 @@ import {
   getMcpUrl,
   getSetupData,
   getIsServerOnline,
+  checkClaudeCodeMcpConnection,
   markSetupComplete,
   markSetupIncomplete,
   getSavedAccounts,
@@ -522,7 +523,8 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   });
 
   ipcMain.handle("mcp:getHookStatus", async () => {
-    return await getHookStatus(getMcpUrl(), getIsServerOnline());
+    const claudeCodeMcpStatus = await checkClaudeCodeMcpConnection();
+    return await getHookStatus(getMcpUrl(), getIsServerOnline(), claudeCodeMcpStatus);
   });
 
   ipcMain.handle("mcp:injectVsCodeWorkspaceHook", async (_event, workspacePath: string) => {

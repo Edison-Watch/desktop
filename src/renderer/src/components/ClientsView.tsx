@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback } from "react";
 import { Badge } from "@edison/shared/ui";
 import { AppLogo } from "./AppLogo";
 
+// Source of truth: ClaudeCodeMcpStatus in client_2/src/main/setupConfig.ts
+// Duplicated here because renderer cannot import main-process modules directly.
+type ClaudeCodeMcpStatus = "connected" | "failed" | "needs-auth" | "not-found" | "unknown";
+
 interface HookStatus {
   client: string;
   installed: boolean;
@@ -11,6 +15,7 @@ interface HookStatus {
   mcpConnected: boolean;
   mcpConfigured: boolean;
   mcpApplicable: boolean;
+  mcpRuntimeStatus?: ClaudeCodeMcpStatus;
 }
 
 interface ClientInfo {
@@ -23,6 +28,7 @@ interface ClientInfo {
   mcpConnected: boolean;
   mcpConfigured: boolean;
   mcpApplicable: boolean;
+  mcpRuntimeStatus?: ClaudeCodeMcpStatus;
 }
 
 // Map client IDs (from McpClientId) to display names
@@ -69,7 +75,15 @@ function getClientStatus(client: ClientInfo): ClientStatus {
 function getIssueDetail(client: ClientInfo): string {
   const issues: string[] = [];
   if (client.mcpApplicable && !client.mcpConnected) {
-    issues.push(client.mcpConfigured ? "MCP gateway unreachable" : "MCP gateway not configured");
+    if (client.mcpRuntimeStatus === "failed") {
+      issues.push("MCP server failed to connect in client");
+    } else if (client.mcpRuntimeStatus === "needs-auth") {
+      issues.push("MCP server needs authentication");
+    } else if (client.mcpRuntimeStatus === "not-found") {
+      issues.push("MCP server not registered in client");
+    } else {
+      issues.push(client.mcpConfigured ? "MCP gateway unreachable" : "MCP gateway not configured");
+    }
   }
   if (!client.hasHook && client.hookCount > 0) {
     issues.push(`${client.hookCount}/${client.totalHooks} hooks installed`);
@@ -88,7 +102,12 @@ function ConditionTooltip({ client }: { client: ClientInfo }) {
       met: client.hasHook,
     },
     ...(client.mcpApplicable
-      ? [{ label: "MCP gateway", met: client.mcpConnected }]
+      ? [{
+          label: client.mcpRuntimeStatus && client.mcpRuntimeStatus !== "unknown"
+            ? `MCP gateway (${client.mcpRuntimeStatus})`
+            : "MCP gateway",
+          met: client.mcpConnected,
+        }]
       : []),
   ];
 
@@ -133,6 +152,7 @@ export default function ClientsView(): React.ReactNode {
           mcpConnected: s.mcpConnected ?? false,
           mcpConfigured: s.mcpConfigured ?? false,
           mcpApplicable: s.mcpApplicable ?? true,
+          mcpRuntimeStatus: s.mcpRuntimeStatus,
         })),
       );
       setError(null);

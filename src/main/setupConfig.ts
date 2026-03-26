@@ -7,7 +7,11 @@
 import { app } from "electron";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import { join } from "path";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { getEnvByName } from "@edison/shared/config";
+
+const execFileAsync = promisify(execFile);
 
 // ── Dry-run mode ────────────────────────────────────────────────────
 
@@ -356,6 +360,36 @@ export function stopServerStatusChecks(): void {
   if (serverStatusCheckInterval) {
     clearInterval(serverStatusCheckInterval);
     serverStatusCheckInterval = null;
+  }
+}
+
+// ── Claude Code MCP connection check ─────────────────────────────────
+
+export type ClaudeCodeMcpStatus = "connected" | "failed" | "needs-auth" | "not-found" | "unknown";
+
+/**
+ * Check whether Claude Code has actually loaded and connected to the
+ * edison-watch MCP server by running `claude mcp get edison-watch` and
+ * parsing the human-readable status line.
+ */
+export async function checkClaudeCodeMcpConnection(): Promise<ClaudeCodeMcpStatus> {
+  try {
+    const { stdout } = await execFileAsync("claude", ["mcp", "get", "edison-watch"], {
+      timeout: 5_000,
+    });
+    if (stdout.includes("\u2713 Connected")) return "connected";
+    if (stdout.includes("\u2717 Failed")) return "failed";
+    if (stdout.includes("Needs authentication")) return "needs-auth";
+    // If we got output but no recognised status marker
+    return "unknown";
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // CLI not on PATH
+    if (msg.includes("ENOENT")) return "unknown";
+    // CLI timed out (killed by execFile timeout)
+    if (err && typeof err === "object" && "killed" in err && (err as { killed: boolean }).killed) return "unknown";
+    // CLI exited with error — server name likely doesn't exist
+    return "not-found";
   }
 }
 
