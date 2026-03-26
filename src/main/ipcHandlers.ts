@@ -522,7 +522,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   });
 
   ipcMain.handle("mcp:getHookStatus", async () => {
-    return await getHookStatus(getMcpUrl());
+    return await getHookStatus(getMcpUrl(), getIsServerOnline());
   });
 
   ipcMain.handle("mcp:injectVsCodeWorkspaceHook", async (_event, workspacePath: string) => {

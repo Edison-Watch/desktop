@@ -333,18 +333,38 @@ function buildAppMenu(): Electron.Menu {
     label: name === "dev" ? "dev (localhost)" : name,
     type: "radio" as const,
     checked: currentEnv === name,
-    click: () => {
+    click: async () => {
       setDebugEnvOverride(name);
       logEnvConfig(`switch→${name}`);
       updateAppMenu();
       mainWindow?.webContents.send("env:changed", name);
-      if (Notification.isSupported()) {
-        new Notification({
-          title: "Edison Watch",
-          body: `Environment set to ${name === "dev" ? "dev (localhost backend, demo auth)" : name}.`,
-          ...(process.platform !== "darwin" && { icon: trayIconPath }),
-        }).show();
+
+      // Re-apply MCP integrations so client configs point to the new environment's URL
+      const setup = getSetupData();
+      const mcpBaseUrl = getMcpBaseUrl();
+      const apiKey = setup.apiKey;
+      if (mcpBaseUrl && apiKey) {
+        const allApps = [
+          "vscode", "vscode-insiders", "cursor", "claude-desktop",
+          "claude-code", "windsurf", "zed", "antigravity",
+          "intellij", "pycharm", "webstorm",
+        ];
+        try {
+          await applyAppIntegrations({
+            serverAddress: setup.serverAddress ?? "",
+            mcpBaseUrl,
+            apiKey,
+            edisonSecretKey: setup.edisonSecretKey,
+            apps: allApps,
+          });
+          slog(`[env:switch] MCP integrations updated for ${name}`);
+        } catch (err) {
+          slog(`[env:switch] Failed to update MCP integrations: ${err}`);
+        }
       }
+
+      // Immediately re-check server liveness against the new env URL
+      startServerStatusChecks(updateTrayMenu);
     },
   }));
 

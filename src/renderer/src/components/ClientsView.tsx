@@ -9,6 +9,7 @@ interface HookStatus {
   hookCount: number;
   totalHooks: number;
   mcpConnected: boolean;
+  mcpConfigured: boolean;
   mcpApplicable: boolean;
 }
 
@@ -20,6 +21,7 @@ interface ClientInfo {
   hookCount: number;
   totalHooks: number;
   mcpConnected: boolean;
+  mcpConfigured: boolean;
   mcpApplicable: boolean;
 }
 
@@ -59,14 +61,16 @@ function getClientStatus(client: ClientInfo): ClientStatus {
   if (!client.installed) return "missing";
   const needsMcp = client.mcpApplicable;
   if (client.hasHook && (!needsMcp || client.mcpConnected)) return "connected";
-  if (client.hasHook || client.hookCount > 0 || (needsMcp && client.mcpConnected)) return "partial-setup";
+  if (client.hasHook || client.hookCount > 0 || (needsMcp && client.mcpConfigured)) return "partial-setup";
   return "installed";
 }
 
 /** Describes what's missing for a partial-setup client. */
 function getIssueDetail(client: ClientInfo): string {
   const issues: string[] = [];
-  if (client.mcpApplicable && !client.mcpConnected) issues.push("MCP gateway not configured");
+  if (client.mcpApplicable && !client.mcpConnected) {
+    issues.push(client.mcpConfigured ? "MCP gateway unreachable" : "MCP gateway not configured");
+  }
   if (!client.hasHook && client.hookCount > 0) {
     issues.push(`${client.hookCount}/${client.totalHooks} hooks installed`);
   } else if (!client.hasHook) {
@@ -127,6 +131,7 @@ export default function ClientsView(): React.ReactNode {
           hookCount: s.hookCount ?? 0,
           totalHooks: s.totalHooks ?? 1,
           mcpConnected: s.mcpConnected ?? false,
+          mcpConfigured: s.mcpConfigured ?? false,
           mcpApplicable: s.mcpApplicable ?? true,
         })),
       );
