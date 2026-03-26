@@ -285,7 +285,7 @@ export function getMcpConfig(): string | null {
   const url = getMcpUrl();
   if (!url) return null;
   const setupData = getSetupData();
-  const args = ["-y", "mcp-remote", url, "--transport", "http"];
+  const args = ["-y", "mcp-remote", url, "--transport", "http-first"];
   if (setupData.edisonSecretKey) {
     args.push("--header", `X-Edison-Secret-Key:${setupData.edisonSecretKey}`);
   }
