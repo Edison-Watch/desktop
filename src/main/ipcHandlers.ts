@@ -33,7 +33,7 @@ import { removeServerFromConfig, restoreAllQuarantinedServers } from "./mcpConfi
 import { fetchUserRole, submitServerRequest, submitServerWithOverrides, approveServerRequest } from "./mcpServerSubmit";
 import { detectSecrets } from "./secretDetection";
 import type { TemplatizedConfig } from "./secretDetection";
-import { runDebugQuarantine } from "./quarantineManager";
+import { runDebugQuarantine, handleQuarantineDisabled } from "./quarantineManager";
 import { filterOutEdisonWatchServers } from "./mcpConfigMonitor";
 import { applyAppIntegrations } from "./mcpConfigWriter";
 import { deduplicateServers } from "./serverDeduplication";
@@ -675,6 +675,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
 
   ipcMain.handle("debug:resetQuarantine", async () => {
     try {
+      handleQuarantineDisabled(); // stop monitor + update tray before restoring, to prevent re-quarantine
       const result = await restoreAllQuarantinedServers();
       return { success: true, restored: result.restored, errors: result.errors };
     } catch (err) {
