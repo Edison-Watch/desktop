@@ -23,7 +23,6 @@ import {
   getClaudeCodeHomeJsonPath,
   getWindsurfConfigPath,
   getZedConfigPath,
-  getAntigravityConfigPath,
   getClaudeCoworkConfigPath,
   getJetBrainsMcpConfigPaths,
 } from './mcpDiscovery'
@@ -91,7 +90,6 @@ async function getPathForApp(
     'claude-cowork': getClaudeCoworkConfigPath,
     windsurf: getWindsurfConfigPath,
     zed: getZedConfigPath,
-    antigravity: getAntigravityConfigPath,
   }
 
   if (STATIC_MAP[appId]) {

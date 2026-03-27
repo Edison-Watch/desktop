@@ -36,7 +36,6 @@ const CLIENT_NAMES: Record<string, string> = {
   "claude-code": "Claude Code",
   cursor: "Cursor",
   windsurf: "Windsurf",
-  antigravity: "Gemini CLI",
   codex: "Codex CLI",
   vscode: "VS Code",
   "vscode-insiders": "VS Code Insiders",

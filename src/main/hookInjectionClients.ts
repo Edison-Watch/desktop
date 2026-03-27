@@ -1,5 +1,5 @@
 /**
- * Per-client hook injection helpers for Claude Code, Cursor, Windsurf, Gemini, and Codex.
+ * Per-client hook injection helpers for Claude Code, Cursor, Windsurf, and Codex.
  */
 
 import { promises as fs, existsSync } from 'fs'
@@ -56,10 +56,6 @@ export function getCursorHooksPath(): string {
 
 export function getWindsurfHooksPath(): string {
   return join(homedir(), '.codeium', 'windsurf', 'hooks.json')
-}
-
-export function getGeminiSettingsPath(): string {
-  return join(homedir(), '.gemini', 'settings.json')
 }
 
 export function getCodexConfigPath(): string {

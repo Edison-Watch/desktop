@@ -14,7 +14,6 @@ import {
   getClaudeCodeDedicatedMcpPath,
   getWindsurfConfigPath,
   getZedConfigPath,
-  getAntigravityConfigPath,
 } from './mcpDiscovery'
 import { getClaudeCoworkConfigPath } from './mcpDiscoveryCowork'
 
@@ -29,7 +28,6 @@ export interface McpConfigPaths {
   claudeCode: string[]
   windsurf: string
   zed: string
-  antigravity: string
 }
 
 export function getAllConfigPaths(): McpConfigPaths {
@@ -48,6 +46,5 @@ export function getAllConfigPaths(): McpConfigPaths {
     ],
     windsurf: getWindsurfConfigPath(),
     zed: getZedConfigPath(),
-    antigravity: getAntigravityConfigPath()
   }
 }

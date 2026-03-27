@@ -22,7 +22,6 @@ import {
   getZedConfigPath,
   getClaudeDesktopConfigPath,
   getClaudeCoworkConfigPath,
-  getAntigravityConfigPath,
 } from "./mcpDiscovery";
 import type { DiscoveredMcpServer, McpClientId, McpServerConfig } from "./mcpDiscovery";
 import { injectAllHooks, removeAllHooks, getHookStatus, injectVsCodeWorkspaceHook, removeVsCodeWorkspaceHook } from "./hookInjection";
@@ -289,7 +288,6 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
         // Cowork is detected by the presence of vm_bundles/ (downloaded on first Cowork launch)
         detectDir: (configPath) => join(dirname(configPath), 'vm_bundles'),
       },
-      { id: "antigravity", name: "Antigravity", getPath: () => Promise.resolve(getAntigravityConfigPath()) },
     ];
 
     for (const check of checks) {

@@ -3,8 +3,7 @@
  * SVG paths sourced from simple-icons (https://simpleicons.org, MIT license).
  * VS Code icon extracted from the installed macOS app bundle.
  */
-import { useId } from "react";
-import { GEMINI_PATH, OPENAI_PATH } from "../../../shared/logoPaths";
+import { OPENAI_PATH } from "../../../shared/logoPaths";
 import vscodePng from "../assets/logo-vscode.png";
 import claudeCodePng from "../assets/logo-claude-code.png";
 import claudeCoworkPng from "../assets/logo-claude-cowork.png";
@@ -59,9 +58,6 @@ const SI_LOGOS: Record<string, { bg: string; path: string }> = {
 // ---------------------------------------------------------------------------
 
 export function AppLogo({ id, name }: AppLogoProps) {
-  const uniqueId = useId();
-  const geminiGradientId = `geminiGradient-${uniqueId}`;
-
   if (id === "codex") {
     return (
       <div
@@ -71,27 +67,6 @@ export function AppLogo({ id, name }: AppLogoProps) {
       >
         <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="h-full w-full" aria-hidden="true">
           <path d={OPENAI_PATH} fill="#000000" />
-        </svg>
-      </div>
-    );
-  }
-
-  if (id === "antigravity") {
-    return (
-      <div
-        className="h-8 w-8 shrink-0 overflow-hidden rounded-lg flex items-center justify-center p-1.5 ring-1 ring-black/10"
-        style={{ background: "#FFFFFF" }}
-        aria-label={name}
-      >
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="h-full w-full" aria-hidden="true">
-          <defs>
-            <linearGradient id={geminiGradientId} x1="4" y1="4" x2="20" y2="20" gradientUnits="userSpaceOnUse">
-              <stop offset="0" stopColor="#8B5CF6" />
-              <stop offset="0.5" stopColor="#6366F1" />
-              <stop offset="1" stopColor="#0EA5E9" />
-            </linearGradient>
-          </defs>
-          <path d={GEMINI_PATH} fill={`url(#${geminiGradientId})`} />
         </svg>
       </div>
     );

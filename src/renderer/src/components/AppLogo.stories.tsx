@@ -40,10 +40,6 @@ export const Zed: Story = {
   args: { id: 'zed', name: 'Zed' },
 };
 
-export const Antigravity: Story = {
-  args: { id: 'antigravity', name: 'Gemini CLI' },
-};
-
 export const Codex: Story = {
   args: { id: 'codex', name: 'Codex CLI' },
 };
@@ -66,7 +62,6 @@ export const AllLogos: Story = {
         { id: 'intellij', name: 'IntelliJ' },
         { id: 'pycharm', name: 'PyCharm' },
         { id: 'webstorm', name: 'WebStorm' },
-        { id: 'antigravity', name: 'Gemini CLI' },
         { id: 'codex', name: 'Codex CLI' },
         { id: 'unknown', name: 'Unknown App' },
       ].map(({ id, name }) => (

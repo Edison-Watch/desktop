@@ -129,7 +129,6 @@ export class McpConfigMonitor extends EventEmitter {
       ...paths.claudeCode,
       paths.windsurf,
       paths.zed,
-      paths.antigravity,
       ...jetbrainsPaths.map((x) => x.path),
       ...cursorProjectPaths,
       ...cursorPluginPaths,
@@ -769,8 +768,6 @@ export function getClientDisplayName(client: McpClientId): string {
       return 'Windsurf'
     case 'zed':
       return 'Zed'
-    case 'antigravity':
-      return 'Gemini CLI'
     case 'codex':
       return 'Codex CLI'
     case 'intellij':

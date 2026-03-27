@@ -19,7 +19,6 @@ import {
   getCursorConfigPath,
   getWindsurfConfigPath,
   getClaudeCodeHomeJsonPath,
-  getAntigravityConfigPath,
 } from './mcpDiscovery'
 import { captureError } from './sentry'
 import {
@@ -32,15 +31,14 @@ import {
   isCursorInstalled, injectCursorHook, removeCursorHook,
   isWindsurfInstalled, injectWindsurfHook, removeWindsurfHook,
   getClaudeCodeSettingsPath, getCursorHooksPath, getWindsurfHooksPath,
-  getGeminiSettingsPath, getCodexConfigPath, getVsCodeCopilotHooksPath,
+  getCodexConfigPath, getVsCodeCopilotHooksPath,
   appBundleExists,
   type ClaudeCodeSettings, type CursorHooksFile, type WindsurfHooksFile,
 } from './hookInjectionClients'
 import {
-  isGeminiInstalled, injectGeminiHook, removeGeminiHook,
   isCodexInstalled, injectCodexHook, removeCodexHook,
   isVsCodeCopilotInstalled, injectVsCodeCopilotHook, removeVsCodeCopilotHook,
-  type VsCodeCopilotHooksFile, type GeminiSettings,
+  type VsCodeCopilotHooksFile,
 } from './hookInjectionClientsExtra'
 
 // Re-export all helpers so existing imports of hookInjection still work.
@@ -138,19 +136,6 @@ export async function injectAllHooks(): Promise<HookInjectionResult[]> {
         client: clientId, operation: 'injectAllHooks', platform: platform()
       })
       results.push({ client: clientId, installed: false, alreadyExists: false, error: String(err) })
-    }
-  }
-
-  // Gemini CLI
-  if (isGeminiInstalled()) {
-    try {
-      const injected = await injectGeminiHook()
-      results.push({ client: 'antigravity', installed: injected, alreadyExists: !injected })
-    } catch (err) {
-      captureError(err instanceof Error ? err : new Error(String(err)), {
-        client: 'antigravity', operation: 'injectAllHooks', platform: platform()
-      })
-      results.push({ client: 'antigravity', installed: false, alreadyExists: false, error: String(err) })
     }
   }
 
@@ -331,18 +316,6 @@ export async function removeAllHooks(): Promise<HookInjectionResult[]> {
         client: clientId, operation: 'removeAllHooks', platform: platform()
       })
       results.push({ client: clientId, installed: false, alreadyExists: false, error: String(err) })
-    }
-  }
-
-  if (isGeminiInstalled()) {
-    try {
-      const removed = await removeGeminiHook()
-      results.push({ client: 'antigravity', installed: false, alreadyExists: !removed })
-    } catch (err) {
-      captureError(err instanceof Error ? err : new Error(String(err)), {
-        client: 'antigravity', operation: 'removeAllHooks', platform: platform()
-      })
-      results.push({ client: 'antigravity', installed: false, alreadyExists: false, error: String(err) })
     }
   }
 
@@ -586,36 +559,6 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
       results.push({ client: clientId, installed: false, hasHook: false, hookCount: 0, totalHooks: 1, mcpConnected: false, mcpConfigured: false, mcpApplicable: true })
     }
   }
-
-  // Gemini CLI — expects 3 hooks: SessionStart, BeforeTool, SessionEnd
-  const geminiInstalled = isGeminiInstalled()
-  let geminiHookCount = 0
-  const geminiTotalHooks = 3
-  if (geminiInstalled) {
-    try {
-      const settingsPath = getGeminiSettingsPath()
-      if (existsSync(settingsPath)) {
-        const content = await fs.readFile(settingsPath, 'utf-8')
-        const settings = parseJsonc(content) as GeminiSettings
-        const startHooks = settings.hooks?.SessionStart ?? []
-        const toolHooks = settings.hooks?.BeforeTool ?? []
-        const endHooks = settings.hooks?.SessionEnd ?? []
-        if (startHooks.some((group) =>
-          group.hooks?.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook'))
-        )) geminiHookCount++
-        if (toolHooks.some((group) =>
-          group.hooks?.some((h) => h.command?.includes('edison-session-hook'))
-        )) geminiHookCount++
-        if (endHooks.some((group) =>
-          group.hooks?.some((h) => h.command?.includes('edison-session-end'))
-        )) geminiHookCount++
-      }
-    } catch { /* ignore */ }
-  }
-  const geminiMcpConfigured = geminiInstalled
-    ? await checkMcpEntry(getAntigravityConfigPath(), 'mcpServers', expectedMcpUrl ?? null)
-    : false
-  results.push({ client: 'antigravity', installed: geminiInstalled, hasHook: geminiHookCount === geminiTotalHooks, hookCount: geminiHookCount, totalHooks: geminiTotalHooks, mcpConnected: geminiMcpConfigured && mcpServerAlive, mcpConfigured: geminiMcpConfigured, mcpApplicable: true })
 
   // Codex CLI — expects 2 hooks: SessionStart + Stop (experimental, no PreToolUse available)
   const codexInstalled = isCodexInstalled()

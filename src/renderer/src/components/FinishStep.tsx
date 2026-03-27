@@ -9,7 +9,6 @@ const APP_ID_TO_NAME: Record<string, string> = {
   "claude-desktop": "Claude Desktop",
   windsurf: "Windsurf",
   zed: "Zed",
-  antigravity: "Antigravity",
   intellij: "IntelliJ IDEA",
   pycharm: "PyCharm",
   webstorm: "WebStorm",

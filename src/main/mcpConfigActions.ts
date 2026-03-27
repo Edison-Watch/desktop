@@ -299,7 +299,7 @@ export async function replaceServerWithProxy(
       ...(headers && { headers })
     } as McpServerConfig
   } else {
-    // Claude Desktop, Cursor, Claude Code, Windsurf, Zed, Antigravity format
+    // Claude Desktop, Cursor, Claude Code, Windsurf, Zed format
     servers[server.name] = {
       type: 'sse',
       url: edisonWatchUrl,
@@ -516,7 +516,6 @@ export async function restoreAllQuarantinedServers(): Promise<{
     ...paths.claudeCode,
     paths.windsurf,
     paths.zed,
-    paths.antigravity,
     ...jetbrainsPaths.map((x) => x.path),
     ...cursorPluginPaths,
     ...cursorProjectPaths,
@@ -613,7 +612,6 @@ function inferClientFromPath(configPath: string): McpClientId {
     return 'vscode'
   if (lower.includes('windsurf') || lower.includes('codeium')) return 'windsurf'
   if (lower.includes('zed')) return 'zed'
-  if (lower.includes('antigravity') || lower.includes('.gemini')) return 'antigravity'
   if (lower.includes('intellij')) return 'intellij'
   if (lower.includes('pycharm')) return 'pycharm'
   if (lower.includes('webstorm')) return 'webstorm'

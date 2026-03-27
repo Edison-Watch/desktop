@@ -9,7 +9,6 @@ import {
   getCursorConfigPath,
   getWindsurfConfigPath,
   getZedConfigPath,
-  getAntigravityConfigPath,
   getClaudeCodeUserSettingsPath,
   getClaudeCodeLocalSettingsPath,
   getClaudeCodeHomeJsonPath,
@@ -24,7 +23,6 @@ import {
   parseCursorMcpJson,
   parseWindsurfMcpJson,
   parseZedSettingsJson,
-  parseAntigravityMcpJson,
   parseJetBrainsServersJson,
   getJetBrainsMcpConfigPaths,
   discoverMcpServers,
@@ -166,15 +164,6 @@ describe("Path Resolution Functions", () => {
     });
   });
 
-  describe("getAntigravityConfigPath", () => {
-    it("returns Antigravity mcp_config.json path", () => {
-      const path = getAntigravityConfigPath();
-      expect(path.length).toBeGreaterThan(0);
-      expect(path).toContain(".gemini/antigravity");
-      expect(path).toMatch(/mcp_config\.json$/);
-    });
-  });
-
   describe("Claude Code paths", () => {
     it("returns correct user settings path", () => {
       const path = getClaudeCodeUserSettingsPath();
@@ -218,7 +207,6 @@ describe("Path Resolution Functions", () => {
       expect(paths.claudeCode.length).toBe(4);
       expect(typeof paths.windsurf).toBe("string");
       expect(typeof paths.zed).toBe("string");
-      expect(typeof paths.antigravity).toBe("string");
     });
   });
 });
@@ -589,27 +577,6 @@ describe("Config Parsing Functions", () => {
     });
   });
 
-  describe("parseAntigravityMcpJson", () => {
-    it("parses Antigravity mcp_config.json", async () => {
-      const config = {
-        mcpServers: {
-          "antigravity-server": {
-            type: "http",
-            url: "https://antigravity.google.com/mcp",
-          },
-        },
-      };
-      const filePath = await createTempConfig(
-        testTmpDir,
-        "antigravity-mcp.json",
-        JSON.stringify(config),
-      );
-      const servers = await parseAntigravityMcpJson(filePath);
-
-      expect(servers).toHaveLength(1);
-      expect(servers[0].client).toBe("antigravity");
-    });
-  });
 });
 
 // ============================================================================

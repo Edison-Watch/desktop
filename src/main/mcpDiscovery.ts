@@ -15,11 +15,9 @@ import {
 export { getCursorWorkspaceStoragePath, getCursorProjectMcpPaths, getCursorPluginsInstalledPath, getCursorPluginsInstalledPaths, getCursorPluginMcpPaths, getClaudeCodeProjectMcpPaths }
 export { getServerFingerprint } from './seenServersStore'
 export { getClaudeCoworkConfigPath, parseClaudeCoworkConfig } from './mcpDiscoveryCowork'
-export { getAntigravityConfigPath, parseAntigravityMcpJson } from './mcpDiscoveryAntigravity'
 export { getCursorStateDbPath, discoverCursorMarketplaceMcps } from './mcpDiscoveryCursorMarketplace'
 export { getVscodeStateDbPath, getVscodeInsidersStateDbPath, discoverVscodeStateMcps } from './mcpDiscoveryVscodeState'
 import { discoverClaudeCowork, deduplicateByNameAndConfig } from './mcpDiscoveryCowork'
-import { discoverAntigravity } from './mcpDiscoveryAntigravity'
 import { discoverCursorMarketplaceMcps } from './mcpDiscoveryCursorMarketplace'
 import { discoverVscodeStateMcps } from './mcpDiscoveryVscodeState'
 
@@ -34,7 +32,6 @@ export type McpClientId =
   | 'claude-code'
   | 'windsurf'
   | 'zed'
-  | 'antigravity'
   | 'codex'
   | 'intellij'
   | 'pycharm'
@@ -758,10 +755,6 @@ export async function discoverMcpServers(): Promise<DiscoveredMcpServer[]> {
   // Zed discovery
   const zedServers = await discoverZed()
   results.push(...zedServers)
-
-  // Antigravity discovery
-  const antigravityServers = await discoverAntigravity()
-  results.push(...antigravityServers)
 
   // JetBrains IDEs (IntelliJ, PyCharm, WebStorm) - macOS and Windows only
   const jetbrainsPaths = await getJetBrainsMcpConfigPaths()

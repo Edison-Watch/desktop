@@ -269,7 +269,6 @@ describe("mcpConfigActions", () => {
           claudeCode: [],
           windsurf: join(testDir, "windsurf-mcp.json"),
           zed: join(testDir, "zed-mcp.json"),
-          antigravity: join(testDir, "antigravity-mcp.json"),
         });
       const mcpDiscovery = await import("../mcpDiscovery");
       const pluginSpy = vi

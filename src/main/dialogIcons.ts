@@ -1,4 +1,4 @@
-import { GEMINI_PATH, OPENAI_PATH } from '../shared/logoPaths'
+import { OPENAI_PATH } from '../shared/logoPaths'
 import type { McpClientId } from './mcpDiscovery'
 
 /** Escape HTML special characters to prevent XSS injection. */
@@ -12,10 +12,7 @@ export function escapeHtml(unsafe: string): string {
 }
 
 /** Get an SVG icon for a client (Simple Icons / official brand SVGs). */
-export function getClientIcon(client: McpClientId, iconIdSuffix: string = client): string {
-  const safeIconIdSuffix = iconIdSuffix.replace(/[^a-zA-Z0-9_-]/g, '_')
-  const geminiGradientId = `gemini-gradient-${safeIconIdSuffix}`
-
+export function getClientIcon(client: McpClientId, _iconIdSuffix?: string): string {
   switch (client) {
     case 'vscode':
     case 'vscode-insiders':
@@ -29,8 +26,6 @@ export function getClientIcon(client: McpClientId, iconIdSuffix: string = client
       return `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M23.55 5.067c-1.2038-.002-2.1806.973-2.1806 2.1765v4.8676c0 .972-.8035 1.7594-1.7597 1.7594-.568 0-1.1352-.286-1.4718-.7659l-4.9713-7.1003c-.4125-.5896-1.0837-.941-1.8103-.941-1.1334 0-2.1533.9635-2.1533 2.153v4.8957c0 .972-.7969 1.7594-1.7596 1.7594-.57 0-1.1363-.286-1.4728-.7658L.4076 5.1598C.2822 4.9798 0 5.0688 0 5.2882v4.2452c0 .2147.0656.4228.1884.599l5.4748 7.8183c.3234.462.8006.8052 1.3509.9298 1.3771.313 2.6446-.747 2.6446-2.0977v-4.893c0-.972.7875-1.7593 1.7596-1.7593h.003a1.798 1.798 0 0 1 1.4718.7658l4.9723 7.0994c.4135.5905 1.05.941 1.8093.941 1.1587 0 2.1515-.9645 2.1515-2.153v-4.8948c0-.972.7875-1.7594 1.7596-1.7594h.194a.22.22 0 0 0 .2204-.2202v-4.622a.22.22 0 0 0-.2203-.2203Z"/></svg>`
     case 'zed':
       return `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.25 1.5a.75.75 0 0 0-.75.75v16.5H0V2.25A2.25 2.25 0 0 1 2.25 0h20.095c1.002 0 1.504 1.212.795 1.92L10.764 14.298h3.486V12.75h1.5v1.922a1.125 1.125 0 0 1-1.125 1.125H9.264l-2.578 2.578h11.689V9h1.5v9.375a1.5 1.5 0 0 1-1.5 1.5H5.185L2.562 22.5H21.75a.75.75 0 0 0 .75-.75V5.25H24v16.5A2.25 2.25 0 0 1 21.75 24H1.655C.653 24 .151 22.788.86 22.08L13.19 9.75H9.75v1.5h-1.5V9.375A1.125 1.125 0 0 1 9.375 8.25h5.314l2.625-2.625H5.625V15h-1.5V5.625a1.5 1.5 0 0 1 1.5-1.5h13.19L21.438 1.5z"/></svg>`
-    case 'antigravity':
-      return `<svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="${geminiGradientId}" x1="4" y1="4" x2="20" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8B5CF6"/><stop offset="0.5" stop-color="#6366F1"/><stop offset="1" stop-color="#0EA5E9"/></linearGradient></defs><path d="${GEMINI_PATH}" fill="url(#${geminiGradientId})"/></svg>`
     case 'codex':
       return `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="${OPENAI_PATH}"/></svg>`
     case 'intellij':
