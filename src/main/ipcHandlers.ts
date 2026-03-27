@@ -175,7 +175,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     }));
   });
 
-  ipcMain.handle("accounts:switch", (_event, userId: string) => {
+  ipcMain.handle("accounts:switch", async (_event, userId: string) => {
     const current = getSetupData();
     if (current.userId === userId) return { ok: true };
     const data = switchToAccount(userId);
@@ -190,6 +190,31 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
       console.error("[Quarantine] Failed to start monitor on account switch:", err),
     );
     startQuarantinePolling();
+
+    // Re-apply MCP integrations so client configs point to the new account's URL.
+    // Without this, configs would keep the previous account's server/API key.
+    const newSetup = getSetupData();
+    const mcpBaseUrl = getMcpBaseUrl();
+    if (mcpBaseUrl && newSetup.apiKey) {
+      const allApps = [
+        "vscode", "vscode-insiders", "cursor", "claude-desktop",
+        "claude-code", "claude-cowork", "windsurf", "zed", "codex",
+        "intellij", "pycharm", "webstorm",
+      ];
+      try {
+        await applyAppIntegrations({
+          serverAddress: newSetup.serverAddress ?? "",
+          mcpBaseUrl,
+          apiKey: newSetup.apiKey,
+          edisonSecretKey: newSetup.edisonSecretKey,
+          apps: allApps,
+        });
+        console.log("[accounts:switch] MCP integrations updated for new account");
+      } catch (err) {
+        console.error("[accounts:switch] Failed to update MCP integrations:", err);
+      }
+    }
+
     return { ok: true };
   });
 

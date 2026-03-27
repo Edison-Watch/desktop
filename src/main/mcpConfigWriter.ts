@@ -11,6 +11,7 @@ import { dirname, join } from 'path'
 import { homedir } from 'os'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import * as jsonc from 'jsonc-parser'
 
 const execFileAsync = promisify(execFile)
 
@@ -19,6 +20,7 @@ import {
   getVscodeUserMcpPath,
   getVscodeInsidersUserMcpPath,
   getCursorConfigPath,
+  getCursorProjectMcpPaths,
   getClaudeDesktopConfigPath,
   getClaudeCodeHomeJsonPath,
   getWindsurfConfigPath,
@@ -65,12 +67,15 @@ function buildEdisonEntry(
   url: string,
   headers?: Record<string, string>,
 ): Record<string, unknown> {
-  // VS Code variants and Claude Desktop use explicit type: "http"
-  if (
-    clientId === 'vscode' ||
-    clientId === 'vscode-insiders' ||
-    clientId === 'claude-desktop'
-  ) {
+  // Clients that need explicit type: "http" for reliable Streamable HTTP detection.
+  // Cursor v2.5+ has known MCP detection bugs — explicit type avoids silent failures.
+  const needsExplicitType: McpClientId[] = [
+    'vscode',
+    'vscode-insiders',
+    'claude-desktop',
+    'cursor',
+  ]
+  if (needsExplicitType.includes(clientId)) {
     return { type: 'http', url, ...(headers && { headers }) }
   }
   // All others: url only (type implied)
@@ -139,6 +144,45 @@ async function cleanupHomeMcpJson(): Promise<void> {
     }
   } catch {
     // Ignore — file may be malformed or inaccessible
+  }
+}
+
+/**
+ * Remove edison-watch from Cursor project-scope .cursor/mcp.json files.
+ *
+ * Cursor's project-level config (.cursor/mcp.json in workspace dirs) takes
+ * precedence over the global ~/.cursor/mcp.json. Stale edison-watch entries
+ * in project configs (e.g. from manual setup or older app versions) shadow
+ * the global registration and cause "not recognized" errors.
+ */
+async function cleanupCursorProjectMcpJson(): Promise<void> {
+  let projectPaths: string[]
+  try {
+    projectPaths = await getCursorProjectMcpPaths()
+  } catch {
+    return
+  }
+
+  for (const mcpPath of projectPaths) {
+    if (!existsSync(mcpPath)) continue
+    try {
+      const raw = await fs.readFile(mcpPath, 'utf-8')
+      // Cursor configs commonly contain trailing commas — use JSONC parser
+      const json = jsonc.parse(raw) as Record<string, unknown>
+      const servers = json.mcpServers as Record<string, unknown> | undefined
+      if (!servers || !('edison-watch' in servers)) continue
+
+      // Use jsonc.modify + applyEdits to preserve comments, trailing commas,
+      // and formatting in team-shared project configs checked into repos.
+      const edits = jsonc.modify(raw, ['mcpServers', 'edison-watch'], undefined, {
+        formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' },
+      })
+      const updated = jsonc.applyEdits(raw, edits)
+      await fs.writeFile(mcpPath, updated, 'utf-8')
+      console.log(`[mcpConfigWriter] Removed stale edison-watch from Cursor project config: ${mcpPath}`)
+    } catch {
+      // Ignore — file may be malformed or inaccessible
+    }
   }
 }
 
@@ -325,6 +369,12 @@ async function applyToApp(
   // Codex CLI needs special handling: TOML format config
   if (appId === 'codex') {
     return applyToCodex(url, headers, timestamp, dryRun)
+  }
+
+  // Clean up stale edison-watch entries from Cursor project-scope configs
+  // that could shadow the global ~/.cursor/mcp.json registration.
+  if (appId === 'cursor' && !dryRun) {
+    await cleanupCursorProjectMcpJson()
   }
 
   const resolved = await getPathForApp(appId)

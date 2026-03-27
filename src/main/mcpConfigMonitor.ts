@@ -496,6 +496,14 @@ export class McpConfigMonitor extends EventEmitter {
         continue
       }
 
+      // Skip Cursor project-scope MCPs (.cursor/mcp.json in workspace directories).
+      // These are team-shared configs checked into repos and should not be quarantined.
+      if (server.source === 'project' && server.client === 'cursor') {
+        console.log(`[McpConfigMonitor] Skipping Cursor project-scoped server on startup: ${server.name} (${server.path})`)
+        this.lastKnownServers.set(fingerprint, server)
+        continue
+      }
+
       try {
         // Auto-quarantine: move to disabled file, remove from original (with retries for transient I/O)
         console.log(`[McpConfigMonitor] Auto-quarantining existing server: ${server.name}`)
@@ -640,6 +648,13 @@ export class McpConfigMonitor extends EventEmitter {
       // can't be safely modified (volatile runtime file, race condition with Claude Code).
       if (server.source === 'project' && server.path === CLAUDE_HOME_JSON_PATH) {
         mlog(`[Monitor] Skipping ~/.claude.json project-scoped server: ${server.name}`)
+        continue
+      }
+
+      // Skip Cursor project-scope MCPs (.cursor/mcp.json in workspace directories).
+      // These are team-shared configs checked into repos and should not be quarantined.
+      if (server.source === 'project' && server.client === 'cursor') {
+        mlog(`[Monitor] Skipping Cursor project-scoped server: ${server.name} (${server.path})`)
         continue
       }
 
