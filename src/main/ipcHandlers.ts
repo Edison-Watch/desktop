@@ -29,10 +29,11 @@ import { injectAllHooks, removeAllHooks, getHookStatus, injectVsCodeWorkspaceHoo
 import { startHookHealthMonitor } from "./hookHealthMonitor";
 import { startUpdateChecker as _startUpdateChecker } from "./updateChecker";
 import { showFeedbackWindow } from "./feedbackWindow";
-import { removeServerFromConfig } from "./mcpConfigActions";
+import { removeServerFromConfig, restoreAllQuarantinedServers } from "./mcpConfigActions";
 import { fetchUserRole, submitServerRequest, submitServerWithOverrides, approveServerRequest } from "./mcpServerSubmit";
 import { detectSecrets } from "./secretDetection";
 import type { TemplatizedConfig } from "./secretDetection";
+import { runDebugQuarantine } from "./quarantineManager";
 import { filterOutEdisonWatchServers } from "./mcpConfigMonitor";
 import { applyAppIntegrations } from "./mcpConfigWriter";
 import { deduplicateServers } from "./serverDeduplication";
@@ -665,5 +666,19 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
       // Not present — ignore
     }
     return { ok: true };
+  });
+
+  // Debug window actions
+  ipcMain.handle("debug:runQuarantine", async () => {
+    return runDebugQuarantine();
+  });
+
+  ipcMain.handle("debug:resetQuarantine", async () => {
+    try {
+      const result = await restoreAllQuarantinedServers();
+      return { success: true, restored: result.restored, errors: result.errors };
+    } catch (err) {
+      return { success: false, restored: 0, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 }

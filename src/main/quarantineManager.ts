@@ -150,3 +150,53 @@ export function stopQuarantinePolling(): void {
   clearInterval(quarantinePollTimer);
   quarantinePollTimer = null;
 }
+
+/**
+ * Run the quarantine workflow on demand (used by the debug window).
+ * Uses the existing monitor if running; otherwise creates a temporary one.
+ * Shows the quarantine dialog for any newly-quarantined servers.
+ */
+export async function runDebugQuarantine(): Promise<{ success: boolean; error?: string }> {
+  try {
+    async function handleQuarantineEvents(events: unknown[]): Promise<void> {
+      if (events.length === 0) return;
+      const apiBaseUrl = getApiBaseUrl();
+      const setup = getSetupData();
+      let isAdminOrOwner = false;
+      if (apiBaseUrl && setup.apiKey) {
+        try {
+          const role = await fetchUserRole(apiBaseUrl, setup.apiKey);
+          isAdminOrOwner = role === "admin" || role === "owner";
+        } catch { /* treat as regular user */ }
+      }
+      const parentWindow = getMainWindowFn?.() ?? undefined;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await showQuarantinedServersDialog(events as any, parentWindow, isAdminOrOwner);
+    }
+
+    if (configMonitor) {
+      // Monitor already running — its persistent "serversQuarantined" listener
+      // (from startQuarantineMonitor) already shows the dialog, so just trigger
+      // the workflow directly without adding a second listener.
+      await configMonitor.runQuarantineWorkflow();
+    } else {
+      // No monitor running — spin up a temporary one for this single run
+      const tempMonitor = new McpConfigMonitor(new SeenServersStore());
+      tempMonitor.on("error", (err) => {
+        slog(`[Quarantine] tempMonitor error (debug run): ${err}`);
+        console.error("[runDebugQuarantine] Monitor error:", err);
+      });
+      tempMonitor.once("serversQuarantined", (events) => {
+        handleQuarantineEvents(events).catch((err) => {
+          slog(`[Quarantine] Failed to show quarantine dialog (debug run): ${err}`);
+          console.error("[runDebugQuarantine] Failed to show quarantine dialog:", err);
+        });
+      });
+      await tempMonitor.runQuarantineWorkflow();
+    }
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
