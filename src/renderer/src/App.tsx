@@ -110,6 +110,7 @@ export default function App(): React.ReactNode {
           serverStatus={auth.serverStatus}
           modifiedConfigs={modifiedConfigs}
           edisonSecretKey={edisonSecretKey}
+          selectedApps={selectedApps}
           onComplete={handleComplete}
           onRestart={handleRestart}
         />

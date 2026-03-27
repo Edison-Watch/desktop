@@ -58,6 +58,7 @@ import {
   getMcpBaseUrl,
   getMcpUrl,
   getMcpConfig,
+  ALL_SUPPORTED_APPS,
   getSetupData,
   isSetupComplete,
   markSetupComplete,
@@ -252,17 +253,12 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
             const apiKey = setup.apiKey;
             const serverAddress = setup.serverAddress ?? "";
             if (!mcpBaseUrl || !apiKey) return;
-            const allApps = [
-              "vscode", "vscode-insiders", "cursor", "claude-desktop",
-              "claude-code", "windsurf", "zed", "codex",
-              "intellij", "pycharm", "webstorm",
-            ];
             await applyAppIntegrations({
               serverAddress,
               mcpBaseUrl,
               apiKey,
               edisonSecretKey: compositeKey,
-              apps: allApps,
+              apps: setup.configuredApps?.length ? setup.configuredApps : ALL_SUPPORTED_APPS,
             });
           },
         ),
@@ -345,18 +341,13 @@ function buildAppMenu(): Electron.Menu {
       const mcpBaseUrl = getMcpBaseUrl();
       const apiKey = setup.apiKey;
       if (mcpBaseUrl && apiKey) {
-        const allApps = [
-          "vscode", "vscode-insiders", "cursor", "claude-desktop",
-          "claude-code", "windsurf", "zed", "codex",
-          "intellij", "pycharm", "webstorm",
-        ];
         try {
           await applyAppIntegrations({
             serverAddress: setup.serverAddress ?? "",
             mcpBaseUrl,
             apiKey,
             edisonSecretKey: setup.edisonSecretKey,
-            apps: allApps,
+            apps: setup.configuredApps?.length ? setup.configuredApps : ALL_SUPPORTED_APPS,
           });
           slog(`[env:switch] MCP integrations updated for ${name}`);
         } catch (err) {

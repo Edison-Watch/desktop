@@ -23,6 +23,7 @@ interface FinishStepProps {
   serverStatus: "checking" | "online" | "offline";
   modifiedConfigs: Array<{ appId: string; configPath: string; backupPath: string }>;
   edisonSecretKey?: string;
+  selectedApps: string[];
   onComplete: () => void;
   onRestart: () => void;
 }
@@ -36,6 +37,7 @@ export default function FinishStep({
   serverStatus,
   modifiedConfigs,
   edisonSecretKey,
+  selectedApps,
   onComplete,
   onRestart,
 }: FinishStepProps): React.ReactNode {
@@ -68,6 +70,7 @@ export default function FinishStep({
         mcpBaseUrl,
         apiBaseUrl,
         edisonSecretKey: edisonSecretKey || undefined,
+        configuredApps: selectedApps,
       });
       onComplete();
     } catch {

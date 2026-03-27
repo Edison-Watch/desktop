@@ -39,6 +39,7 @@ import { deduplicateServers } from "./serverDeduplication";
 import {
   DRY_RUN,
   ENV_DOCS_URL,
+  ALL_SUPPORTED_APPS,
   type SetupData,
   getActiveEnv,
   getApiBaseUrl,
@@ -196,18 +197,13 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     const newSetup = getSetupData();
     const mcpBaseUrl = getMcpBaseUrl();
     if (mcpBaseUrl && newSetup.apiKey) {
-      const allApps = [
-        "vscode", "vscode-insiders", "cursor", "claude-desktop",
-        "claude-code", "claude-cowork", "windsurf", "zed", "codex",
-        "intellij", "pycharm", "webstorm",
-      ];
       try {
         await applyAppIntegrations({
           serverAddress: newSetup.serverAddress ?? "",
           mcpBaseUrl,
           apiKey: newSetup.apiKey,
           edisonSecretKey: newSetup.edisonSecretKey,
-          apps: allApps,
+          apps: newSetup.configuredApps?.length ? newSetup.configuredApps : ALL_SUPPORTED_APPS,
         });
         console.log("[accounts:switch] MCP integrations updated for new account");
       } catch (err) {

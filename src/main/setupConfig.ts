@@ -81,6 +81,12 @@ export function setDebugEnvOverride(env: DebugEnvName | null): void {
 
 // ── Setup data persistence ──────────────────────────────────────────
 
+export const ALL_SUPPORTED_APPS = [
+  "vscode", "vscode-insiders", "cursor", "claude-desktop",
+  "claude-code", "claude-cowork", "windsurf", "zed", "codex",
+  "intellij", "pycharm", "webstorm",
+];
+
 export interface SetupData {
   completed?: boolean;
   userEmail?: string;
@@ -90,6 +96,7 @@ export interface SetupData {
   apiBaseUrl?: string;
   apiKey?: string;
   edisonSecretKey?: string;
+  configuredApps?: string[];
 }
 
 let setupCompleted: boolean | null = null;
@@ -144,6 +151,7 @@ export interface SavedAccount {
   apiBaseUrl?: string;
   apiKey?: string;
   edisonSecretKey?: string;
+  configuredApps?: string[];
   savedAt: string;
 }
 
@@ -176,6 +184,7 @@ export function saveAccount(data: SetupData): void {
     apiBaseUrl: data.apiBaseUrl,
     apiKey: data.apiKey,
     edisonSecretKey: data.edisonSecretKey,
+    configuredApps: data.configuredApps,
     savedAt: new Date().toISOString(),
   };
   const idx = accounts.findIndex((a) => a.userId === data.userId);
@@ -212,6 +221,7 @@ export function switchToAccount(userId: string): SetupData | null {
     apiBaseUrl: account.apiBaseUrl,
     apiKey: account.apiKey,
     edisonSecretKey: account.edisonSecretKey,
+    configuredApps: account.configuredApps,
   };
   writeFileSync(getSetupFlagPath(), JSON.stringify(data, null, 2), "utf-8");
   setupCompleted = true;

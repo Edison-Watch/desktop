@@ -18,6 +18,7 @@ const BASE_PROPS = {
   apiKey: 'edison_demo_apikey_abc123',
   mcpBaseUrl: 'https://mcp.demo.example.com',
   apiBaseUrl: 'https://api.demo.example.com',
+  selectedApps: ['cursor', 'claude-code'],
   onComplete: () => {},
   onRestart: () => {},
 };
