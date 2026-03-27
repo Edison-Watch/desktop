@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button, Card, Input } from "@edison/shared/ui";
 import {
   generateSecretKey,
@@ -7,6 +7,8 @@ import {
   cacheSecretKey,
 } from "@edison/shared/crypto";
 import type { ModifiedConfig, DiscoveredServer } from "./AppsStep";
+import CredentialReviewCard from "./CredentialReviewCard";
+import type { TemplateOverrideEntry } from "./CredentialReviewCard";
 
 interface EncryptionStepProps {
   mcpBaseUrl: string;
@@ -97,6 +99,19 @@ export default function EncryptionStep({
   // Skip warning state
   const [showSkipWarning, setShowSkipWarning] = useState(false);
 
+  // Credential review state
+  const [savedTemplates, setSavedTemplates] = useState<Record<string, TemplateOverrideEntry[]> | null>(null);
+  const [templatesSaved, setTemplatesSaved] = useState(false);
+
+  const handleTemplateSave = useCallback((overrides: Record<string, TemplateOverrideEntry[]>) => {
+    setSavedTemplates(overrides);
+    setTemplatesSaved(true);
+  }, []);
+
+  const handleTemplateCancel = useCallback(() => {
+    setTemplatesSaved(false);
+  }, []);
+
   // Apply state
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState("");
@@ -179,11 +194,18 @@ export default function EncryptionStep({
     setScanResult(null);
     setShowScanServers(false);
     try {
-      const result = await window.api.mcp.submitAllDiscovered({
-        apiKey,
-        apiBaseUrl,
-        userId,
-      });
+      const result = savedTemplates
+        ? await window.api.mcp.submitWithTemplates({
+            apiKey,
+            apiBaseUrl,
+            userId,
+            templateOverrides: savedTemplates,
+          })
+        : await window.api.mcp.submitAllDiscovered({
+            apiKey,
+            apiBaseUrl,
+            userId,
+          });
       setScanResult(result);
     } catch {
       // Scan failed
@@ -355,6 +377,13 @@ export default function EncryptionStep({
           )}
         </div>
       </Card>
+
+      {/* Configure & Verify Credentials */}
+      <CredentialReviewCard
+        onSave={handleTemplateSave}
+        onCancel={handleTemplateCancel}
+        saved={templatesSaved}
+      />
 
       {/* Register MCP Servers */}
       <Card>

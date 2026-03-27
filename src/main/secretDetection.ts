@@ -391,6 +391,36 @@ export function detectSecrets(server: DiscoveredMcpServer): TemplatizedConfig {
         }
         clonedUrl = parsed.toString()
       }
+
+      // Scan query parameters for secrets (e.g. ?apiKey=xxx, ?token=xxx)
+      for (const [key, value] of [...parsed.searchParams.entries()]) {
+        const keyIsSensitive = isSensitiveKeyName(key)
+        const valueIsSecret = isSecretValue(value)
+        if (keyIsSensitive || valueIsSecret) {
+          const varName = ensureUniqueVarName(
+            key.replace(/[^A-Za-z0-9]/g, '_').toUpperCase(),
+            usedNames,
+            server.name
+          )
+          usedNames.add(varName)
+          secretValues[varName] = value
+          if (!templateFields.env) templateFields.env = {}
+          templateFields.env[varName] = {
+            description: descriptionFor('url', varName),
+            example: ''
+          }
+          // Replace directly in URL string to avoid URLSearchParams encoding the braces
+          clonedUrl = clonedUrl.replace(
+            `${encodeURIComponent(key)}=${encodeURIComponent(value)}`,
+            `${encodeURIComponent(key)}={${varName}}`
+          )
+          // Also handle the case where the value wasn't encoded in the original URL
+          clonedUrl = clonedUrl.replace(
+            `${key}=${value}`,
+            `${key}={${varName}}`
+          )
+        }
+      }
     } catch {
       // Not a valid URL — skip URL credential extraction
     }

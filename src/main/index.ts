@@ -35,7 +35,7 @@ import { showDebugWindow } from "./debugWindow";
 import { showFeedbackWindow } from "./feedbackWindow";
 import { showServerRegistrationDialog } from "./mcpServerActionDialog";
 import { showUpdateKeysWindow } from "./updateKeysWindow";
-import { fetchUserRole } from "./mcpConfigActions";
+import { fetchUserRole } from "./mcpServerSubmit";
 import { applyAppIntegrations } from "./mcpConfigWriter";
 import {
   initQuarantineManager,

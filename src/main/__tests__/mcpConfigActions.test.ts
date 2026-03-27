@@ -31,11 +31,13 @@ vi.mock("../mcpQuarantineSqlite", async (importOriginal) => {
 import {
   getDisabledConfigPath,
   getServerConfigForImport,
+  restoreAllQuarantinedServers,
+} from "../mcpConfigActions";
+import {
   submitServerRequest,
   approveServerRequest,
   fetchUserRole,
-  restoreAllQuarantinedServers,
-} from "../mcpConfigActions";
+} from "../mcpServerSubmit";
 import type { DiscoveredMcpServer } from "../mcpDiscovery";
 
 // ---------------------------------------------------------------------------

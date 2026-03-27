@@ -21,3 +21,10 @@ body {
   user-select: none;
   -webkit-user-drag: none;
 }
+
+/* Allow text selection inside credential review value containers */
+[data-value-container],
+[data-value-container] * {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}

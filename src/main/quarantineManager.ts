@@ -2,7 +2,7 @@ import { BrowserWindow } from "electron";
 import { McpConfigMonitor } from "./mcpConfigMonitor";
 import { SeenServersStore } from "./seenServersStore";
 import { showQuarantinedServersDialog } from "./mcpServerActionDialog";
-import { fetchUserRole } from "./mcpConfigActions";
+import { fetchUserRole } from "./mcpServerSubmit";
 import { fetchAutoQuarantineEnabled } from "./domainConfig";
 import { getApiBaseUrl, getSetupData } from "./setupConfig";
 

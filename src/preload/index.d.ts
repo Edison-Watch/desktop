@@ -33,6 +33,37 @@ interface EdisonAPI {
     revertAppIntegrations: (args: {
       configs: Array<{ configPath: string; backupPath: string }>;
     }) => Promise<{ reverted: number; errors: string[] }>;
+    submitWithTemplates: (params: {
+      apiKey?: string;
+      apiBaseUrl?: string;
+      userId?: string;
+      templateOverrides: Record<string, Array<{
+        entryId: string;
+        varName: string;
+        selectedText: string;
+        start: number;
+        end: number;
+      }>>;
+    }) => Promise<{
+      submitted: number;
+      autoApproved: number;
+      skipped: number;
+      total: number;
+      servers?: Array<{ name: string; client: string; source: string }>;
+      error?: string;
+      errors?: string[];
+    }>;
+    analyzeSecrets: () => Promise<Array<{
+      name: string;
+      client: string;
+      source: string;
+      config: Record<string, unknown>;
+      templatized: {
+        config: Record<string, unknown>;
+        templateFields: Record<string, Record<string, { description: string; example: string }>>;
+        secretValues: Record<string, string>;
+      };
+    }>>;
     submitAllDiscovered: (params?: {
       apiKey?: string;
       apiBaseUrl?: string;

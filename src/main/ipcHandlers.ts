@@ -29,7 +29,10 @@ import { injectAllHooks, removeAllHooks, getHookStatus, injectVsCodeWorkspaceHoo
 import { startHookHealthMonitor } from "./hookHealthMonitor";
 import { startUpdateChecker as _startUpdateChecker } from "./updateChecker";
 import { showFeedbackWindow } from "./feedbackWindow";
-import { fetchUserRole, submitServerRequest, approveServerRequest, removeServerFromConfig } from "./mcpConfigActions";
+import { removeServerFromConfig } from "./mcpConfigActions";
+import { fetchUserRole, submitServerRequest, submitServerWithOverrides, approveServerRequest } from "./mcpServerSubmit";
+import { detectSecrets } from "./secretDetection";
+import type { TemplatizedConfig } from "./secretDetection";
 import { filterOutEdisonWatchServers } from "./mcpConfigMonitor";
 import { applyAppIntegrations } from "./mcpConfigWriter";
 import { deduplicateServers } from "./serverDeduplication";
@@ -372,6 +375,104 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
       }
     }
     return { reverted, errors };
+  });
+
+  // Analyze discovered servers for secrets (without submitting)
+  ipcMain.handle("mcp:analyzeSecrets", async (): Promise<Array<{
+    name: string;
+    client: string;
+    source: string;
+    config: McpServerConfig;
+    templatized: TemplatizedConfig;
+  }>> => {
+    const all = await discoverMcpServers();
+    const filtered = filterOutEdisonWatchServers(all);
+    const servers = deduplicateServers(filtered);
+    return servers.map((server) => ({
+      name: server.name,
+      client: server.client,
+      source: server.source,
+      config: server.config,
+      templatized: detectSecrets(server),
+    }));
+  });
+
+  // Submit servers with user-defined template overrides
+  ipcMain.handle("mcp:submitWithTemplates", async (_event, params: {
+    apiKey?: string;
+    apiBaseUrl?: string;
+    userId?: string;
+    templateOverrides: Record<string, Array<{
+      entryId: string;
+      varName: string;
+      selectedText: string;
+      start: number;
+      end: number;
+    }>>;
+  }): Promise<{
+    submitted: number;
+    autoApproved: number;
+    skipped: number;
+    total: number;
+    servers?: Array<{ name: string; client: string; source: string }>;
+    error?: string;
+    errors?: string[];
+  }> => {
+    const setup = getSetupData();
+    const apiKey = params.apiKey || setup.apiKey;
+    const apiBaseUrl = getApiBaseUrl() || params.apiBaseUrl || setup.apiBaseUrl;
+    const userId = params.userId || setup.userId;
+
+    if (!apiKey || !apiBaseUrl) {
+      return { submitted: 0, autoApproved: 0, skipped: 0, total: 0,
+        error: "Not signed in or server URL not configured." };
+    }
+
+    const all = await discoverMcpServers();
+    const filtered = filterOutEdisonWatchServers(all);
+    const servers = deduplicateServers(filtered);
+
+    const serverList = servers.map((s) => ({ name: s.name, client: s.client, source: s.source }));
+    let submitted = 0;
+    let autoApproved = 0;
+    const errors: string[] = [];
+
+    const role = await fetchUserRole(apiBaseUrl, apiKey);
+    const canAutoApprove = role === "admin" || role === "owner";
+
+    for (const server of servers) {
+      try {
+        const overrides = params.templateOverrides[server.name];
+        const submitResult = overrides
+          ? await submitServerWithOverrides(server, overrides, apiBaseUrl, apiKey, userId)
+          : await submitServerRequest(server, apiBaseUrl, apiKey, userId);
+
+        if (submitResult.alreadyPending || submitResult.alreadyExists) continue;
+        submitted++;
+
+        if (canAutoApprove) {
+          try {
+            await approveServerRequest(submitResult.request_id, apiBaseUrl, apiKey);
+            autoApproved++;
+          } catch (approveErr) {
+            const msg = approveErr instanceof Error ? approveErr.message : String(approveErr);
+            errors.push(`${server.name}: auto-approval failed — ${msg}`);
+          }
+        }
+
+        try { await removeServerFromConfig(server); } catch { /* non-fatal */ }
+      } catch (e) {
+        const msg = server.name + ": " + (e instanceof Error ? e.message : String(e));
+        errors.push(msg);
+      }
+    }
+    return {
+      submitted, autoApproved,
+      skipped: servers.length - submitted,
+      total: servers.length,
+      servers: serverList,
+      errors: errors.length > 0 ? errors : undefined,
+    };
   });
 
   // Submit all discovered MCP servers for approval
