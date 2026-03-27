@@ -65,6 +65,7 @@ import {
   startServerStatusChecks,
   stopServerStatusChecks,
   getIsServerOnline,
+  checkClaudeCodeMcpConnection,
 } from "./setupConfig";
 import {
   pendingApprovals,
@@ -704,6 +705,31 @@ app.whenReady().then(async () => {
       console.error("[Quarantine] Failed to start monitor:", err),
     );
     startQuarantinePolling();
+
+    // Self-heal Claude Code MCP registration on startup if it's missing or broken.
+    // Only targets claude-code (not all 12 apps) and only when not already connected,
+    // to avoid unnecessary config writes and disruption to running sessions.
+    const setup = getSetupData();
+    const mcpBaseUrl = getMcpBaseUrl();
+    const apiKey = setup.apiKey;
+    if (mcpBaseUrl && apiKey) {
+      checkClaudeCodeMcpConnection().then(async (status) => {
+        if (status === "connected") {
+          slog("startup: Claude Code MCP already connected, skipping re-registration");
+          return;
+        }
+        slog(`startup: Claude Code MCP status is "${status}", re-registering`);
+        await applyAppIntegrations({
+          serverAddress: setup.serverAddress ?? "",
+          mcpBaseUrl,
+          apiKey,
+          edisonSecretKey: setup.edisonSecretKey,
+          apps: ["claude-code"],
+        });
+        slog("startup Claude Code MCP re-registration complete");
+      }).catch((err) => console.error("[Startup] Failed to check/re-register Claude Code MCP:", err));
+    }
+
     slog("tray/subscription/monitor ok");
   } else {
     slog("setup not complete");

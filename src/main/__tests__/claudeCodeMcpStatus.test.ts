@@ -62,13 +62,35 @@ describe("checkClaudeCodeMcpConnection", () => {
     expect(await checkClaudeCodeMcpConnection()).toBe("unknown");
   });
 
-  it('returns "not-found" when CLI exits with an error (server not registered)', async () => {
-    simulateError("Command failed: exit code 1");
+  it('returns "not-found" when CLI reports server not found in stderr', async () => {
+    mockExecFile.mockImplementation(
+      (_cmd: string, _args: string[], _opts: unknown, cb: (err: Error & { stderr?: string }) => void) => {
+        const err = Object.assign(new Error("Command failed: exit code 1"), {
+          stderr: "No MCP server found with name: edison-watch",
+        });
+        cb(err);
+      },
+    );
     expect(await checkClaudeCodeMcpConnection()).toBe("not-found");
+  });
+
+  it('returns "unknown" when CLI exits with a generic error (no server-not-found message)', async () => {
+    mockExecFile.mockImplementation(
+      (_cmd: string, _args: string[], _opts: unknown, cb: (err: Error & { code?: number }) => void) => {
+        const err = Object.assign(new Error("Command failed: exit code 1"), { code: 1 });
+        cb(err);
+      },
+    );
+    expect(await checkClaudeCodeMcpConnection()).toBe("unknown");
   });
 
   it('returns "unknown" when claude CLI is not found (ENOENT)', async () => {
     simulateError("spawn claude ENOENT");
+    expect(await checkClaudeCodeMcpConnection()).toBe("unknown");
+  });
+
+  it('returns "unknown" when spawn fails with EBADF (Electron file descriptor issue)', async () => {
+    simulateError("spawn EBADF");
     expect(await checkClaudeCodeMcpConnection()).toBe("unknown");
   });
 

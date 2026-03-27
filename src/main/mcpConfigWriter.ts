@@ -7,7 +7,8 @@
  * the file is written back preserving other settings.
  */
 import { promises as fs, existsSync } from 'fs'
-import { dirname } from 'path'
+import { dirname, join } from 'path'
+import { homedir } from 'os'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 
@@ -109,6 +110,41 @@ async function getPathForApp(
 }
 
 /**
+ * Remove edison-watch from ~/.mcp.json if present.
+ *
+ * Claude Code treats ~/.mcp.json as a project-scope config that shadows
+ * user-scope entries in ~/.claude.json. Stale entries here (e.g. from older
+ * app versions or manual setup) cause "Failed to connect" or "not registered"
+ * status even when the user-scope registration is correct.
+ */
+async function cleanupHomeMcpJson(): Promise<void> {
+  const homeMcpJson = join(homedir(), '.mcp.json')
+  if (!existsSync(homeMcpJson)) return
+
+  try {
+    const raw = await fs.readFile(homeMcpJson, 'utf-8')
+    const json = JSON.parse(raw) as Record<string, unknown>
+    const servers = json.mcpServers as Record<string, unknown> | undefined
+    if (!servers || !('edison-watch' in servers)) return
+
+    delete servers['edison-watch']
+
+    // Remove the file only if mcpServers was the only top-level key and is now empty
+    const remainingKeys = Object.keys(json).filter((k) => k !== 'mcpServers')
+    if (Object.keys(servers).length === 0 && remainingKeys.length === 0) {
+      await fs.unlink(homeMcpJson)
+      console.log('[mcpConfigWriter] Removed empty ~/.mcp.json after cleaning edison-watch entry')
+    } else {
+      json.mcpServers = servers
+      await fs.writeFile(homeMcpJson, JSON.stringify(json, null, 2), 'utf-8')
+      console.log('[mcpConfigWriter] Removed edison-watch from ~/.mcp.json')
+    }
+  } catch {
+    // Ignore — file may be malformed or inaccessible
+  }
+}
+
+/**
  * Apply Edison Watch MCP to Claude Code using the `claude` CLI.
  * Claude Code reads MCPs from ~/.claude.json, NOT from ~/.claude/settings.json.
  * The `claude mcp add` CLI is the safe way to register servers without risking
@@ -127,9 +163,19 @@ async function applyToClaudeCode(
     return { appId: 'claude-code', configPath: '(via claude mcp add)', backupPath: '' }
   }
 
-  // First, try to remove any existing edison-watch entry (ignore errors)
+  // Clean up conflicting project-scope entries in ~/.mcp.json that shadow
+  // the user-scope registration we're about to create.
+  await cleanupHomeMcpJson()
+
+  // Remove any existing edison-watch entries from both user and project scopes
+  // to prevent stale registrations from interfering.
   try {
     await execFileAsync('claude', ['mcp', 'remove', 'edison-watch', '--scope', 'user'], { timeout: 10_000 })
+  } catch {
+    // Ignore — entry may not exist
+  }
+  try {
+    await execFileAsync('claude', ['mcp', 'remove', 'edison-watch', '--scope', 'project'], { timeout: 10_000 })
   } catch {
     // Ignore — entry may not exist
   }
@@ -177,7 +223,7 @@ async function applyToClaudeCodeFallback(
   }
 
   const mcpServers = (json.mcpServers ?? {}) as Record<string, unknown>
-  mcpServers['edison-watch'] = { url, ...(headers && { headers }) }
+  mcpServers['edison-watch'] = { type: 'http', url, ...(headers && { headers }) }
   json.mcpServers = mcpServers
 
   await fs.writeFile(configPath, JSON.stringify(json, null, 2), 'utf-8')

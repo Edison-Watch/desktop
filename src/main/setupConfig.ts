@@ -384,12 +384,22 @@ export async function checkClaudeCodeMcpConnection(): Promise<ClaudeCodeMcpStatu
     return "unknown";
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    // CLI not on PATH
-    if (msg.includes("ENOENT")) return "unknown";
+    // CLI not on PATH or spawn failed (EBADF in Electron, etc.)
+    if (msg.includes("ENOENT") || msg.includes("EBADF")) return "unknown";
     // CLI timed out (killed by execFile timeout)
     if (err && typeof err === "object" && "killed" in err && (err as { killed: boolean }).killed) return "unknown";
-    // CLI exited with error — server name likely doesn't exist
-    return "not-found";
+    // Only report "not-found" when the CLI actually ran and reported the server missing.
+    // If the exit was due to a spawn/runtime error (no stderr about "not found"),
+    // treat it as "unknown" so the fallback config+health heuristic is used.
+    const stderr = err && typeof err === "object" && "stderr" in err
+      ? String((err as { stderr: unknown }).stderr)
+      : "";
+    if (stderr.includes("No MCP server found")) {
+      return "not-found";
+    }
+    // For any other error (spawn failure, permission issue, string error codes
+    // like "EPERM"/"EACCES", etc.), fall back to config-based detection.
+    return "unknown";
   }
 }
 
