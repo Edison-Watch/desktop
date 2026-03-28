@@ -36,7 +36,7 @@ import { showFeedbackWindow } from "./feedbackWindow";
 import { showServerRegistrationDialog } from "./mcpServerActionDialog";
 import { showUpdateKeysWindow } from "./updateKeysWindow";
 import { fetchUserRole } from "./mcpServerSubmit";
-import { applyAppIntegrations } from "./mcpConfigWriter";
+import { applyAppIntegrations, findAppsNeedingReRegistration } from "./mcpConfigWriter";
 import {
   initQuarantineManager,
   getAutoQuarantineEnabled,
@@ -697,28 +697,52 @@ app.whenReady().then(async () => {
     );
     startQuarantinePolling();
 
-    // Self-heal Claude Code MCP registration on startup if it's missing or broken.
-    // Only targets claude-code (not all 12 apps) and only when not already connected,
-    // to avoid unnecessary config writes and disruption to running sessions.
+    // Self-heal MCP registration on startup for all configured apps.
+    // Checks each app's config file for the edison-watch entry and re-registers
+    // any that are missing. This handles cases where configs are cleared externally
+    // (e.g. by other tools, manual edits, or test harnesses).
     const setup = getSetupData();
     const mcpBaseUrl = getMcpBaseUrl();
     const apiKey = setup.apiKey;
     if (mcpBaseUrl && apiKey) {
-      checkClaudeCodeMcpConnection().then(async (status) => {
-        if (status === "connected") {
-          slog("startup: Claude Code MCP already connected, skipping re-registration");
+      const configuredApps = setup.configuredApps ?? [];
+
+      // Claude Code: check via CLI (separate path since it uses `claude mcp get`)
+      if (configuredApps.includes("claude-code")) {
+        checkClaudeCodeMcpConnection().then(async (status) => {
+          if (status === "connected") {
+            slog("startup: Claude Code MCP already connected, skipping re-registration");
+            return;
+          }
+          slog(`startup: Claude Code MCP status is "${status}", re-registering`);
+          await applyAppIntegrations({
+            serverAddress: setup.serverAddress ?? "",
+            mcpBaseUrl,
+            apiKey,
+            edisonSecretKey: setup.edisonSecretKey,
+            apps: ["claude-code"],
+          });
+          slog("startup: Claude Code MCP re-registration complete");
+        }).catch((err) => console.error("[Startup] Failed to check/re-register Claude Code MCP:", err));
+      }
+
+      // All other apps: check config files for missing or stale edison-watch entry
+      const expectedUrl = `${mcpBaseUrl.replace(/\/$/, "")}/mcp/${apiKey}/`;
+      findAppsNeedingReRegistration(configuredApps, expectedUrl).then(async (missingApps) => {
+        if (missingApps.length === 0) {
+          slog(`startup: all configured apps have edison-watch registered`);
           return;
         }
-        slog(`startup: Claude Code MCP status is "${status}", re-registering`);
+        slog(`startup: edison-watch missing from ${missingApps.join(", ")}, re-registering`);
         await applyAppIntegrations({
           serverAddress: setup.serverAddress ?? "",
           mcpBaseUrl,
           apiKey,
           edisonSecretKey: setup.edisonSecretKey,
-          apps: ["claude-code"],
+          apps: missingApps,
         });
-        slog("startup Claude Code MCP re-registration complete");
-      }).catch((err) => console.error("[Startup] Failed to check/re-register Claude Code MCP:", err));
+        slog(`startup: re-registered edison-watch for ${missingApps.join(", ")}`);
+      }).catch((err) => console.error("[Startup] Failed to check/re-register app MCP configs:", err));
     }
 
     slog("tray/subscription/monitor ok");

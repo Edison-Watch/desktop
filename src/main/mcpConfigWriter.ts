@@ -407,6 +407,76 @@ async function applyToApp(
   }
 }
 
+// ── Health check ─────────────────────────────────────────────────────
+
+/**
+ * Check whether edison-watch is registered in a given app's MCP config
+ * with the correct URL. Returns true only if the entry exists AND the URL
+ * matches the expected value. This catches both missing entries and stale
+ * entries left over from a previous environment or account.
+ *
+ * Claude Code is deferred to the caller (uses CLI-based check).
+ * Codex uses TOML section header + URL matching.
+ */
+export async function isEdisonWatchRegistered(
+  appId: string,
+  expectedUrl?: string,
+): Promise<boolean> {
+  // Claude Code: use CLI check (already exists in setupConfig.ts)
+  if (appId === 'claude-code') {
+    // Defer to the caller — claude-code has its own check via checkClaudeCodeMcpConnection()
+    return true
+  }
+
+  // Codex: check TOML config for section header and URL
+  if (appId === 'codex') {
+    try {
+      const content = await fs.readFile(getCodexConfigPath(), 'utf-8')
+      if (!content.includes('[mcp_servers.edison-watch]')) return false
+      if (expectedUrl && !content.includes(expectedUrl)) return false
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  // File-based apps: read JSON config and check for edison-watch key + URL
+  const pathInfo = await getPathForApp(appId)
+  if (!pathInfo) return false
+
+  try {
+    const config = await readConfigFile(pathInfo.configPath, pathInfo.clientId)
+    const servers = getServersFromConfig(config, pathInfo.clientId)
+    if (servers == null || !('edison-watch' in servers)) return false
+    if (expectedUrl) {
+      const entry = servers['edison-watch'] as Record<string, unknown>
+      if (entry.url !== expectedUrl) return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Check all configured apps and return the list of apps where edison-watch
+ * is missing or has a stale URL. Skips claude-code (handled separately).
+ */
+export async function findAppsNeedingReRegistration(
+  configuredApps: string[],
+  expectedUrl?: string,
+): Promise<string[]> {
+  const missing: string[] = []
+  for (const appId of configuredApps) {
+    if (appId === 'claude-code') continue // handled by checkClaudeCodeMcpConnection
+    const registered = await isEdisonWatchRegistered(appId, expectedUrl)
+    if (!registered) {
+      missing.push(appId)
+    }
+  }
+  return missing
+}
+
 // ── Main entry point ──────────────────────────────────────────────────
 
 export async function applyAppIntegrations(
