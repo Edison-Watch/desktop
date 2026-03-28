@@ -12,6 +12,7 @@ import { homedir } from 'os'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import * as jsonc from 'jsonc-parser'
+import { parse as parseToml } from 'smol-toml'
 
 const execFileAsync = promisify(execFile)
 
@@ -428,12 +429,16 @@ export async function isEdisonWatchRegistered(
     return true
   }
 
-  // Codex: check TOML config for section header and URL
+  // Codex: parse TOML config and check for edison-watch section with correct URL
   if (appId === 'codex') {
     try {
       const content = await fs.readFile(getCodexConfigPath(), 'utf-8')
-      if (!content.includes('[mcp_servers.edison-watch]')) return false
-      if (expectedUrl && !content.includes(expectedUrl)) return false
+      const toml = parseToml(content) as Record<string, unknown>
+      const mcpServers = toml.mcp_servers as Record<string, unknown> | undefined
+      if (!mcpServers) return false
+      const edisonWatch = mcpServers['edison-watch'] as Record<string, unknown> | undefined
+      if (!edisonWatch || typeof edisonWatch.url !== 'string') return false
+      if (expectedUrl && edisonWatch.url !== expectedUrl) return false
       return true
     } catch {
       return false
