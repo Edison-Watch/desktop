@@ -357,6 +357,179 @@ export const QUARANTINE_CSS = `
 export const REGISTRATION_CSS = QUARANTINE_CSS
 
 /**
+ * Credential review panel: inline secret detection/marking within server cards.
+ * Used in quarantine and registration dialogs.
+ */
+export const CREDENTIAL_REVIEW_CSS = `
+  .credential-review {
+    margin-top: 10px;
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+  }
+
+  .cr-description {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+
+  .cr-hint {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-bottom: 8px;
+  }
+
+  .cr-entries {
+    background: var(--bg-input);
+    border-radius: 6px;
+    padding: 10px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 12px;
+    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .cr-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .cr-label {
+    color: var(--text-muted);
+    flex-shrink: 0;
+    min-width: 70px;
+    user-select: none;
+  }
+
+  .cr-value {
+    flex: 1;
+    word-break: break-all;
+    color: var(--text-secondary);
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  .cr-value[data-context="command"] {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .cr-secret-btn {
+    display: inline;
+    padding: 1px 4px;
+    border-radius: 3px;
+    border: 1px solid rgba(249, 115, 22, 0.3);
+    background: rgba(249, 115, 22, 0.2);
+    color: #fdba74;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: inherit;
+    transition: background 0.15s ease;
+  }
+
+  .cr-secret-btn:hover {
+    background: rgba(249, 115, 22, 0.3);
+  }
+
+  .cr-secret-btn.disabled {
+    background: var(--bg-base);
+    color: var(--text-muted);
+    border-color: var(--border);
+  }
+
+  .cr-var-label {
+    font-size: 10px;
+    color: rgba(251, 146, 60, 0.7);
+    margin-left: 4px;
+  }
+
+  .cr-popup {
+    position: fixed;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: var(--bg-overlay);
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    transform: translateX(-50%);
+  }
+
+  .cr-popup-mark {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(249, 115, 22, 0.2);
+    color: #fdba74;
+    border: 1px solid rgba(249, 115, 22, 0.3);
+    cursor: pointer;
+    font-family: 'Archivo', sans-serif;
+    white-space: nowrap;
+    transition: background 0.15s ease;
+  }
+
+  .cr-popup-mark:hover {
+    background: rgba(249, 115, 22, 0.3);
+  }
+
+  .cr-popup-close {
+    font-size: 11px;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    line-height: 1;
+  }
+
+  .cr-popup-close:hover {
+    color: var(--text-primary);
+  }
+
+  .cr-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .cr-empty {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 4px 0;
+  }
+
+  .cr-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 8px 0;
+  }
+
+  .cr-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--accent);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+`
+
+/**
  * Debug-window-specific: refresh button, debug actions section.
  */
 export const DEBUG_CSS = `

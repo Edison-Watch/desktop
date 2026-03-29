@@ -419,6 +419,29 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     }));
   });
 
+  // Analyze secrets for a single server (used by quarantine/registration dialogs)
+  ipcMain.handle("mcp:analyzeServerSecrets", async (_event, params: {
+    serverName: string;
+    sourceApp: string;
+    config: Record<string, unknown>;
+    configPath: string;
+  }) => {
+    const server: DiscoveredMcpServer = {
+      name: params.serverName,
+      client: params.sourceApp as McpClientId,
+      source: "user",
+      path: params.configPath,
+      config: params.config as McpServerConfig,
+    };
+    const result = detectSecrets(server);
+    return {
+      config: params.config,
+      templatizedConfig: result.config,
+      templateFields: result.templateFields,
+      secretValues: result.secretValues,
+    };
+  });
+
   // Submit servers with user-defined template overrides
   ipcMain.handle("mcp:submitWithTemplates", async (_event, params: {
     apiKey?: string;
@@ -587,6 +610,13 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     action: string;
     config: Record<string, unknown>;
     configPath: string;
+    templateOverrides?: Array<{
+      entryId: string;
+      varName: string;
+      selectedText: string;
+      start: number;
+      end: number;
+    }>;
   }) => {
     // Only submit for registration/request actions — skip dismissed/skipped servers
     if (params.action !== "registered" && params.action !== "requested") {
@@ -610,7 +640,9 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
       config: params.config as McpServerConfig,
     };
 
-    const submitResult = await submitServerRequest(server, apiBaseUrl, apiKey, setup.userId);
+    const submitResult = params.templateOverrides && params.templateOverrides.length > 0
+      ? await submitServerWithOverrides(server, params.templateOverrides, apiBaseUrl, apiKey, setup.userId)
+      : await submitServerRequest(server, apiBaseUrl, apiKey, setup.userId);
 
     if (submitResult.alreadyPending) {
       return { action: params.action, alreadyPending: true };
