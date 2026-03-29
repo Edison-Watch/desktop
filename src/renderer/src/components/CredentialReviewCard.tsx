@@ -145,11 +145,17 @@ export default function CredentialReviewCard({
 }: CredentialReviewCardProps): React.ReactNode {
   const [servers, setServers] = useState<AnalyzedServer[]>([]);
   const [loading, setLoading] = useState(true);
-  const tokenCounterRef = useRef(0);
-
-  const generateTokenName = (): string => {
-    tokenCounterRef.current++;
-    return `TOKEN_${tokenCounterRef.current}`;
+  const generateTokenName = (current: Map<string, Map<string, TemplateMarking>>): string => {
+    const used = new Set<number>();
+    for (const entryMap of current.values()) {
+      for (const m of entryMap.values()) {
+        const match = m.varName.match(/^TOKEN_(\d+)$/);
+        if (match) used.add(Number(match[1]));
+      }
+    }
+    let n = 1;
+    while (used.has(n)) n++;
+    return `TOKEN_${n}`;
   };
   const [error, setError] = useState("");
   const [collapsed, setCollapsed] = useState(true);
@@ -190,7 +196,6 @@ export default function CredentialReviewCard({
   const analyze = useCallback(async () => {
     setLoading(true);
     setError("");
-    tokenCounterRef.current = 0;
     try {
       const result = await window.api.mcp.analyzeSecrets();
       setServers(result);
@@ -296,8 +301,8 @@ export default function CredentialReviewCard({
     start: number,
     end: number,
   ) => {
-    const varName = generateTokenName();
     setMarkings((prev) => {
+      const varName = generateTokenName(prev);
       const next = new Map(prev);
       const entryMap = new Map(next.get(serverName) ?? []);
       entryMap.set(entryId, {
