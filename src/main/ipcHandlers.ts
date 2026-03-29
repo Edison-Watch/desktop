@@ -54,6 +54,7 @@ import {
   getSavedAccounts,
   switchToAccount,
   removeAccount,
+  getCredentialsForEnv,
 } from "./setupConfig";
 import { handleApproval, pendingApprovals } from "./approvalsHandler";
 
@@ -196,13 +197,14 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     // Without this, configs would keep the previous account's server/API key.
     const newSetup = getSetupData();
     const mcpBaseUrl = getMcpBaseUrl();
-    if (mcpBaseUrl && newSetup.apiKey) {
+    const creds = getCredentialsForEnv();
+    if (mcpBaseUrl && creds?.apiKey) {
       try {
         await applyAppIntegrations({
           serverAddress: newSetup.serverAddress ?? "",
           mcpBaseUrl,
-          apiKey: newSetup.apiKey,
-          edisonSecretKey: newSetup.edisonSecretKey,
+          apiKey: creds.apiKey,
+          edisonSecretKey: creds.edisonSecretKey,
           apps: newSetup.configuredApps?.length ? newSetup.configuredApps : ALL_SUPPORTED_APPS,
         });
         console.log("[accounts:switch] MCP integrations updated for new account");
@@ -439,7 +441,8 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     errors?: string[];
   }> => {
     const setup = getSetupData();
-    const apiKey = params.apiKey || setup.apiKey;
+    const creds = getCredentialsForEnv();
+    const apiKey = params.apiKey || creds?.apiKey;
     const apiBaseUrl = getApiBaseUrl() || params.apiBaseUrl || setup.apiBaseUrl;
     const userId = params.userId || setup.userId;
 
@@ -510,7 +513,8 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     errors?: string[];
   }> => {
     const setup = getSetupData();
-    const apiKey = params?.apiKey || setup.apiKey;
+    const creds = getCredentialsForEnv();
+    const apiKey = params?.apiKey || creds?.apiKey;
     const apiBaseUrl = getApiBaseUrl() || params?.apiBaseUrl || setup.apiBaseUrl;
     const userId = params?.userId || setup.userId;
 
@@ -590,7 +594,8 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     }
 
     const setup = getSetupData();
-    const apiKey = setup.apiKey;
+    const creds = getCredentialsForEnv();
+    const apiKey = creds?.apiKey;
     const apiBaseUrl = getApiBaseUrl();
 
     if (!apiKey || !apiBaseUrl) {

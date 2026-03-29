@@ -87,6 +87,11 @@ export const ALL_SUPPORTED_APPS = [
   "intellij", "pycharm", "webstorm",
 ];
 
+export interface EnvCredentials {
+  apiKey: string;
+  edisonSecretKey?: string;
+}
+
 export interface SetupData {
   completed?: boolean;
   userEmail?: string;
@@ -97,6 +102,8 @@ export interface SetupData {
   apiKey?: string;
   edisonSecretKey?: string;
   configuredApps?: string[];
+  /** Per-environment credentials so switching envs also switches API keys. */
+  envCredentials?: Record<string, EnvCredentials>;
 }
 
 let setupCompleted: boolean | null = null;
@@ -124,6 +131,21 @@ export function isSetupComplete(): boolean {
 export function markSetupComplete(data?: Partial<SetupData>): void {
   const existing = getSetupData();
   const merged: SetupData = { ...existing, ...data, completed: true };
+
+  // Persist the current apiKey into the per-env credential map so
+  // switching environments later can recall the correct key.
+  const env = getActiveEnv();
+  if (merged.apiKey) {
+    const envCreds = merged.envCredentials ?? {};
+    const existingEnvEntry = envCreds[env];
+    const resolvedSecret = data?.edisonSecretKey ?? existingEnvEntry?.edisonSecretKey ?? merged.edisonSecretKey;
+    envCreds[env] = {
+      apiKey: data?.apiKey ?? existingEnvEntry?.apiKey ?? merged.apiKey,
+      ...(resolvedSecret && { edisonSecretKey: resolvedSecret }),
+    };
+    merged.envCredentials = envCreds;
+  }
+
   writeFileSync(getSetupFlagPath(), JSON.stringify(merged, null, 2), "utf-8");
   setupCompleted = true;
   app.setLoginItemSettings({ openAtLogin: true });
@@ -152,6 +174,7 @@ export interface SavedAccount {
   apiKey?: string;
   edisonSecretKey?: string;
   configuredApps?: string[];
+  envCredentials?: Record<string, EnvCredentials>;
   savedAt: string;
 }
 
@@ -185,6 +208,7 @@ export function saveAccount(data: SetupData): void {
     apiKey: data.apiKey,
     edisonSecretKey: data.edisonSecretKey,
     configuredApps: data.configuredApps,
+    envCredentials: data.envCredentials,
     savedAt: new Date().toISOString(),
   };
   const idx = accounts.findIndex((a) => a.userId === data.userId);
@@ -222,10 +246,32 @@ export function switchToAccount(userId: string): SetupData | null {
     apiKey: account.apiKey,
     edisonSecretKey: account.edisonSecretKey,
     configuredApps: account.configuredApps,
+    envCredentials: account.envCredentials,
   };
   writeFileSync(getSetupFlagPath(), JSON.stringify(data, null, 2), "utf-8");
   setupCompleted = true;
   return data;
+}
+
+// ── Per-environment credential helpers ───────────────────────────────
+
+/**
+ * Return the API key (and optional secret key) for the given environment.
+ * Falls back to the top-level apiKey when no per-env entry exists (backwards compat).
+ */
+export function getCredentialsForEnv(env?: string): EnvCredentials | null {
+  const setupData = getSetupData();
+  const targetEnv = env ?? getActiveEnv();
+  const perEnv = setupData.envCredentials?.[targetEnv];
+  if (perEnv) return perEnv;
+  // Fallback: use the top-level key only for entirely unmigrated setups
+  // (no envCredentials map at all). Once the map exists, a missing env
+  // entry means the user hasn't registered for that env yet — return null
+  // so callers can warn instead of silently using the wrong key.
+  if (!setupData.envCredentials && setupData.apiKey) {
+    return { apiKey: setupData.apiKey, edisonSecretKey: setupData.edisonSecretKey };
+  }
+  return null;
 }
 
 // ── URL helpers ─────────────────────────────────────────────────────
@@ -287,10 +333,10 @@ export function getApprovalUrl(): string | null {
 }
 
 export function getMcpUrl(): string | null {
-  const setupData = getSetupData();
   const mcpBaseUrl = getMcpBaseUrl();
-  if (mcpBaseUrl && setupData.apiKey) {
-    return `${mcpBaseUrl.replace(/\/$/, "")}/mcp/${setupData.apiKey}`;
+  const creds = getCredentialsForEnv();
+  if (mcpBaseUrl && creds?.apiKey) {
+    return `${mcpBaseUrl.replace(/\/$/, "")}/mcp/${creds.apiKey}`;
   }
   return null;
 }
@@ -298,10 +344,10 @@ export function getMcpUrl(): string | null {
 export function getMcpConfig(): string | null {
   const url = getMcpUrl();
   if (!url) return null;
-  const setupData = getSetupData();
+  const creds = getCredentialsForEnv();
   const args = ["-y", "mcp-remote", url, "--transport", "http-first"];
-  if (setupData.edisonSecretKey) {
-    args.push("--header", `X-Edison-Secret-Key:${setupData.edisonSecretKey}`);
+  if (creds?.edisonSecretKey) {
+    args.push("--header", `X-Edison-Secret-Key:${creds.edisonSecretKey}`);
   }
   const config = {
     servers: {

@@ -9,7 +9,7 @@ import { app, BrowserWindow, Notification } from "electron";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import trayIconPath from "../../resources/icon_tray.png?asset";
 
-import { getApiBaseUrl, getApprovalUrl, getEventsUrl, getSetupData } from "./setupConfig";
+import { getApiBaseUrl, getApprovalUrl, getEventsUrl, getSetupData, getCredentialsForEnv } from "./setupConfig";
 import { BASE_CSS, HEADER_CSS, BUTTON_CSS } from "./dialogStyles";
 
 // ── SSE state ───────────────────────────────────────────────────────
@@ -85,7 +85,7 @@ export function startEventSubscription(
   onReconnected?: () => void,
 ): void {
   const setupData = getSetupData();
-  const apiKey = setupData.apiKey;
+  const apiKey = getCredentialsForEnv()?.apiKey;
   const userId = setupData.userId;
 
   if (!apiKey || !userId) {
@@ -379,8 +379,7 @@ export async function handleApproval(
     return;
   }
 
-  const setupData = getSetupData();
-  const apiKey = setupData.apiKey;
+  const apiKey = getCredentialsForEnv()?.apiKey;
   if (!apiKey) {
     console.warn("[approval] No API key available");
     return;
@@ -645,8 +644,7 @@ document.getElementById('deny-all')?.addEventListener('click',()=>{document.quer
 
     // Send deny requests directly — we already cleared the map so
     // handleApproval would early-return.
-    const setupData = getSetupData();
-    const apiKey = setupData.apiKey;
+    const apiKey = getCredentialsForEnv()?.apiKey;
     const approvalUrl = getApprovalUrl();
     if (!apiKey || !approvalUrl) return;
     for (const pending of remaining) {

@@ -62,6 +62,7 @@ import {
   getSetupData,
   isSetupComplete,
   markSetupComplete,
+  getCredentialsForEnv,
   markSetupIncomplete,
   startServerStatusChecks,
   stopServerStatusChecks,
@@ -121,12 +122,13 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
     },
     {
       label: "Register MCP Servers",
-      enabled: Boolean(setupData.apiKey && (setupData.apiBaseUrl || setupData.serverAddress)),
+      enabled: Boolean(getCredentialsForEnv()?.apiKey && (setupData.apiBaseUrl || setupData.serverAddress)),
       click: async () => {
         let isAdminOrOwner = false;
         const apiBaseUrl = getApiBaseUrl();
-        if (apiBaseUrl && setupData.apiKey) {
-          const role = await fetchUserRole(apiBaseUrl, setupData.apiKey);
+        const envCreds = getCredentialsForEnv();
+        if (apiBaseUrl && envCreds?.apiKey) {
+          const role = await fetchUserRole(apiBaseUrl, envCreds.apiKey);
           isAdminOrOwner = role === "admin" || role === "owner";
         }
         showServerRegistrationDialog(mainWindow ?? undefined, isAdminOrOwner);
@@ -250,13 +252,13 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
           async (compositeKey) => {
             const setup = getSetupData();
             const mcpBaseUrl = getMcpBaseUrl();
-            const apiKey = setup.apiKey;
+            const creds = getCredentialsForEnv();
             const serverAddress = setup.serverAddress ?? "";
-            if (!mcpBaseUrl || !apiKey) return;
+            if (!mcpBaseUrl || !creds?.apiKey) return;
             await applyAppIntegrations({
               serverAddress,
               mcpBaseUrl,
-              apiKey,
+              apiKey: creds.apiKey,
               edisonSecretKey: compositeKey,
               apps: setup.configuredApps?.length ? setup.configuredApps : ALL_SUPPORTED_APPS,
             });
@@ -337,22 +339,25 @@ function buildAppMenu(): Electron.Menu {
       mainWindow?.webContents.send("env:changed", name);
 
       // Re-apply MCP integrations so client configs point to the new environment's URL
+      // Use per-env credentials so each environment uses its own API key.
       const setup = getSetupData();
       const mcpBaseUrl = getMcpBaseUrl();
-      const apiKey = setup.apiKey;
-      if (mcpBaseUrl && apiKey) {
+      const creds = getCredentialsForEnv(name);
+      if (mcpBaseUrl && creds?.apiKey) {
         try {
           await applyAppIntegrations({
             serverAddress: setup.serverAddress ?? "",
             mcpBaseUrl,
-            apiKey,
-            edisonSecretKey: setup.edisonSecretKey,
+            apiKey: creds.apiKey,
+            edisonSecretKey: creds.edisonSecretKey,
             apps: setup.configuredApps?.length ? setup.configuredApps : ALL_SUPPORTED_APPS,
           });
           slog(`[env:switch] MCP integrations updated for ${name}`);
         } catch (err) {
           slog(`[env:switch] Failed to update MCP integrations: ${err}`);
         }
+      } else if (mcpBaseUrl && !creds?.apiKey) {
+        slog(`[env:switch] No API key stored for env "${name}" — MCP integrations not updated`);
       }
 
       // Immediately re-check server liveness against the new env URL
@@ -703,8 +708,8 @@ app.whenReady().then(async () => {
     // (e.g. by other tools, manual edits, or test harnesses).
     const setup = getSetupData();
     const mcpBaseUrl = getMcpBaseUrl();
-    const apiKey = setup.apiKey;
-    if (mcpBaseUrl && apiKey) {
+    const creds = getCredentialsForEnv();
+    if (mcpBaseUrl && creds?.apiKey) {
       const configuredApps = setup.configuredApps ?? [];
 
       // Claude Code: check via CLI (separate path since it uses `claude mcp get`)
@@ -718,8 +723,8 @@ app.whenReady().then(async () => {
           await applyAppIntegrations({
             serverAddress: setup.serverAddress ?? "",
             mcpBaseUrl,
-            apiKey,
-            edisonSecretKey: setup.edisonSecretKey,
+            apiKey: creds.apiKey,
+            edisonSecretKey: creds.edisonSecretKey,
             apps: ["claude-code"],
           });
           slog("startup: Claude Code MCP re-registration complete");
@@ -727,7 +732,7 @@ app.whenReady().then(async () => {
       }
 
       // All other apps: check config files for missing or stale edison-watch entry
-      const expectedUrl = `${mcpBaseUrl.replace(/\/$/, "")}/mcp/${apiKey}/`;
+      const expectedUrl = `${mcpBaseUrl.replace(/\/$/, "")}/mcp/${creds.apiKey}/`;
       findAppsNeedingReRegistration(configuredApps, expectedUrl).then(async (missingApps) => {
         if (missingApps.length === 0) {
           slog(`startup: all configured apps have edison-watch registered`);
@@ -737,8 +742,8 @@ app.whenReady().then(async () => {
         await applyAppIntegrations({
           serverAddress: setup.serverAddress ?? "",
           mcpBaseUrl,
-          apiKey,
-          edisonSecretKey: setup.edisonSecretKey,
+          apiKey: creds.apiKey,
+          edisonSecretKey: creds.edisonSecretKey,
           apps: missingApps,
         });
         slog(`startup: re-registered edison-watch for ${missingApps.join(", ")}`);
