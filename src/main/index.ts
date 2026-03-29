@@ -693,7 +693,9 @@ app.whenReady().then(async () => {
     createTray();
     startEventSubscription();
     startHookHealthMonitor();
-    injectAllHooks().catch((err) =>
+    // Await hook injection before starting quarantine monitor to avoid
+    // concurrent read-modify-write races on ~/.claude/settings.json
+    await injectAllHooks().catch((err) =>
       console.error("[HookInjection] Failed to inject hooks:", err),
     );
     startUpdateChecker();

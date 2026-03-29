@@ -425,13 +425,26 @@ export async function quarantineServer(server: DiscoveredMcpServer): Promise<Qua
   await fs.writeFile(disabledPath, JSON.stringify(disabledFile, null, 2), 'utf-8')
   console.log(`[MCP Quarantine] Added server "${configKey}" to ${disabledPath}`)
 
-  // Step 2: Remove from original config
+  // Step 2: Remove from original config using surgical jsonc edit to avoid
+  // clobbering concurrent writes to the same file (e.g. hook injection).
   // Wrapped in try/catch to rollback step 1 if this fails
   try {
-    const config = await readConfigFile(originalPath, server.client)
-    const servers = getServersFromConfig(config, server.client)
+    const raw = await fs.readFile(originalPath, 'utf-8')
+    const parsed = jsonc.parse(raw) as ConfigFileFormat
 
-    if (servers && configKey in servers) {
+    // Determine the JSON path to the server entry
+    const serversKey = server.client === 'zed'
+      ? ['assistant', 'mcp_servers']
+      : [getServersKey(server.client)]
+    const serverPath = [...serversKey, configKey]
+
+    // Check the server actually exists in the parsed config
+    const servers = server.client === 'zed'
+      ? parsed.assistant?.mcp_servers
+      : (parsed as Record<string, unknown>)[serversKey[0]] as Record<string, unknown> | undefined
+    const serverExists = servers && configKey in servers
+
+    if (serverExists) {
       // Create backup first
       if (existsSync(originalPath)) {
         const now = new Date()
@@ -441,12 +454,13 @@ export async function quarantineServer(server: DiscoveredMcpServer): Promise<Qua
         console.log(`[MCP Quarantine] Created backup: ${backupPath}`)
       }
 
-      // Delete the server entry
-      delete servers[configKey]
-      setServersInConfig(config, server.client, servers)
+      // Surgically remove only the target server key, preserving all other content
+      const edits = jsonc.modify(raw, serverPath, undefined, {
+        formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' }
+      })
+      const modified = jsonc.applyEdits(raw, edits)
 
-      // Write the modified config back
-      await fs.writeFile(originalPath, JSON.stringify(config, null, 2), 'utf-8')
+      await fs.writeFile(originalPath, modified, 'utf-8')
       console.log(`[MCP Quarantine] Removed server "${configKey}" from ${originalPath}`)
     } else {
       // Server already absent from config (likely removed between discovery and quarantine).
