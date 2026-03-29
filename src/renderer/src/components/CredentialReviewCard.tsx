@@ -407,7 +407,10 @@ export default function CredentialReviewCard({
         <button
           type="button"
           className="flex items-center gap-2 text-left w-full"
-          onClick={() => setCollapsed((v) => !v)}
+          onClick={() => {
+            if (!collapsed) setPopup(null); // clear popup when collapsing
+            setCollapsed((v) => !v);
+          }}
         >
           <svg
             viewBox="0 0 10 10"
@@ -432,20 +435,7 @@ export default function CredentialReviewCard({
           )}
         </button>
 
-        {!collapsed && (
-          <>
-        <div>
-          <p className="text-xs text-[var(--text-muted)]">
-            {secretCount > 0
-              ? `${secretCount} credential${secretCount === 1 ? "" : "s"} detected across ${servers.length} server${servers.length === 1 ? "" : "s"}. Review and adjust before submitting. These credentials will be encrypted.`
-              : `${servers.length} server${servers.length === 1 ? "" : "s"} found. No credentials detected — select text in any value to mark it as a secret.`}
-          </p>
-          <p className="text-[10px] text-[var(--text-muted)] mt-1 italic">
-            Select any part of a value to mark it as a credential. Only one credential per line.
-          </p>
-        </div>
-
-        {/* Selection popup */}
+        {/* Selection popup — rendered outside collapsed block so it persists */}
         {popup && (
           <div
             className="fixed z-50 flex items-center gap-1 px-2 py-1 rounded-md shadow-lg bg-[var(--bg-overlay)] border border-[var(--border)]"
@@ -485,6 +475,19 @@ export default function CredentialReviewCard({
           </div>
         )}
 
+        {!collapsed && (
+          <>
+        <div>
+          <p className="text-xs text-[var(--text-muted)]">
+            {secretCount > 0
+              ? `${secretCount} credential${secretCount === 1 ? "" : "s"} detected across ${servers.length} server${servers.length === 1 ? "" : "s"}. Review and adjust before submitting. These credentials will be encrypted.`
+              : `${servers.length} server${servers.length === 1 ? "" : "s"} found. No credentials detected — select text in any value to mark it as a secret.`}
+          </p>
+          <p className="text-[10px] text-[var(--text-muted)] mt-1 italic">
+            Select any part of a value to mark it as a credential. Only one credential per line.
+          </p>
+        </div>
+
         <div className="flex flex-col gap-1">
           {servers.map((server) => {
             const isExpanded = expandedServer === server.name;
@@ -520,6 +523,9 @@ export default function CredentialReviewCard({
                 {/* Expanded config details */}
                 {isExpanded && (
                   <div className="ml-5 mt-1 mb-2 rounded-md bg-[var(--bg-input)] p-3 text-xs font-mono overflow-x-auto">
+                    {entries.length === 0 ? (
+                      <p className="text-[var(--text-muted)] text-xs font-sans">No configurable values found for this server.</p>
+                    ) : (
                     <div className="flex flex-col gap-1.5">
                       {entries.map((entry) => {
                         const marking = serverMarkings.get(entry.entryId);
@@ -609,6 +615,7 @@ export default function CredentialReviewCard({
                         );
                       })}
                     </div>
+                    )}
                   </div>
                 )}
               </div>
