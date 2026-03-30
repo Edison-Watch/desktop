@@ -25,10 +25,12 @@ export interface DiscoveredServer {
 
 interface AppsStepProps {
   onNext: (selectedApps: string[], discoveredServers: DiscoveredServer[]) => void;
+  initialSelectedApps?: string[] | null;
 }
 
 export default function AppsStep({
   onNext,
+  initialSelectedApps,
 }: AppsStepProps): React.ReactNode {
   const [clients, setClients] = useState<DetectedClient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,6 +43,9 @@ export default function AppsStep({
   const scannedRef = useRef(false);
   const [showServers, setShowServers] = useState(false);
 
+  // null = first visit (all enabled by default), string[] = returning (restore selection)
+  const initialSelectedSet = useRef(initialSelectedApps != null ? new Set(initialSelectedApps) : null);
+
   const detectClients = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
@@ -50,9 +55,11 @@ export default function AppsStep({
         const prevMap = new Map(prev.map((c) => [c.id, c]));
         return detected.map((c) => {
           const existing = prevMap.get(c.id);
+          // On first load, use initialSelectedApps if provided; otherwise default to true
+          const defaultEnabled = initialSelectedSet.current ? initialSelectedSet.current.has(c.id) : true;
           return {
             ...c,
-            enabled: existing ? existing.enabled : true,
+            enabled: existing ? existing.enabled : defaultEnabled,
             // On refresh, clear cached config so it gets re-read when expanded
             configPreview: isRefresh ? null : (existing ? existing.configPreview : null),
             expanded: existing ? existing.expanded : false,

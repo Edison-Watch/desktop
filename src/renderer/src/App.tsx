@@ -17,7 +17,7 @@ export default function App(): React.ReactNode {
     setMaxVisitedStep((prev) => Math.max(prev, step));
   };
   const [setupDone, setSetupDone] = useState<boolean | null>(null);
-  const [selectedApps, setSelectedApps] = useState<string[]>([]);
+  const [selectedApps, setSelectedApps] = useState<string[] | null>(null);
   const [discoveredServers, setDiscoveredServers] = useState<DiscoveredServer[]>([]);
   const [modifiedConfigs, setModifiedConfigs] = useState<ModifiedConfig[]>([]);
   const [edisonSecretKey, setEdisonSecretKey] = useState("");
@@ -56,7 +56,7 @@ export default function App(): React.ReactNode {
   const handleRestart = () => {
     setModifiedConfigs([]);
     setEdisonSecretKey("");
-    setSelectedApps([]);
+    setSelectedApps(null);
     goToStep(1);
   };
 
@@ -87,7 +87,10 @@ export default function App(): React.ReactNode {
     >
       {currentStep === 0 && <WelcomeStep auth={auth} onNext={handleWelcomeNext} />}
       {currentStep === 1 && (
-        <AppsStep onNext={handleAppsNext} />
+        <AppsStep
+          onNext={handleAppsNext}
+          initialSelectedApps={selectedApps}
+        />
       )}
       {currentStep === 2 && (
         <EncryptionStep
@@ -95,7 +98,7 @@ export default function App(): React.ReactNode {
           apiBaseUrl={auth.apiBaseUrl}
           apiKey={auth.apiKey}
           userId={auth.userId}
-          selectedApps={selectedApps}
+          selectedApps={selectedApps ?? []}
           discoveredServers={discoveredServers}
           onNext={handleEncryptionNext}
         />
@@ -110,7 +113,7 @@ export default function App(): React.ReactNode {
           serverStatus={auth.serverStatus}
           modifiedConfigs={modifiedConfigs}
           edisonSecretKey={edisonSecretKey}
-          selectedApps={selectedApps}
+          selectedApps={selectedApps ?? []}
           onComplete={handleComplete}
           onRestart={handleRestart}
         />
