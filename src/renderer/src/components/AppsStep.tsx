@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button, Card } from "@edison/shared/ui";
 import { AppLogo } from "./AppLogo";
 
@@ -38,6 +38,7 @@ export default function AppsStep({
   const [scanning, setScanning] = useState(false);
   const [discoveredServers, setDiscoveredServers] = useState<DiscoveredServer[]>([]);
   const [scanned, setScanned] = useState(false);
+  const scannedRef = useRef(false);
   const [showServers, setShowServers] = useState(false);
 
   const detectClients = useCallback(async (isRefresh = false) => {
@@ -52,11 +53,36 @@ export default function AppsStep({
           return {
             ...c,
             enabled: existing ? existing.enabled : true,
-            configPreview: existing ? existing.configPreview : null,
+            // On refresh, clear cached config so it gets re-read when expanded
+            configPreview: isRefresh ? null : (existing ? existing.configPreview : null),
             expanded: existing ? existing.expanded : false,
           };
         });
       });
+      // On refresh, re-read config for any currently expanded clients
+      if (isRefresh) {
+        setClients((prev) =>
+          prev.map((c) => {
+            if (c.expanded) {
+              window.api.mcp.readConfig(c.configPath).then((content) => {
+                setClients((curr) =>
+                  curr.map((cc) => (cc.id === c.id ? { ...cc, configPreview: content ?? "(No config file yet)" } : cc)),
+                );
+              });
+            }
+            return c;
+          }),
+        );
+        // Also re-scan discovered servers if already scanned
+        if (scannedRef.current) {
+          try {
+            const all = await window.api.mcp.discover() as Array<{ name: string; client: string; source: string }>;
+            setDiscoveredServers(all);
+          } catch {
+            // Re-scan failed
+          }
+        }
+      }
     } catch {
       // Discovery failed
     } finally {
@@ -106,6 +132,7 @@ export default function AppsStep({
       console.log("[AppsStep] Discovered", all.length, "MCP servers");
       setDiscoveredServers(all);
       setScanned(true);
+      scannedRef.current = true;
     } catch {
       // Scan failed
     } finally {
