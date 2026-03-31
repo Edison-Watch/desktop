@@ -4,7 +4,7 @@ import { SeenServersStore } from "./seenServersStore";
 import { showQuarantinedServersDialog } from "./mcpServerActionDialog";
 import { fetchUserRole } from "./mcpServerSubmit";
 import { fetchAutoQuarantineEnabled } from "./domainConfig";
-import { getApiBaseUrl, getSetupData } from "./setupConfig";
+import { getApiBaseUrl, getCredentialsForEnv } from "./setupConfig";
 
 const LOG_FILE = "/tmp/ew-startup.log";
 import { appendFileSync } from "fs";
@@ -35,14 +35,14 @@ export function getAutoQuarantineEnabled(): boolean {
 
 export async function startQuarantineMonitorIfEnabled(): Promise<void> {
   const apiBaseUrl = getApiBaseUrl();
-  const setupData = getSetupData();
-  slog(`[Quarantine] startQuarantineMonitorIfEnabled: apiBaseUrl=${apiBaseUrl}, hasApiKey=${!!setupData.apiKey}`);
-  if (!apiBaseUrl || !setupData.apiKey) {
+  const creds = getCredentialsForEnv();
+  slog(`[Quarantine] startQuarantineMonitorIfEnabled: apiBaseUrl=${apiBaseUrl}, hasApiKey=${!!creds?.apiKey}`);
+  if (!apiBaseUrl || !creds?.apiKey) {
     slog("[Quarantine] Skipping — missing apiBaseUrl or apiKey");
     return;
   }
 
-  const enabled = await fetchAutoQuarantineEnabled(apiBaseUrl, setupData.apiKey);
+  const enabled = await fetchAutoQuarantineEnabled(apiBaseUrl, creds.apiKey);
   slog(`[Quarantine] fetchAutoQuarantineEnabled returned: ${enabled}`);
   if (!enabled) return;
   await startQuarantineMonitor();
@@ -61,11 +61,11 @@ async function startQuarantineMonitor(): Promise<void> {
     if (quarantinedEvents.length === 0) return;
 
     const apiBaseUrl = getApiBaseUrl();
-    const setup = getSetupData();
+    const creds = getCredentialsForEnv();
     let isAdminOrOwner = false;
-    if (apiBaseUrl && setup.apiKey) {
+    if (apiBaseUrl && creds?.apiKey) {
       try {
-        const role = await fetchUserRole(apiBaseUrl, setup.apiKey);
+        const role = await fetchUserRole(apiBaseUrl, creds.apiKey);
         isAdminOrOwner = role === "admin" || role === "owner";
       } catch { /* treat as regular user on error */ }
     }
@@ -116,11 +116,11 @@ let quarantinePollTimer: ReturnType<typeof setInterval> | null = null;
 
 async function fetchQuarantineFlag(): Promise<boolean | null> {
   const apiBaseUrl = getApiBaseUrl();
-  const setupData = getSetupData();
-  if (!apiBaseUrl || !setupData.apiKey) return null;
+  const creds = getCredentialsForEnv();
+  if (!apiBaseUrl || !creds?.apiKey) return null;
   try {
     const resp = await fetch(`${apiBaseUrl}/api/v1/user/domain-config`, {
-      headers: { Authorization: `Bearer ${setupData.apiKey}` },
+      headers: { Authorization: `Bearer ${creds.apiKey}` },
     });
     if (!resp.ok) return null;
     const config = (await resp.json()) as { auto_quarantine_other_mcp_servers?: boolean };
@@ -161,11 +161,11 @@ export async function runDebugQuarantine(): Promise<{ success: boolean; error?: 
     async function handleQuarantineEvents(events: unknown[]): Promise<void> {
       if (events.length === 0) return;
       const apiBaseUrl = getApiBaseUrl();
-      const setup = getSetupData();
+      const creds = getCredentialsForEnv();
       let isAdminOrOwner = false;
-      if (apiBaseUrl && setup.apiKey) {
+      if (apiBaseUrl && creds?.apiKey) {
         try {
-          const role = await fetchUserRole(apiBaseUrl, setup.apiKey);
+          const role = await fetchUserRole(apiBaseUrl, creds.apiKey);
           isAdminOrOwner = role === "admin" || role === "owner";
         } catch { /* treat as regular user */ }
       }
