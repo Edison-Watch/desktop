@@ -157,6 +157,11 @@ const api = {
       ipcRenderer.invoke("keychain:delete"),
   },
 
+  /** Developer: clear all app data and relaunch */
+  app: {
+    clearDataAndRestart: (): Promise<void> => ipcRenderer.invoke("app:clearDataAndRestart"),
+  },
+
   /** App version */
   getVersion: (): string => electronAPI.process.versions.electron ?? "",
 } as const;

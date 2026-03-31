@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  ipcMain,
   shell,
   session,
   Tray,
@@ -8,10 +9,11 @@ import {
   Notification,
   nativeImage,
   clipboard,
+  dialog,
 } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
 import { join } from "path";
-import { appendFileSync } from "fs";
+import { appendFileSync, unlinkSync } from "fs";
 
 const LOG_FILE = "/tmp/ew-startup.log";
 function slog(msg: string) {
@@ -88,21 +90,15 @@ import trayIconPath from "../../resources/icon_tray.png?asset";
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let approvalWindow: BrowserWindow | null = null;
-
-// ── Dev auth server (localhost OAuth callback for unpackaged dev builds) ─
 let devAuthServer: ReturnType<typeof createServer> | null = null;
 let devAuthCallbackUrl: string | null = null;
-
 let isRestarting = false; // suppress app.quit() during intentional restarts
 
 function startEventSubscription(): void {
   _startEventSubscription(handleQuarantineEnabled, handleQuarantineDisabled, () => {
-    // SSE reconnected — sync quarantine state to catch any events missed while disconnected
     pollQuarantineConfig().catch(() => {});
   });
 }
-
-// ── Tray ────────────────────────────────────────────────────────────
 
 function buildTrayMenuItems(): MenuItemConstructorOptions[] {
   const setupData = getSetupData();
@@ -323,11 +319,8 @@ function updateTrayMenu(): void {
   updateAppMenu();
 }
 
-// ── Application menu (always visible in native menu bar) ─────────────
-
 function buildAppMenu(): Electron.Menu {
   const currentEnv = getDebugEnvOverride() ?? getBuildDefaultEnv();
-
   const envSubmenu: MenuItemConstructorOptions[] = DEBUG_ENV_NAMES.map((name) => ({
     label: name === "dev" ? "dev (localhost)" : name,
     type: "radio" as const,
@@ -365,10 +358,13 @@ function buildAppMenu(): Electron.Menu {
     },
   }));
 
-  const developerItem: MenuItemConstructorOptions = {
-    label: "Developer",
-    submenu: [{ label: "Switch Environment", submenu: envSubmenu }],
-  };
+  const devSubmenu: MenuItemConstructorOptions[] = [
+    { label: "Switch Environment", submenu: envSubmenu },
+  ];
+  if (!app.isPackaged) {
+    devSubmenu.push({ type: "separator" }, { label: "Clear App Data & Restart", click: () => handleClearDataAndRestart() });
+  }
+  const developerItem: MenuItemConstructorOptions = { label: "Developer", submenu: devSubmenu };
 
   const template: MenuItemConstructorOptions[] = [
     ...(process.platform === "darwin"
@@ -440,8 +436,6 @@ function updateAppMenu(): void {
   Menu.setApplicationMenu(buildAppMenu());
 }
 
-// ── Logout / re-run wizard ──────────────────────────────────────────
-
 async function rerunWizard(): Promise<void> {
   markSetupIncomplete();
   isRestarting = true;
@@ -456,18 +450,40 @@ async function rerunWizard(): Promise<void> {
   }
 }
 
+function stopAllServices(): void {
+  stopServerStatusChecks(); stopUpdateChecker(); stopEventSubscription();
+  stopHookHealthMonitor(); stopQuarantineMonitor(); stopQuarantinePolling();
+  pendingApprovals.clear();
+}
+
 async function handleLogoutAndRestart(): Promise<void> {
   console.log("[Logout] Signing out...");
-  stopServerStatusChecks();
-  stopUpdateChecker();
-  stopEventSubscription();
-  stopHookHealthMonitor();
-  stopQuarantineMonitor();
-  stopQuarantinePolling();
-  pendingApprovals.clear();
+  stopAllServices();
   markSetupIncomplete();
   updateTrayMenu();
   await rerunWizard();
+}
+
+const CLEAR_DATA_FILES = ["setup.json", "accounts.json", ".personal-key.enc", "edison_debug_env.json", "seen-servers.json"];
+async function handleClearDataAndRestart(): Promise<void> {
+  const { response } = await dialog.showMessageBox({
+    type: "warning",
+    buttons: ["Cancel", "Clear & Restart"],
+    defaultId: 0, cancelId: 0,
+    title: "Clear App Data",
+    message: "This will delete all local config files and restart the app. This cannot be undone.",
+  });
+  if (response !== 1) return;
+  const userDataPath = app.getPath("userData");
+  slog(`[clear-data] Clearing app data at: ${userDataPath}`);
+  stopAllServices();
+  for (const file of CLEAR_DATA_FILES) {
+    try { unlinkSync(join(userDataPath, file)); slog(`[clear-data] Removed ${file}`); } catch { /* may not exist */ }
+  }
+  await session.defaultSession.clearStorageData();
+  slog("[clear-data] Relaunching app...");
+  app.relaunch();
+  app.exit(0);
 }
 
 // ── Window creation ─────────────────────────────────────────────────
@@ -687,6 +703,10 @@ app.whenReady().then(async () => {
     startQuarantinePolling,
   });
   slog("registerIpcHandlers ok");
+
+  if (!app.isPackaged) {
+    ipcMain.handle("app:clearDataAndRestart", () => handleClearDataAndRestart());
+  }
 
   if (isSetupComplete()) {
     slog("setup complete, creating tray");

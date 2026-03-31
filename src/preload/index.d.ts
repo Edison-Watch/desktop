@@ -104,6 +104,9 @@ interface EdisonAPI {
     load: () => Promise<string | null>;
     delete: () => Promise<{ ok: boolean }>;
   };
+  app: {
+    clearDataAndRestart: () => Promise<void>;
+  };
   getVersion: () => string;
 }
 
