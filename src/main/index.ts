@@ -733,7 +733,8 @@ app.whenReady().then(async () => {
     const mcpBaseUrl = getMcpBaseUrl();
     const creds = getCredentialsForEnv();
     if (mcpBaseUrl && creds?.apiKey) {
-      const configuredApps = setup.configuredApps?.length ? setup.configuredApps : ALL_SUPPORTED_APPS;
+      const rawApps = setup.configuredApps?.length ? setup.configuredApps : ALL_SUPPORTED_APPS;
+      const configuredApps = rawApps.filter(app => ALL_SUPPORTED_APPS.includes(app));
 
       // Claude Code: check via CLI (separate path since it uses `claude mcp get`)
       if (configuredApps.includes("claude-code")) {

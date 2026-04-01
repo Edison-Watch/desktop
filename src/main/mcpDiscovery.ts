@@ -16,7 +16,7 @@ export { getCursorWorkspaceStoragePath, getCursorProjectMcpPaths, getCursorPlugi
 export { getServerFingerprint } from './seenServersStore'
 export { getClaudeCoworkConfigPath, parseClaudeCoworkConfig } from './mcpDiscoveryCowork'
 export { getCursorStateDbPath, discoverCursorMarketplaceMcps } from './mcpDiscoveryCursorMarketplace'
-export { getVscodeStateDbPath, getVscodeInsidersStateDbPath, discoverVscodeStateMcps } from './mcpDiscoveryVscodeState'
+export { getVscodeStateDbPath, discoverVscodeStateMcps } from './mcpDiscoveryVscodeState'
 import { discoverClaudeCowork, deduplicateByNameAndConfig } from './mcpDiscoveryCowork'
 import { discoverCursorMarketplaceMcps } from './mcpDiscoveryCursorMarketplace'
 import { discoverVscodeStateMcps } from './mcpDiscoveryVscodeState'
@@ -25,7 +25,6 @@ import { discoverVscodeStateMcps } from './mcpDiscoveryVscodeState'
 // to additional MCP clients beyond VS Code.
 export type McpClientId =
   | 'vscode'
-  | 'vscode-insiders'
   | 'cursor'
   | 'claude-desktop'
   | 'claude-cowork'
@@ -96,23 +95,6 @@ export function getVscodeUserMcpPath(): string {
       )
     default:
       return join(homedir(), '.config', 'Code', 'User', 'mcp.json')
-  }
-}
-
-// VS Code Insiders file locations
-export function getVscodeInsidersUserMcpPath(): string {
-  switch (platform()) {
-    case 'darwin':
-      return join(homedir(), 'Library', 'Application Support', 'Code - Insiders', 'User', 'mcp.json')
-    case 'win32':
-      return join(
-        process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'),
-        'Code - Insiders',
-        'User',
-        'mcp.json'
-      )
-    default:
-      return join(homedir(), '.config', 'Code - Insiders', 'User', 'mcp.json')
   }
 }
 
@@ -246,7 +228,7 @@ export async function parseJetBrainsServersJson(
 // Exported for testing
 export async function parseVscodeMcpJson(
   filePath: string,
-  client: 'vscode' | 'vscode-insiders' = 'vscode'
+  client: 'vscode' = 'vscode'
 ): Promise<DiscoveredMcpServer[]> {
   const raw = await fs.readFile(filePath, 'utf-8')
   const json = JSON.parse(raw) as {
@@ -691,7 +673,6 @@ async function discoverZed(): Promise<DiscoveredMcpServer[]> {
 // JetBrains IDEs can have variant names (e.g. "IntelliJ IDEA CE.app").
 export const MAC_APP_NAMES: Record<string, string[]> = {
   vscode: ['Visual Studio Code.app'],
-  'vscode-insiders': ['Visual Studio Code - Insiders.app'],
   cursor: ['Cursor.app'],
   windsurf: ['Windsurf.app'],
   zed: ['Zed.app'],
@@ -721,17 +702,12 @@ export async function discoverMcpServers(opts: { includeRaw: true }): Promise<Di
 export async function discoverMcpServers(opts?: { includeRaw?: boolean }): Promise<DiscoveredMcpServer[] | DiscoveryResult> {
   const results: DiscoveredMcpServer[] = []
 
-  // VS Code (stable + Insiders) - user-level mcp.json files
-  for (const [path, client] of [
-    [getVscodeUserMcpPath(), 'vscode'],
-    [getVscodeInsidersUserMcpPath(), 'vscode-insiders'],
-  ] as const) {
-    try { await fs.access(path); results.push(...await parseVscodeMcpJson(path, client)) } catch { /* */ }
-  }
+  // VS Code - user-level mcp.json file
+  try { await fs.access(getVscodeUserMcpPath()); results.push(...await parseVscodeMcpJson(getVscodeUserMcpPath(), 'vscode')) } catch { /* */ }
 
-  // VS Code & Insiders state.vscdb — extension-provided MCP servers (marketplace)
-  for (const variant of ['vscode', 'vscode-insiders'] as const) {
-    const stateMcps = await discoverVscodeStateMcps(variant)
+  // VS Code state.vscdb — extension-provided MCP servers (marketplace)
+  {
+    const stateMcps = await discoverVscodeStateMcps('vscode')
     const known = new Set(results.map((s) => s.name.toLowerCase()))
     for (const mcp of stateMcps) {
       if (!known.has(mcp.name.toLowerCase())) results.push(mcp)

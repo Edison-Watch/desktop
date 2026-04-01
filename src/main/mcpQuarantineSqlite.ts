@@ -12,7 +12,7 @@ import { promises as fs } from 'fs'
 import { dirname, join } from 'path'
 import type { DiscoveredMcpServer, McpServerConfig } from './mcpDiscovery'
 import { getCursorStateDbPath } from './mcpDiscoveryCursorMarketplace'
-import { getVscodeStateDbPath, getVscodeInsidersStateDbPath } from './mcpDiscoveryVscodeState'
+import { getVscodeStateDbPath } from './mcpDiscoveryVscodeState'
 
 const SQLITE_TIMEOUT_MS = 5000
 
@@ -312,7 +312,7 @@ export async function quarantineMarketplaceServer(server: DiscoveredMcpServer): 
   let cacheData: Record<string, unknown> | undefined
 
   const isCursorDb = dbPath === getCursorStateDbPath()
-  const isVscodeDb = dbPath === getVscodeStateDbPath() || dbPath === getVscodeInsidersStateDbPath()
+  const isVscodeDb = dbPath === getVscodeStateDbPath()
 
   if (isCursorDb) {
     stateDbKey = 'anysphere.cursor-mcp'
@@ -346,7 +346,7 @@ export async function quarantineMarketplaceServer(server: DiscoveredMcpServer): 
 export async function restoreAllMarketplaceServers(): Promise<{ restored: number; errors: string[] }> {
   let restored = 0
   const errors: string[] = []
-  const stateDbPaths = [getCursorStateDbPath(), getVscodeStateDbPath(), getVscodeInsidersStateDbPath()]
+  const stateDbPaths = [getCursorStateDbPath(), getVscodeStateDbPath()]
 
   for (const dbPath of stateDbPaths) {
     const disabledPath = getMarketplaceDisabledPath(dbPath)

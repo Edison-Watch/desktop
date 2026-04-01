@@ -4,7 +4,6 @@ import { join } from "path";
 import { promises as fs } from "fs";
 import {
   getVscodeUserMcpPath,
-  getVscodeInsidersUserMcpPath,
   getClaudeDesktopConfigPath,
   getCursorConfigPath,
   getWindsurfConfigPath,
@@ -83,27 +82,6 @@ describe("Path Resolution Functions", () => {
           break;
         default:
           expect(path).toContain(".config/Code/User");
-      }
-    });
-  });
-
-  describe("getVscodeInsidersUserMcpPath", () => {
-    it("returns platform-specific VS Code Insiders mcp.json path", () => {
-      const path = getVscodeInsidersUserMcpPath();
-      expect(path.length).toBeGreaterThan(0);
-      expect(path).toMatch(/mcp\.json$/);
-
-      switch (platform()) {
-        case "darwin":
-          expect(path).toContain(
-            "Library/Application Support/Code - Insiders/User",
-          );
-          break;
-        case "win32":
-          expect(path).toMatch(/Code - Insiders.*User/);
-          break;
-        default:
-          expect(path).toContain(".config/Code - Insiders/User");
       }
     });
   });
@@ -200,7 +178,6 @@ describe("Path Resolution Functions", () => {
       const paths = getAllConfigPaths();
 
       expect(typeof paths.vscode).toBe("string");
-      expect(typeof paths.vscodeInsiders).toBe("string");
       expect(typeof paths.claudeDesktop).toBe("string");
       expect(typeof paths.cursor).toBe("string");
       expect(Array.isArray(paths.claudeCode)).toBe(true);
@@ -274,26 +251,6 @@ describe("Config Parsing Functions", () => {
       expect(servers).toHaveLength(0);
     });
 
-    it("parses VS Code Insiders mcp.json with vscode-insiders client", async () => {
-      const config = {
-        servers: {
-          "insiders-server": {
-            command: "npx",
-            args: ["-y", "@modelcontextprotocol/server-test"],
-          },
-        },
-      };
-
-      const filePath = await createTempConfig(
-        testTmpDir,
-        "vscode-insiders-mcp.json",
-        JSON.stringify(config),
-      );
-      const servers = await parseVscodeMcpJson(filePath, "vscode-insiders");
-
-      expect(servers).toHaveLength(1);
-      expect(servers[0].client).toBe("vscode-insiders");
-    });
   });
 
   describe("parseClaudeCodeSettingsJson", () => {

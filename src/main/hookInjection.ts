@@ -15,7 +15,6 @@ import { parse as parseJsonc } from 'jsonc-parser'
 import type { McpClientId } from './mcpDiscovery'
 import {
   getVscodeUserMcpPath,
-  getVscodeInsidersUserMcpPath,
   getCursorConfigPath,
   getWindsurfConfigPath,
   getClaudeCodeHomeJsonPath,
@@ -23,7 +22,6 @@ import {
 import { captureError } from './sentry'
 import {
   getVsCodeWorkspacePaths,
-  getVsCodeInsidersWorkspacePaths
 } from './mcpProjectPaths'
 import { ensureHookScript } from './hookInjectionCore'
 import {
@@ -102,41 +100,32 @@ export async function injectAllHooks(): Promise<HookInjectionResult[]> {
   }
 
   // VS Code — inject workspace task into each known workspace
-  let copilotHandled = false
-  for (const clientId of ['vscode', 'vscode-insiders'] as const) {
-    try {
-      const workspacePaths =
-        clientId === 'vscode'
-          ? await getVsCodeWorkspacePaths()
-          : await getVsCodeInsidersWorkspacePaths()
-      let anyInjected = false
-      let allExisted = true
-      for (const wsPath of workspacePaths) {
-        const injected = await injectVsCodeWorkspaceHook(wsPath)
-        if (injected) anyInjected = true
-        if (injected) allExisted = false
-      }
-
-      // Copilot agent hooks: shared ~/.copilot, associate with variant that has workspaces
-      // (or last variant as fallback for Insiders-only users)
-      const isLastVariant = clientId === 'vscode-insiders'
-      const copilotInstalled = !copilotHandled && isVsCodeCopilotInstalled() && (workspacePaths.length > 0 || isLastVariant)
-      if (copilotInstalled) {
-        copilotHandled = true
-        const copilotInjected = await injectVsCodeCopilotHook()
-        if (copilotInjected) anyInjected = true
-        if (copilotInjected) allExisted = false
-      }
-
-      if (workspacePaths.length > 0 || copilotInstalled) {
-        results.push({ client: clientId, installed: anyInjected, alreadyExists: allExisted })
-      }
-    } catch (err) {
-      captureError(err instanceof Error ? err : new Error(String(err)), {
-        client: clientId, operation: 'injectAllHooks', platform: platform()
-      })
-      results.push({ client: clientId, installed: false, alreadyExists: false, error: String(err) })
+  try {
+    const workspacePaths = await getVsCodeWorkspacePaths()
+    let anyInjected = false
+    let allExisted = true
+    for (const wsPath of workspacePaths) {
+      const injected = await injectVsCodeWorkspaceHook(wsPath)
+      if (injected) anyInjected = true
+      if (injected) allExisted = false
     }
+
+    // Copilot agent hooks: shared ~/.copilot (global, not workspace-specific)
+    const copilotInstalled = isVsCodeCopilotInstalled()
+    if (copilotInstalled) {
+      const copilotInjected = await injectVsCodeCopilotHook()
+      if (copilotInjected) anyInjected = true
+      if (copilotInjected) allExisted = false
+    }
+
+    if (workspacePaths.length > 0 || copilotInstalled) {
+      results.push({ client: 'vscode', installed: anyInjected, alreadyExists: allExisted })
+    }
+  } catch (err) {
+    captureError(err instanceof Error ? err : new Error(String(err)), {
+      client: 'vscode', operation: 'injectAllHooks', platform: platform()
+    })
+    results.push({ client: 'vscode', installed: false, alreadyExists: false, error: String(err) })
   }
 
   // Codex CLI
@@ -289,34 +278,26 @@ export async function removeAllHooks(): Promise<HookInjectionResult[]> {
   }
 
   // VS Code — remove workspace task + Copilot agent hooks
-  let copilotRemoveHandled = false
-  for (const clientId of ['vscode', 'vscode-insiders'] as const) {
-    try {
-      const workspacePaths =
-        clientId === 'vscode'
-          ? await getVsCodeWorkspacePaths()
-          : await getVsCodeInsidersWorkspacePaths()
-      for (const wsPath of workspacePaths) {
-        await removeVsCodeWorkspaceHook(wsPath)
-      }
-
-      // Copilot agent hooks: shared ~/.copilot, associate with variant that has workspaces
-      const isLastVariant = clientId === 'vscode-insiders'
-      const copilotInstalled = !copilotRemoveHandled && isVsCodeCopilotInstalled() && (workspacePaths.length > 0 || isLastVariant)
-      if (copilotInstalled) {
-        copilotRemoveHandled = true
-        await removeVsCodeCopilotHook()
-      }
-
-      if (workspacePaths.length > 0 || copilotInstalled) {
-        results.push({ client: clientId, installed: false, alreadyExists: false })
-      }
-    } catch (err) {
-      captureError(err instanceof Error ? err : new Error(String(err)), {
-        client: clientId, operation: 'removeAllHooks', platform: platform()
-      })
-      results.push({ client: clientId, installed: false, alreadyExists: false, error: String(err) })
+  try {
+    const workspacePaths = await getVsCodeWorkspacePaths()
+    for (const wsPath of workspacePaths) {
+      await removeVsCodeWorkspaceHook(wsPath)
     }
+
+    // Copilot agent hooks: shared ~/.copilot (global, not workspace-specific)
+    const copilotInstalled = isVsCodeCopilotInstalled()
+    if (copilotInstalled) {
+      await removeVsCodeCopilotHook()
+    }
+
+    if (workspacePaths.length > 0 || copilotInstalled) {
+      results.push({ client: 'vscode', installed: false, alreadyExists: false })
+    }
+  } catch (err) {
+    captureError(err instanceof Error ? err : new Error(String(err)), {
+      client: 'vscode', operation: 'removeAllHooks', platform: platform()
+    })
+    results.push({ client: 'vscode', installed: false, alreadyExists: false, error: String(err) })
   }
 
   if (isCodexInstalled()) {
@@ -502,23 +483,13 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
   results.push({ client: 'windsurf', installed: windsurfInstalled, hasHook: windsurfHasHook, hookCount: windsurfHasHook ? 1 : 0, totalHooks: windsurfTotal, mcpConnected: windsurfMcpConfigured && mcpServerAlive, mcpConfigured: windsurfMcpConfigured, mcpApplicable: true })
 
   // VS Code — report true if any known workspace has the hook OR Copilot hooks exist
-  const vsAppNames: Record<string, string[]> = {
-    vscode: ['Visual Studio Code.app'],
-    'vscode-insiders': ['Visual Studio Code - Insiders.app'],
-  }
-  let copilotStatusHandled = false
-  for (const clientId of ['vscode', 'vscode-insiders'] as const) {
-    if (!appBundleExists(vsAppNames[clientId])) {
-      results.push({ client: clientId, installed: false, hasHook: false, hookCount: 0, totalHooks: 1, mcpConnected: false, mcpConfigured: false, mcpApplicable: true })
-      continue
-    }
+  if (!appBundleExists(['Visual Studio Code.app'])) {
+    results.push({ client: 'vscode', installed: false, hasHook: false, hookCount: 0, totalHooks: 1, mcpConnected: false, mcpConfigured: false, mcpApplicable: true })
+  } else {
     let vsHookCount = 0
     let vsTotalHooks = 0
     try {
-      const workspacePaths =
-        clientId === 'vscode'
-          ? await getVsCodeWorkspacePaths()
-          : await getVsCodeInsidersWorkspacePaths()
+      const workspacePaths = await getVsCodeWorkspacePaths()
       if (workspacePaths.length > 0) vsTotalHooks++ // workspace task expected only if workspaces exist
       for (const wsPath of workspacePaths) {
         const tasksPath = join(wsPath, '.vscode', 'tasks.json')
@@ -533,11 +504,9 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
         } catch { /* unreadable; skip */ }
       }
 
-      // Copilot agent hooks: shared ~/.copilot, associate with variant that has workspaces
-      const isLastVariant = clientId === 'vscode-insiders'
-      const copilotInstalled = !copilotStatusHandled && isVsCodeCopilotInstalled() && (workspacePaths.length > 0 || isLastVariant)
+      // Copilot agent hooks: shared ~/.copilot (global, not workspace-specific)
+      const copilotInstalled = isVsCodeCopilotInstalled()
       if (copilotInstalled) {
-        copilotStatusHandled = true
         vsTotalHooks += 4 // copilot hooks: SessionStart, UserPromptSubmit, PreToolUse, Stop
         try {
           const copilotHooksPath = getVsCodeCopilotHooksPath()
@@ -553,13 +522,12 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
       }
 
       const installed = workspacePaths.length > 0 || copilotInstalled
-      const vsMcpPath = clientId === 'vscode' ? getVscodeUserMcpPath() : getVscodeInsidersUserMcpPath()
       const vsMcpConfigured = installed
-        ? await checkMcpEntry(vsMcpPath, 'servers', expectedMcpUrl ?? null)
+        ? await checkMcpEntry(getVscodeUserMcpPath(), 'servers', expectedMcpUrl ?? null)
         : false
-      results.push({ client: clientId, installed, hasHook: vsTotalHooks > 0 && vsHookCount === vsTotalHooks, hookCount: vsHookCount, totalHooks: vsTotalHooks, mcpConnected: vsMcpConfigured && mcpServerAlive, mcpConfigured: vsMcpConfigured, mcpApplicable: true })
+      results.push({ client: 'vscode', installed, hasHook: vsTotalHooks > 0 && vsHookCount === vsTotalHooks, hookCount: vsHookCount, totalHooks: vsTotalHooks, mcpConnected: vsMcpConfigured && mcpServerAlive, mcpConfigured: vsMcpConfigured, mcpApplicable: true })
     } catch {
-      results.push({ client: clientId, installed: false, hasHook: false, hookCount: 0, totalHooks: 1, mcpConnected: false, mcpConfigured: false, mcpApplicable: true })
+      results.push({ client: 'vscode', installed: false, hasHook: false, hookCount: 0, totalHooks: 1, mcpConnected: false, mcpConfigured: false, mcpApplicable: true })
     }
   }
 

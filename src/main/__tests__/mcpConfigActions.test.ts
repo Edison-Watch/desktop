@@ -261,7 +261,6 @@ describe("mcpConfigActions", () => {
         .spyOn(mcpConfigPaths, "getAllConfigPaths")
         .mockReturnValue({
           vscode: join(testDir, "vscode-mcp.json"),
-          vscodeInsiders: join(testDir, "vscode-insiders-mcp.json"),
           claudeDesktop: join(testDir, "claude-desktop.json"),
           claudeCowork: join(testDir, "claude-cowork.json"),
           cursor: join(testDir, "cursor-mcp.json"),
@@ -333,7 +332,6 @@ describe("mcpConfigActions", () => {
         .spyOn(mcpConfigPaths, "getAllConfigPaths")
         .mockReturnValue({
           vscode: join(testDir, "vscode-mcp.json"),
-          vscodeInsiders: join(testDir, "vscode-insiders-mcp.json"),
           claudeDesktop: join(testDir, "claude-desktop.json"),
           claudeCowork: join(testDir, "claude-cowork.json"),
           cursor: join(testDir, "cursor-mcp.json"),

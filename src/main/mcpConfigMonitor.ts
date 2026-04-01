@@ -111,7 +111,6 @@ export class McpConfigMonitor extends EventEmitter {
       ])
     this.configFiles = new Set([
       paths.vscode,
-      paths.vscodeInsiders,
       paths.claudeDesktop,
       paths.claudeCowork,
       paths.cursor,
@@ -678,8 +677,6 @@ export function getClientDisplayName(client: McpClientId): string {
   switch (client) {
     case 'vscode':
       return 'VS Code'
-    case 'vscode-insiders':
-      return 'VS Code Insiders'
     case 'cursor':
       return 'Cursor'
     case 'claude-desktop':

@@ -53,7 +53,7 @@ export interface ConfigFileFormat {
  * Check if a client supports JSONC (JSON with Comments).
  */
 function supportsJsonc(client: McpClientId): boolean {
-  return client === 'vscode' || client === 'vscode-insiders' || client === 'cursor'
+  return client === 'vscode' || client === 'cursor'
 }
 
 /**
@@ -93,7 +93,7 @@ export async function writeConfigFile(
 export function getServersKey(client: McpClientId): 'servers' | 'mcpServers' {
   // VS Code uses "servers", all others use "mcpServers"
   // Note: Zed uses assistant.mcp_servers which is handled separately
-  return client === 'vscode' || client === 'vscode-insiders' ? 'servers' : 'mcpServers'
+  return client === 'vscode' ? 'servers' : 'mcpServers'
 }
 
 /**
@@ -291,7 +291,7 @@ export async function replaceServerWithProxy(
 
   // Replace with Edison Watch proxy server
   // Keep the original server name but point to Edison Watch
-  if (server.client === 'vscode' || server.client === 'vscode-insiders') {
+  if (server.client === 'vscode') {
     // VS Code format
     servers[server.name] = {
       type: 'http',
@@ -523,7 +523,6 @@ export async function restoreAllQuarantinedServers(): Promise<{
 
   const allOriginalPaths = [...new Set([
     paths.vscode,
-    paths.vscodeInsiders,
     paths.claudeDesktop,
     paths.claudeCowork,
     paths.cursor,
@@ -632,7 +631,7 @@ function inferClientFromPath(configPath: string): McpClientId {
   if (lower.includes('.cursor')) return 'cursor'
   if (lower.includes('claude') && lower.includes('claude_desktop_config')) return 'claude-desktop'
   if (lower.includes('.claude')) return 'claude-code'
-  if (lower.includes('code - insiders')) return 'vscode-insiders'
+  if (lower.includes('code - insiders')) return 'vscode' // VS Code Insiders uses same format as VS Code
   if (lower.includes('code') && lower.includes('user') && lower.includes('mcp.json'))
     return 'vscode'
   if (lower.includes('windsurf') || lower.includes('codeium')) return 'windsurf'

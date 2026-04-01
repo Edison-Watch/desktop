@@ -19,7 +19,6 @@ const execFileAsync = promisify(execFile)
 import type { McpClientId, McpServerConfig } from './mcpDiscovery'
 import {
   getVscodeUserMcpPath,
-  getVscodeInsidersUserMcpPath,
   getCursorConfigPath,
   getCursorProjectMcpPaths,
   getClaudeDesktopConfigPath,
@@ -72,7 +71,6 @@ function buildEdisonEntry(
   // Cursor v2.5+ has known MCP detection bugs — explicit type avoids silent failures.
   const needsExplicitType: McpClientId[] = [
     'vscode',
-    'vscode-insiders',
     'claude-desktop',
     'cursor',
   ]
@@ -90,7 +88,6 @@ async function getPathForApp(
   // claude-code is handled separately via applyToClaudeCode() — not in this map
   const STATIC_MAP: Record<string, () => string> = {
     vscode: getVscodeUserMcpPath,
-    'vscode-insiders': getVscodeInsidersUserMcpPath,
     cursor: getCursorConfigPath,
     'claude-desktop': getClaudeDesktopConfigPath,
     'claude-cowork': getClaudeCoworkConfigPath,

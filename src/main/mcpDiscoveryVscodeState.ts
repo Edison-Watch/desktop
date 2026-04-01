@@ -32,23 +32,6 @@ export function getVscodeStateDbPath(): string {
   }
 }
 
-export function getVscodeInsidersStateDbPath(): string {
-  switch (platform()) {
-    case 'darwin':
-      return join(homedir(), 'Library', 'Application Support', 'Code - Insiders', 'User', 'globalStorage', 'state.vscdb')
-    case 'win32':
-      return join(
-        process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'),
-        'Code - Insiders',
-        'User',
-        'globalStorage',
-        'state.vscdb'
-      )
-    default:
-      return join(homedir(), '.config', 'Code - Insiders', 'User', 'globalStorage', 'state.vscdb')
-  }
-}
-
 // ── Discovery ────────────────────────────────────────────────────────────────
 
 interface ToolCacheExtensionServer {
@@ -79,9 +62,9 @@ interface VscodeToolCache {
  * in extensionServers but are actively cached (e.g., from extension API registrations).
  */
 export async function discoverVscodeStateMcps(
-  client: 'vscode' | 'vscode-insiders' = 'vscode'
+  client: 'vscode' = 'vscode'
 ): Promise<DiscoveredMcpServer[]> {
-  const dbPath = client === 'vscode' ? getVscodeStateDbPath() : getVscodeInsidersStateDbPath()
+  const dbPath = getVscodeStateDbPath()
   const results: DiscoveredMcpServer[] = []
 
   try {

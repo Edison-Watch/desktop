@@ -103,7 +103,6 @@ export function buildRemovalMap(
 /** Short contiguous alias for each client, used in name suffixes for same-name conflicts. */
 export const CLIENT_SHORT_ALIAS: Record<string, string> = {
   'vscode': 'vscode',
-  'vscode-insiders': 'vsinsiders',
   'cursor': 'cursor',
   'claude-desktop': 'cdesktop',
   'claude-cowork': 'ccowork',

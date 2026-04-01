@@ -38,7 +38,6 @@ const CLIENT_NAMES: Record<string, string> = {
   windsurf: "Windsurf",
   codex: "Codex CLI",
   vscode: "VS Code",
-  "vscode-insiders": "VS Code Insiders",
 };
 
 type ClientStatus = "connected" | "partial-setup" | "installed" | "missing";

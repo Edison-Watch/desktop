@@ -128,14 +128,12 @@ export function AppLogo({ id, name }: AppLogoProps) {
   }
 
   // VS Code — icon extracted from the installed macOS app bundle (64×64 @2×)
-  if (id === "vscode" || id === "vscode-insiders") {
+  if (id === "vscode") {
     return (
       <img
         src={vscodePng}
         alt={name}
         className="h-8 w-8 shrink-0 rounded-lg object-contain"
-        // Green hue shift for Insiders variant (~#24BFA5 teal-green)
-        style={id === "vscode-insiders" ? { filter: "hue-rotate(-40deg) saturate(0.9)" } : undefined}
       />
     );
   }

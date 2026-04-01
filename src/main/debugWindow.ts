@@ -9,7 +9,6 @@ import {
   getCursorProjectMcpPaths,
   getCursorPluginMcpPaths,
   getVsCodeWorkspacePaths,
-  getVsCodeInsidersWorkspacePaths,
   getClaudeCodeProjectMcpPaths,
 } from './mcpProjectPaths'
 
@@ -21,11 +20,10 @@ interface ProjectPathGroup {
 }
 
 async function gatherProjectPaths(): Promise<ProjectPathGroup[]> {
-  const [cursor, cursorPlugins, vscode, vscodeInsiders, claudeCode] = await Promise.all([
+  const [cursor, cursorPlugins, vscode, claudeCode] = await Promise.all([
     getCursorProjectMcpPaths(),
     getCursorPluginMcpPaths(),
     getVsCodeWorkspacePaths(),
-    getVsCodeInsidersWorkspacePaths(),
     getClaudeCodeProjectMcpPaths(),
   ])
   return [
@@ -33,7 +31,6 @@ async function gatherProjectPaths(): Promise<ProjectPathGroup[]> {
     { label: 'Cursor Project MCP Configs', paths: cursor },
     { label: 'Cursor Plugin MCP Configs', paths: cursorPlugins },
     { label: 'VS Code Workspaces', paths: vscode },
-    { label: 'VS Code Insiders Workspaces', paths: vscodeInsiders },
   ]
 }
 

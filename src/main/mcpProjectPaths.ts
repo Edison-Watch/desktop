@@ -209,29 +209,6 @@ export function getVsCodeWorkspaceStoragePath(): string {
   }
 }
 
-export function getVsCodeInsidersWorkspaceStoragePath(): string {
-  switch (platform()) {
-    case 'darwin':
-      return join(
-        homedir(),
-        'Library',
-        'Application Support',
-        'Code - Insiders',
-        'User',
-        'workspaceStorage'
-      )
-    case 'win32':
-      return join(
-        process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'),
-        'Code - Insiders',
-        'User',
-        'workspaceStorage'
-      )
-    default:
-      return join(homedir(), '.config', 'Code - Insiders', 'User', 'workspaceStorage')
-  }
-}
-
 /**
  * Scan VS Code's workspaceStorage for local project folders and return their root paths.
  * These are used for injecting workspace-level hook tasks.
@@ -262,10 +239,6 @@ async function getWorkspaceRootsFromStorage(storageDir: string): Promise<string[
 
 export async function getVsCodeWorkspacePaths(): Promise<string[]> {
   return getWorkspaceRootsFromStorage(getVsCodeWorkspaceStoragePath())
-}
-
-export async function getVsCodeInsidersWorkspacePaths(): Promise<string[]> {
-  return getWorkspaceRootsFromStorage(getVsCodeInsidersWorkspaceStoragePath())
 }
 
 /**

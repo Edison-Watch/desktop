@@ -28,10 +28,6 @@ export const VSCode: Story = {
   args: { id: 'vscode', name: 'Visual Studio Code' },
 };
 
-export const VSCodeInsiders: Story = {
-  args: { id: 'vscode-insiders', name: 'VS Code Insiders' },
-};
-
 export const Windsurf: Story = {
   args: { id: 'windsurf', name: 'Windsurf' },
 };
@@ -56,7 +52,6 @@ export const AllLogos: Story = {
         { id: 'claude-code', name: 'Claude Code' },
         { id: 'cursor', name: 'Cursor' },
         { id: 'vscode', name: 'VS Code' },
-        { id: 'vscode-insiders', name: 'VS Code Insiders' },
         { id: 'windsurf', name: 'Windsurf' },
         { id: 'zed', name: 'Zed' },
         { id: 'intellij', name: 'IntelliJ' },

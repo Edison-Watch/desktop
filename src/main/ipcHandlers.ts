@@ -13,7 +13,6 @@ import {
   getJetBrainsMcpConfigPaths,
   macAppExists,
   getVscodeUserMcpPath,
-  getVscodeInsidersUserMcpPath,
   getCursorConfigPath,
   getClaudeCodeUserSettingsPath,
   getWindsurfConfigPath,
@@ -197,7 +196,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
           mcpBaseUrl,
           apiKey: creds.apiKey,
           edisonSecretKey: creds.edisonSecretKey,
-          apps: newSetup.configuredApps?.length ? newSetup.configuredApps : ALL_SUPPORTED_APPS,
+          apps: (newSetup.configuredApps?.length ? newSetup.configuredApps : ALL_SUPPORTED_APPS).filter(app => ALL_SUPPORTED_APPS.includes(app)),
         });
         console.log("[accounts:switch] MCP integrations updated for new account");
       } catch (err) {
@@ -275,8 +274,6 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
       name: string;
       getPath: () => Promise<string>;
       // Override detection dir (defaults to dirname of configPath).
-      // VS Code Insiders: check Code - Insiders/ app data dir, not User/ subdir,
-      // since the User/ folder only exists after first launch.
       detectDir?: (configPath: string) => string;
     }> = [
       {
@@ -284,12 +281,6 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
         name: "VS Code",
         getPath: () => Promise.resolve(getVscodeUserMcpPath()),
         detectDir: (configPath) => dirname(dirname(configPath)), // ~/Library/Application Support/Code/
-      },
-      {
-        id: "vscode-insiders",
-        name: "VS Code Insiders",
-        getPath: () => Promise.resolve(getVscodeInsidersUserMcpPath()),
-        detectDir: (configPath) => dirname(dirname(configPath)), // ~/Library/Application Support/Code - Insiders/
       },
       { id: "cursor", name: "Cursor", getPath: () => Promise.resolve(getCursorConfigPath()) },
       { id: "claude-code", name: "Claude Code", getPath: () => Promise.resolve(getClaudeCodeUserSettingsPath()) },

@@ -4,7 +4,6 @@
  */
 import {
   getVscodeUserMcpPath,
-  getVscodeInsidersUserMcpPath,
   getClaudeDesktopConfigPath,
   getCursorConfigPath,
   getCursorWorkspaceStoragePath,
@@ -21,7 +20,6 @@ import { getCodexConfigPath } from './hookInjectionClients'
 /** All config paths that should be monitored for changes. */
 export interface McpConfigPaths {
   vscode: string
-  vscodeInsiders: string
   claudeDesktop: string
   claudeCowork: string
   cursor: string
@@ -35,7 +33,6 @@ export interface McpConfigPaths {
 export function getAllConfigPaths(): McpConfigPaths {
   return {
     vscode: getVscodeUserMcpPath(),
-    vscodeInsiders: getVscodeInsidersUserMcpPath(),
     claudeDesktop: getClaudeDesktopConfigPath(),
     claudeCowork: getClaudeCoworkConfigPath(),
     cursor: getCursorConfigPath(),

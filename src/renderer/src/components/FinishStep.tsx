@@ -3,7 +3,6 @@ import { Button, Card, Badge } from "@edison/shared/ui";
 
 const APP_ID_TO_NAME: Record<string, string> = {
   vscode: "VS Code",
-  "vscode-insiders": "VS Code Insiders",
   cursor: "Cursor",
   "claude-code": "Claude Code",
   "claude-desktop": "Claude Desktop",

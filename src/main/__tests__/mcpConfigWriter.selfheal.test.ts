@@ -24,8 +24,6 @@ vi.mock("../mcpDiscovery", async (importOriginal) => {
   return {
     ...actual,
     getVscodeUserMcpPath: () => mockPaths.vscode ?? "/tmp/nope",
-    getVscodeInsidersUserMcpPath: () =>
-      mockPaths["vscode-insiders"] ?? "/tmp/nope",
     getCursorConfigPath: () => mockPaths.cursor ?? "/tmp/nope",
     getClaudeDesktopConfigPath: () =>
       mockPaths["claude-desktop"] ?? "/tmp/nope",
@@ -133,7 +131,7 @@ describe("isEdisonWatchRegistered", () => {
   });
 
   // --- Parameterized: apps using `servers` key (JSONC) ---
-  describe.each(["vscode", "vscode-insiders"])("%s (servers key, JSONC)", (appId) => {
+  describe.each(["vscode"])("%s (servers key, JSONC)", (appId) => {
     it("returns false when config file does not exist", async () => {
       mockPaths[appId] = join(testDir, "nonexistent", "mcp.json");
       expect(await isEdisonWatchRegistered(appId)).toBe(false);
