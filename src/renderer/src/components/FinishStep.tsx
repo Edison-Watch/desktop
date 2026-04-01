@@ -49,6 +49,7 @@ export default function FinishStep({
   const [redoingPaths, setRedoingPaths] = useState<Set<string>>(new Set());
   // Updated backup paths after redo (re-apply creates a new backup)
   const [updatedBackupPaths, setUpdatedBackupPaths] = useState<Map<string, string>>(new Map());
+  const [showUndoSection, setShowUndoSection] = useState(false);
 
   const handleOpenDashboard = async () => {
     let dashUrl = apiBaseUrl.replace(/\/$/, "");
@@ -215,62 +216,50 @@ export default function FinishStep({
         </div>
       </Card>
 
-      {/* Modified configs summary with per-client undo */}
+      {/* Modified configs summary */}
       {modifiedConfigs.length > 0 && (
         <Card>
           <p className="text-xs font-medium text-[var(--text-muted)] mb-3">
             Configuration changes applied
           </p>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1">
             {modifiedConfigs.map((entry) => {
               const reverted = revertedPaths.has(entry.configPath);
-              const reverting = revertingPaths.has(entry.configPath);
-              const redoing = redoingPaths.has(entry.configPath);
-              const currentBackupPath = updatedBackupPaths.get(entry.configPath) ?? entry.backupPath;
               return (
-                <div key={entry.configPath} className="flex items-center justify-between gap-3 py-1">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${reverted ? "bg-[var(--text-muted)]" : "bg-[var(--accent)]"}`} />
-                    <span className={`text-sm text-[var(--text-primary)] ${reverted ? "line-through opacity-50" : ""}`}>
-                      {APP_ID_TO_NAME[entry.appId] ?? entry.appId}
-                    </span>
-                    {reverted && (
-                      <span className="text-[11px] text-[var(--text-muted)]">reverted</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {reverted && (
-                      <button
-                        type="button"
-                        disabled={redoing}
-                        onClick={() => handleRedoOne(entry.appId, entry.configPath)}
-                        className="text-xs text-[var(--accent)]/70 hover:text-[var(--accent)] transition-colors disabled:opacity-50"
-                      >
-                        {redoing ? "Redoing…" : "Redo"}
-                      </button>
-                    )}
-                    {!reverted && (currentBackupPath || entry.appId === "claude-code") && (
-                      <button
-                        type="button"
-                        disabled={reverting}
-                        onClick={() => handleUndoOne(entry.configPath, currentBackupPath, entry.appId)}
-                        className="text-xs text-[var(--danger)]/70 hover:text-[var(--danger)] transition-colors disabled:opacity-50"
-                      >
-                        {reverting ? "Undoing…" : "Undo"}
-                      </button>
-                    )}
-                  </div>
+                <div key={entry.configPath} className="flex items-center gap-2 py-0.5">
+                  {reverted ? (
+                    <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" aria-hidden="true">
+                      <path d="M4 8h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" aria-hidden="true">
+                      <path d="M3.5 8.5l3 3 6-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                  <span className={`text-sm text-[var(--text-primary)] ${reverted ? "line-through opacity-50" : ""}`}>
+                    {APP_ID_TO_NAME[entry.appId] ?? entry.appId}
+                  </span>
                 </div>
               );
             })}
           </div>
-          <button
-            type="button"
-            className="mt-3 text-xs text-[var(--accent-muted)] hover:text-[var(--accent)] transition-colors"
-            onClick={() => setShowConfigDetails((v) => !v)}
-          >
-            {showConfigDetails ? "Hide details" : "Show details"}
-          </button>
+          <div className="mt-3 flex items-center gap-3 text-[10px] text-[var(--text-muted)]/60">
+            <button
+              type="button"
+              className="hover:text-[var(--text-muted)] transition-colors"
+              onClick={() => setShowConfigDetails((v) => !v)}
+            >
+              {showConfigDetails ? "− Hide details" : "⋯ Details"}
+            </button>
+            <span className="opacity-30">|</span>
+            <button
+              type="button"
+              className="hover:text-[var(--text-muted)] transition-colors"
+              onClick={() => setShowUndoSection((v) => !v)}
+            >
+              {showUndoSection ? "− Hide undo options" : "↩ Undo options"}
+            </button>
+          </div>
           {showConfigDetails && (
             <div className="mt-3 flex flex-col gap-3 pt-3 border-t border-[var(--border)]/50">
               {modifiedConfigs.map((entry) => (
@@ -288,6 +277,64 @@ export default function FinishStep({
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Collapsible undo section */}
+          {showUndoSection && (
+            <div className="mt-3 flex flex-col gap-1.5 pt-3 border-t border-[var(--border)]/50">
+              {modifiedConfigs.map((entry) => {
+                const reverted = revertedPaths.has(entry.configPath);
+                const reverting = revertingPaths.has(entry.configPath);
+                const redoing = redoingPaths.has(entry.configPath);
+                const currentBackupPath = updatedBackupPaths.get(entry.configPath) ?? entry.backupPath;
+                return (
+                  <div key={entry.configPath} className="flex items-center justify-between gap-3 py-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${reverted ? "bg-[var(--text-muted)]" : "bg-[var(--accent)]"}`} />
+                      <span className={`text-xs text-[var(--text-primary)] ${reverted ? "line-through opacity-50" : ""}`}>
+                        {APP_ID_TO_NAME[entry.appId] ?? entry.appId}
+                      </span>
+                      {reverted && (
+                        <span className="text-[11px] text-[var(--text-muted)]">reverted</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {reverted && (
+                        <button
+                          type="button"
+                          disabled={redoing}
+                          onClick={() => handleRedoOne(entry.appId, entry.configPath)}
+                          className="text-xs text-[var(--accent)]/70 hover:text-[var(--accent)] transition-colors disabled:opacity-50"
+                        >
+                          {redoing ? "Redoing…" : "Redo"}
+                        </button>
+                      )}
+                      {!reverted && (currentBackupPath || entry.appId === "claude-code") && (
+                        <button
+                          type="button"
+                          disabled={reverting}
+                          onClick={() => handleUndoOne(entry.configPath, currentBackupPath, entry.appId)}
+                          className="text-xs text-[var(--danger)]/70 hover:text-[var(--danger)] transition-colors disabled:opacity-50"
+                        >
+                          {reverting ? "Undoing…" : "Undo"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {activeConfigs.length > 0 && (
+                <Button
+                  variant="ghost"
+                  onClick={handleUndoAll}
+                  loading={revertingAll}
+                  className="w-full mt-2 text-[var(--danger)]"
+                  size="sm"
+                >
+                  Undo All Configuration Changes
+                </Button>
+              )}
             </div>
           )}
         </Card>
@@ -311,17 +358,6 @@ export default function FinishStep({
         >
           Open Dashboard
         </Button>
-        {/* Undo all remaining configs */}
-        {activeConfigs.length > 0 && (
-          <Button
-            variant="ghost"
-            onClick={handleUndoAll}
-            loading={revertingAll}
-            className="w-full text-[var(--danger)]"
-          >
-            Undo All Configuration Changes
-          </Button>
-        )}
       </div>
     </div>
   );
