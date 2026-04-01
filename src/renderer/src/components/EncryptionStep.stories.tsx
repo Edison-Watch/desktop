@@ -19,7 +19,7 @@ const BASE_PROPS = {
   userId: 'demo-user-1',
   selectedApps: ['cursor', 'claude-code'],
   discoveredServers: [
-    { name: '@modelcontextprotocol/server-filesystem', client: 'cursor', source: 'mcp_config.json' },
+    { name: 'notion', client: 'cursor', source: 'mcp_config.json' },
     { name: '@modelcontextprotocol/server-github', client: 'claude-code', source: 'mcp_config.json' },
   ],
   onNext: () => {},

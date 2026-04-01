@@ -320,7 +320,7 @@ describe("mcpConfigActions", () => {
         servers: {
           "notion": {
             command: "npx",
-            args: ["-y", "@notionhq/notion-mcp-server"],
+            args: ["-y", "mcp-remote", "https://mcp.notion.so/mcp"],
             originalFile: codexConfigPath,
             quarantinedAt: "2026-03-20T00:00:00Z",
           },
