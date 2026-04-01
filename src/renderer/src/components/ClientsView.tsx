@@ -136,6 +136,7 @@ export default function ClientsView(): React.ReactNode {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedCategory, setExpandedCategory] = useState<ClientStatus | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -161,6 +162,22 @@ export default function ClientsView(): React.ReactNode {
       setLoading(false);
     }
   }, []);
+
+  /** Re-inject hooks and refresh status. Does NOT re-apply MCP configs
+   *  (that's destructive and handled by setup/account-switch). */
+  const refreshIntegrations = useCallback(async () => {
+    if (refreshing) return; // debounce
+    setRefreshing(true);
+    try {
+      // Re-inject any missing hooks (non-destructive — skips if already present)
+      await window.api.mcp.injectHooks();
+    } catch (err) {
+      console.error("[ClientsView] Failed to refresh hooks:", err);
+    } finally {
+      await refresh();
+      setRefreshing(false);
+    }
+  }, [refresh, refreshing]);
 
   useEffect(() => {
     refresh();
@@ -202,6 +219,27 @@ export default function ClientsView(): React.ReactNode {
     <div className="flex flex-col gap-3">
       {/* Summary */}
       <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={refreshing}
+          onClick={refreshIntegrations}
+          title="Re-check hooks and refresh client status"
+          className="flex items-center gap-1.5 rounded-md bg-[var(--accent)]/10 border border-[var(--accent)]/20 px-2 py-1 text-[11px] font-medium text-[var(--accent)] hover:bg-[var(--accent)]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 16 16"
+            fill="currentColor"
+            className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`}
+          >
+            <path
+              fillRule="evenodd"
+              d="M13.836 2.477a.75.75 0 0 1 .75.75v3.182a.75.75 0 0 1-.75.75h-3.182a.75.75 0 0 1 0-1.5h1.37l-.84-.841a4.5 4.5 0 0 0-7.08.681.75.75 0 0 1-1.3-.75 6 6 0 0 1 9.44-.908l.84.84V3.227a.75.75 0 0 1 .75-.75Zm-.911 7.5A.75.75 0 0 1 13.199 11a6 6 0 0 1-9.44.908l-.84-.84v1.456a.75.75 0 0 1-1.5 0V9.342a.75.75 0 0 1 .75-.75h3.182a.75.75 0 0 1 0 1.5H3.98l.841.841a4.5 4.5 0 0 0 7.08-.681.75.75 0 0 1 1.025-.274Z"
+              clipRule="evenodd"
+            />
+          </svg>
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
         {([
           { status: "connected" as ClientStatus, items: connected, label: "connected",
             bg: "bg-emerald-500/10", text: "text-emerald-400",

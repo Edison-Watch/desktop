@@ -372,9 +372,10 @@ async function checkMcpEntry(
     const servers = json[serversKey] as Record<string, { url?: string }> | undefined
     const entry = servers?.['edison-watch']
     if (!entry?.url) return false
-    // Normalize trailing slashes for comparison
-    const normalizedExpected = expectedMcpUrl.replace(/\/+$/, '')
-    const normalizedActual = entry.url.replace(/\/+$/, '')
+    // Strip query string (?client= tag) and trailing slashes for comparison
+    const strip = (u: string) => u.replace(/\?.*$/, '').replace(/\/+$/, '')
+    const normalizedExpected = strip(expectedMcpUrl)
+    const normalizedActual = strip(entry.url)
     return normalizedActual === normalizedExpected
   } catch {
     return false
@@ -401,8 +402,10 @@ async function checkCodexMcpEntry(
     if (!urlMatch) return false
     // Unescape TOML basic string sequences to match the raw URL that was escaped on write
     const unescaped = urlMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\')
-    const normalizedExpected = expectedMcpUrl.replace(/\/+$/, '')
-    const normalizedActual = unescaped.replace(/\/+$/, '')
+    // Strip query string (?client= tag) and trailing slashes for comparison
+    const strip = (u: string) => u.replace(/\?.*$/, '').replace(/\/+$/, '')
+    const normalizedExpected = strip(expectedMcpUrl)
+    const normalizedActual = strip(unescaped)
     return normalizedActual === normalizedExpected
   } catch {
     return false

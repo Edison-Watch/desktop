@@ -38,7 +38,7 @@ import { showFeedbackWindow } from "./feedbackWindow";
 import { showServerRegistrationDialog } from "./mcpServerActionDialog";
 import { showUpdateKeysWindow } from "./updateKeysWindow";
 import { fetchUserRole } from "./mcpServerSubmit";
-import { applyAppIntegrations, findAppsNeedingReRegistration } from "./mcpConfigWriter";
+import { applyAppIntegrations, findAppsMissingClientTag, findAppsNeedingReRegistration } from "./mcpConfigWriter";
 import {
   initQuarantineManager,
   getAutoQuarantineEnabled,
@@ -733,7 +733,7 @@ app.whenReady().then(async () => {
     const mcpBaseUrl = getMcpBaseUrl();
     const creds = getCredentialsForEnv();
     if (mcpBaseUrl && creds?.apiKey) {
-      const configuredApps = setup.configuredApps ?? [];
+      const configuredApps = setup.configuredApps?.length ? setup.configuredApps : ALL_SUPPORTED_APPS;
 
       // Claude Code: check via CLI (separate path since it uses `claude mcp get`)
       if (configuredApps.includes("claude-code")) {
@@ -757,20 +757,19 @@ app.whenReady().then(async () => {
       // All other apps: check config files for missing or stale edison-watch entry
       const expectedUrl = `${mcpBaseUrl.replace(/\/$/, "")}/mcp/${creds.apiKey}/`;
       findAppsNeedingReRegistration(configuredApps, expectedUrl).then(async (missingApps) => {
-        if (missingApps.length === 0) {
-          slog(`startup: all configured apps have edison-watch registered`);
-          return;
-        }
+        if (missingApps.length === 0) { slog("startup: all configured apps have edison-watch registered"); return; }
         slog(`startup: edison-watch missing from ${missingApps.join(", ")}, re-registering`);
-        await applyAppIntegrations({
-          serverAddress: setup.serverAddress ?? "",
-          mcpBaseUrl,
-          apiKey: creds.apiKey,
-          edisonSecretKey: creds.edisonSecretKey,
-          apps: missingApps,
-        });
+        await applyAppIntegrations({ serverAddress: setup.serverAddress ?? "", mcpBaseUrl, apiKey: creds.apiKey, edisonSecretKey: creds.edisonSecretKey, apps: missingApps });
         slog(`startup: re-registered edison-watch for ${missingApps.join(", ")}`);
       }).catch((err) => console.error("[Startup] Failed to check/re-register app MCP configs:", err));
+
+      // One-time migration: add ?client= tag to URLs missing it (includes claude-code)
+      findAppsMissingClientTag(configuredApps).then(async (apps) => {
+        if (apps.length === 0) return;
+        slog(`startup: adding client tag to ${apps.join(", ")}`);
+        await applyAppIntegrations({ serverAddress: setup.serverAddress ?? "", mcpBaseUrl, apiKey: creds.apiKey, edisonSecretKey: creds.edisonSecretKey, apps });
+        slog(`startup: client tag migration done for ${apps.join(", ")}`);
+      }).catch((err) => console.error("[Startup] client tag migration failed:", err));
     }
 
     slog("tray/subscription/monitor ok");
@@ -787,7 +786,6 @@ app.whenReady().then(async () => {
     }
   });
 });
-
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin" && !isRestarting && !tray) {

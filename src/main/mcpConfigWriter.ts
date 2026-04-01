@@ -410,11 +410,18 @@ async function applyToApp(
 
 // ── Health check ─────────────────────────────────────────────────────
 
+/** Strip query string from a URL for base-URL comparison. */
+function stripQueryString(url: string): string {
+  const idx = url.indexOf('?')
+  return idx >= 0 ? url.substring(0, idx) : url
+}
+
 /**
  * Check whether edison-watch is registered in a given app's MCP config
  * with the correct URL. Returns true only if the entry exists AND the URL
- * matches the expected value. This catches both missing entries and stale
- * entries left over from a previous environment or account.
+ * matches the expected value (ignoring ?client= query params added per-app).
+ * This catches both missing entries and stale entries left over from a
+ * previous environment or account.
  *
  * Claude Code is deferred to the caller (uses CLI-based check).
  * Codex uses TOML section header + URL matching.
@@ -438,7 +445,7 @@ export async function isEdisonWatchRegistered(
       if (!mcpServers) return false
       const edisonWatch = mcpServers['edison-watch'] as Record<string, unknown> | undefined
       if (!edisonWatch || typeof edisonWatch.url !== 'string') return false
-      if (expectedUrl && edisonWatch.url !== expectedUrl) return false
+      if (expectedUrl && stripQueryString(edisonWatch.url) !== stripQueryString(expectedUrl)) return false
       return true
     } catch {
       return false
@@ -455,7 +462,7 @@ export async function isEdisonWatchRegistered(
     if (servers == null || !('edison-watch' in servers)) return false
     if (expectedUrl) {
       const entry = servers['edison-watch'] as Record<string, unknown>
-      if (entry.url !== expectedUrl) return false
+      if (stripQueryString(entry.url as string) !== stripQueryString(expectedUrl)) return false
     }
     return true
   } catch {
@@ -480,6 +487,60 @@ export async function findAppsNeedingReRegistration(
     }
   }
   return missing
+}
+
+/**
+ * Find apps whose edison-watch URL is registered but missing the ?client= tag.
+ * Used for one-time migration to add per-client identity to MCP URLs.
+ */
+export async function findAppsMissingClientTag(
+  configuredApps: string[],
+): Promise<string[]> {
+  const needsTag: string[] = []
+  for (const appId of configuredApps) {
+    // Claude Code: check ~/.claude.json top-level mcpServers
+    if (appId === 'claude-code') {
+      try {
+        const raw = await fs.readFile(getClaudeCodeHomeJsonPath(), 'utf-8')
+        const json = JSON.parse(raw) as Record<string, unknown>
+        const servers = json.mcpServers as Record<string, unknown> | undefined
+        const ew = servers?.['edison-watch'] as Record<string, unknown> | undefined
+        if (ew && typeof ew.url === 'string' && !ew.url.includes('?client=')) {
+          needsTag.push(appId)
+        }
+      } catch { /* not registered */ }
+      continue
+    }
+
+    // Codex: check TOML config
+    if (appId === 'codex') {
+      try {
+        const content = await fs.readFile(getCodexConfigPath(), 'utf-8')
+        const toml = parseToml(content) as Record<string, unknown>
+        const mcpServers = toml.mcp_servers as Record<string, unknown> | undefined
+        const ew = mcpServers?.['edison-watch'] as Record<string, unknown> | undefined
+        if (ew && typeof ew.url === 'string' && !ew.url.includes('?client=')) {
+          needsTag.push(appId)
+        }
+      } catch { /* not registered */ }
+      continue
+    }
+
+    // File-based apps: read JSON config
+    const pathInfo = await getPathForApp(appId)
+    if (!pathInfo) continue
+    try {
+      const config = await readConfigFile(pathInfo.configPath, pathInfo.clientId)
+      const servers = getServersFromConfig(config, pathInfo.clientId)
+      if (servers && 'edison-watch' in servers) {
+        const entry = servers['edison-watch'] as Record<string, unknown>
+        if (typeof entry.url === 'string' && !entry.url.includes('?client=')) {
+          needsTag.push(appId)
+        }
+      }
+    } catch { /* not registered */ }
+  }
+  return needsTag
 }
 
 // ── Main entry point ──────────────────────────────────────────────────
@@ -515,7 +576,11 @@ export async function applyAppIntegrations(
 
   for (const appId of apps) {
     try {
-      const result = await applyToApp(appId, url, headers, timestamp, dryRun)
+      // Tag each client's MCP URL so the server can identify the connecting agent.
+      // The server dispatcher extracts the ?client= param and injects it as an
+      // x-edison-client header for session tracking middleware to read.
+      const appUrl = `${url}?client=${encodeURIComponent(appId)}`
+      const result = await applyToApp(appId, appUrl, headers, timestamp, dryRun)
       if (result) modifiedConfigs.push(result)
     } catch (err) {
       errors.push(`${appId}: ${err instanceof Error ? err.message : String(err)}`)
