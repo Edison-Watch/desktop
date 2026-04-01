@@ -240,6 +240,10 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
       click: () => rerunWizard(),
     },
     {
+      label: "Clear App Data & Restart",
+      click: () => handleClearDataAndRestart(),
+    },
+    {
       label: "Update Keys",
       click: () =>
         showUpdateKeysWindow(
@@ -360,10 +364,9 @@ function buildAppMenu(): Electron.Menu {
 
   const devSubmenu: MenuItemConstructorOptions[] = [
     { label: "Switch Environment", submenu: envSubmenu },
+    { type: "separator" },
+    { label: "Clear App Data & Restart", click: () => handleClearDataAndRestart() },
   ];
-  if (!app.isPackaged) {
-    devSubmenu.push({ type: "separator" }, { label: "Clear App Data & Restart", click: () => handleClearDataAndRestart() });
-  }
   const developerItem: MenuItemConstructorOptions = { label: "Developer", submenu: devSubmenu };
 
   const template: MenuItemConstructorOptions[] = [
@@ -704,9 +707,7 @@ app.whenReady().then(async () => {
   });
   slog("registerIpcHandlers ok");
 
-  if (!app.isPackaged) {
-    ipcMain.handle("app:clearDataAndRestart", () => handleClearDataAndRestart());
-  }
+  ipcMain.handle("app:clearDataAndRestart", () => handleClearDataAndRestart());
 
   if (isSetupComplete()) {
     slog("setup complete, creating tray");
