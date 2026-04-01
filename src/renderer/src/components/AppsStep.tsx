@@ -20,11 +20,22 @@ export interface ModifiedConfig {
 export interface DiscoveredServer {
   name: string;
   client: string;
+  clients?: string[];
   source: string;
 }
 
+export interface DuplicateGroup {
+  fingerprint: string;
+  kind: "same-config" | "name-conflict";
+  servers: Array<{ name: string; originalName?: string; client: string; clients?: string[]; config?: Record<string, unknown> }>;
+  /** Set when user resolves: "keep-both" = keep all (default), string = name of server to keep */
+  resolution?: "keep-both" | string;
+}
+
+export type RemovalTarget = string | { name: string; client: string };
+
 interface AppsStepProps {
-  onNext: (selectedApps: string[], discoveredServers: DiscoveredServer[]) => void;
+  onNext: (selectedApps: string[], discoveredServers: DiscoveredServer[], serversToRemove: RemovalTarget[]) => void;
   initialSelectedApps?: string[] | null;
 }
 
@@ -42,6 +53,8 @@ export default function AppsStep({
   const [scanned, setScanned] = useState(false);
   const scannedRef = useRef(false);
   const [showServers, setShowServers] = useState(false);
+  const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
+  const [expandedDupeServers, setExpandedDupeServers] = useState<Set<string>>(new Set());
 
   // null = first visit (all enabled by default), string[] = returning (restore selection)
   const initialSelectedSet = useRef(initialSelectedApps != null ? new Set(initialSelectedApps) : null);
@@ -83,8 +96,10 @@ export default function AppsStep({
         // Also re-scan discovered servers if already scanned
         if (scannedRef.current) {
           try {
-            const all = await window.api.mcp.discover() as Array<{ name: string; client: string; source: string }>;
+            const all = await window.api.mcp.discover() as Array<{ name: string; client: string; clients?: string[]; source: string }>;
             setDiscoveredServers(all);
+            const dupes = await window.api.mcp.findDuplicates() as DuplicateGroup[];
+            setDuplicateGroups(dupes.map((g) => ({ ...g, resolution: "keep-both" })));
           } catch {
             // Re-scan failed
           }
@@ -98,9 +113,11 @@ export default function AppsStep({
     }
   }, []);
 
-  // Detect installed MCP clients on mount
+  // Detect installed MCP clients on mount, then auto-scan servers
   useEffect(() => {
-    detectClients(false);
+    detectClients(false).then(() => {
+      if (!scannedRef.current) handleScan();
+    });
   }, [detectClients]);
 
   // Auto-refresh every 30 seconds to pick up newly installed clients
@@ -135,16 +152,27 @@ export default function AppsStep({
   const handleScan = async () => {
     setScanning(true);
     try {
-      const all = await window.api.mcp.discover() as Array<{ name: string; client: string; source: string }>;
+      const all = await window.api.mcp.discover() as Array<{ name: string; client: string; clients?: string[]; source: string }>;
       console.log("[AppsStep] Discovered", all.length, "MCP servers");
       setDiscoveredServers(all);
       setScanned(true);
       scannedRef.current = true;
+      // Fetch duplicate groups
+      try {
+        const dupes = await window.api.mcp.findDuplicates() as DuplicateGroup[];
+        setDuplicateGroups(dupes.map((g) => ({ ...g, resolution: "keep-both" })));
+      } catch { /* ignore */ }
     } catch {
       // Scan failed
     } finally {
       setScanning(false);
     }
+  };
+
+  const resolveDuplicateGroup = (fingerprint: string, resolution: "keep-both" | string) => {
+    setDuplicateGroups((prev) =>
+      prev.map((g) => (g.fingerprint === fingerprint ? { ...g, resolution } : g)),
+    );
   };
 
   if (loading) {
@@ -273,23 +301,23 @@ export default function AppsStep({
           <button
             type="button"
             className="flex items-center justify-between w-full text-left"
-            onClick={() => {
-              if (!scanned) {
-                handleScan();
-                setShowServers(true);
-              } else {
-                setShowServers((v) => !v);
-              }
-            }}
+            onClick={() => setShowServers((v) => !v)}
           >
             <div>
               <p className="text-sm font-medium text-[var(--text-primary)]">
                 Discovered MCP servers
-                {scanned && discoveredServers.length > 0 && (
-                  <span className="ml-1.5 text-xs text-[var(--text-muted)] font-normal">
-                    ({discoveredServers.length})
-                  </span>
-                )}
+                {scanned && discoveredServers.length > 0 && (() => {
+                  const conflictRenamedCount = duplicateGroups
+                    .filter((g) => g.kind === "name-conflict")
+                    .reduce((sum, g) => sum + g.servers.length, 0);
+                  const conflictGroupCount = duplicateGroups.filter((g) => g.kind === "name-conflict").length;
+                  const displayCount = discoveredServers.length - conflictRenamedCount + conflictGroupCount;
+                  return (
+                    <span className="ml-1.5 text-xs text-[var(--text-muted)] font-normal">
+                      ({displayCount})
+                    </span>
+                  );
+                })()}
               </p>
               <p className="text-xs text-[var(--text-muted)]">
                 MCP servers configured in your clients.
@@ -315,12 +343,34 @@ export default function AppsStep({
                 <span className="text-[var(--text-muted)]">No MCP servers found.</span>
               ) : (
                 <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
-                  {discoveredServers.map((s) => (
-                    <div key={s.client + ":" + s.name} className="flex items-center gap-2">
-                      <span className="text-[var(--text-primary)] font-medium truncate">{s.name}</span>
-                      <span className="text-[var(--text-muted)] shrink-0">{s.client}</span>
-                    </div>
-                  ))}
+                  {(() => {
+                    // Build display list: merge name-conflict entries back to original name
+                    const conflictNames = new Set<string>();
+                    const conflictEntries: Array<{ name: string; clients: string[] }> = [];
+                    for (const g of duplicateGroups) {
+                      if (g.kind !== "name-conflict") continue;
+                      const origName = g.servers[0]?.originalName ?? "";
+                      const allClients = g.servers.flatMap((s) => s.clients && s.clients.length > 0 ? s.clients : [s.client]);
+                      conflictEntries.push({ name: origName, clients: [...new Set(allClients)] });
+                      for (const s of g.servers) conflictNames.add(s.name);
+                    }
+                    // Filter out renamed entries, append merged conflict entries
+                    const display = [
+                      ...discoveredServers.filter((s) => !conflictNames.has(s.name)),
+                      ...conflictEntries.map((e) => ({ ...e, conflict: true })),
+                    ];
+                    return display.map((s) => (
+                      <div key={s.name} className="flex items-center gap-2">
+                        <span className="text-[var(--text-primary)] font-medium truncate">{s.name}</span>
+                        {"conflict" in s && s.conflict && (
+                          <span className="text-yellow-400 text-xs" title="Name conflict — see Duplicate resolution">*</span>
+                        )}
+                        <span className="text-[var(--text-muted)] shrink-0">
+                          {("clients" in s && s.clients && s.clients.length > 0 ? s.clients : [("client" in s ? s.client : "")]).join(", ")}
+                        </span>
+                      </div>
+                    ));
+                  })()}
                 </div>
               )}
             </div>
@@ -328,9 +378,105 @@ export default function AppsStep({
         </div>
       </Card>
 
+      {/* Cross-name duplicates (different names, same config) */}
+      {duplicateGroups.length > 0 && (
+        <Card>
+          <p className="text-xs font-medium text-orange-400 mb-2">
+            Duplicate resolution ({duplicateGroups.length} group{duplicateGroups.length > 1 ? "s" : ""})
+          </p>
+          {duplicateGroups.map((group) => (
+            <div key={group.fingerprint} className="mb-2 pl-2 border-l-2 border-orange-400/30">
+              <p className="text-[10px] text-[var(--text-muted)] mb-1">
+                {group.kind === "same-config"
+                  ? "Same server config under different names:"
+                  : `Same name "${group.servers[0]?.originalName ?? ""}" with different configs — auto-renamed:`}
+              </p>
+              {group.servers.map((s) => {
+                const expandKey = `${group.fingerprint}:${s.name}`;
+                const isExpanded = expandedDupeServers.has(expandKey);
+                return (
+                  <div key={s.name}>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="text-[var(--text-primary)] text-xs font-medium hover:text-[var(--accent)] transition-colors text-left"
+                        onClick={() => setExpandedDupeServers((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(expandKey)) next.delete(expandKey); else next.add(expandKey);
+                          return next;
+                        })}
+                      >
+                        <span className="inline-block w-3 text-[var(--text-muted)]">{isExpanded ? "▾" : "▸"}</span>
+                        {s.name}
+                      </button>
+                      <span className="text-[var(--text-muted)] text-[10px]">
+                        {(s.clients && s.clients.length > 0 ? s.clients : [s.client]).join(", ")}
+                      </span>
+                      {group.resolution === s.name && (
+                        <span className="text-[10px] font-medium text-emerald-400/80 bg-emerald-400/10 px-1 py-0.5 rounded">
+                          kept
+                        </span>
+                      )}
+                      {group.resolution && group.resolution !== "keep-both" && group.resolution !== s.name && (
+                        <span className="text-[10px] font-medium text-red-400/80 bg-red-400/10 px-1 py-0.5 rounded">
+                          removed
+                        </span>
+                      )}
+                    </div>
+                    {isExpanded && s.config && (
+                      <pre className="ml-5 mt-1 mb-1 max-h-28 overflow-auto rounded-md bg-[var(--bg-input)] p-2 text-[10px] text-[var(--text-secondary)]">
+                        {JSON.stringify(s.config, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Resolve actions */}
+              <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  className={`text-[10px] transition-colors ${group.resolution === "keep-both" ? "text-[var(--accent)] font-medium" : "text-[var(--accent-muted)] hover:text-[var(--accent)]"}`}
+                  onClick={() => resolveDuplicateGroup(group.fingerprint, "keep-both")}
+                >
+                  Keep both
+                </button>
+                {group.servers.map((s) => (
+                  <button
+                    key={s.name}
+                    type="button"
+                    className={`text-[10px] transition-colors ${group.resolution === s.name ? "text-[var(--accent)] font-medium" : "text-[var(--accent-muted)] hover:text-[var(--accent)]"}`}
+                    onClick={() => resolveDuplicateGroup(group.fingerprint, s.name)}
+                  >
+                    Keep &ldquo;{s.name}&rdquo;
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+
       <Button
         variant="primary"
-        onClick={() => onNext(clients.filter((c) => c.enabled).map((c) => c.id), discoveredServers)}
+        onClick={() => {
+          // Collect removal targets and compute filtered server list
+          const removedNames = new Set<string>();
+          const removalTargets: RemovalTarget[] = duplicateGroups.flatMap((g): RemovalTarget[] => {
+            if (!g.resolution || g.resolution === "keep-both") return [];
+            const removed = g.servers.filter((s) => s.name !== g.resolution);
+            removed.forEach((s) => removedNames.add(s.name));
+            if (g.kind === "name-conflict") {
+              return removed.map((s) => ({
+                name: s.originalName ?? s.name,
+                client: s.client,
+              }));
+            }
+            return removed.map((s) => s.name);
+          });
+          const effectiveServers = discoveredServers.filter((s) => !removedNames.has(s.name));
+          onNext(clients.filter((c) => c.enabled).map((c) => c.id), effectiveServers, removalTargets);
+        }}
         className="w-full"
       >
         {selectedCount > 0

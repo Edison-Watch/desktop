@@ -80,12 +80,12 @@ export default function FinishStep({
     }
   };
 
-  const handleUndoOne = async (configPath: string, backupPath: string) => {
+  const handleUndoOne = async (configPath: string, backupPath: string, appId?: string) => {
     if (revertingPaths.has(configPath) || revertedPaths.has(configPath)) return;
     setRevertingPaths((prev) => new Set(prev).add(configPath));
     try {
       const result = await window.api.mcp.revertAppIntegrations({
-        configs: [{ configPath, backupPath }],
+        configs: [{ configPath, backupPath, appId }],
       });
       if (result.reverted > 0) {
         setRevertedPaths((prev) => new Set(prev).add(configPath));
@@ -151,6 +151,7 @@ export default function FinishStep({
         configs: remaining.map((c) => ({
           configPath: c.configPath,
           backupPath: updatedBackupPaths.get(c.configPath) ?? c.backupPath,
+          appId: c.appId,
         })),
       });
       if (result.errors?.length) {
@@ -249,11 +250,11 @@ export default function FinishStep({
                         {redoing ? "Redoing…" : "Redo"}
                       </button>
                     )}
-                    {!reverted && currentBackupPath && (
+                    {!reverted && (currentBackupPath || entry.appId === "claude-code") && (
                       <button
                         type="button"
                         disabled={reverting}
-                        onClick={() => handleUndoOne(entry.configPath, currentBackupPath)}
+                        onClick={() => handleUndoOne(entry.configPath, currentBackupPath, entry.appId)}
                         className="text-xs text-[var(--danger)]/70 hover:text-[var(--danger)] transition-colors disabled:opacity-50"
                       >
                         {reverting ? "Undoing…" : "Undo"}

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import WizardLayout from "./components/WizardLayout";
 import WelcomeStep from "./components/WelcomeStep";
 import AppsStep from "./components/AppsStep";
-import type { ModifiedConfig, DiscoveredServer } from "./components/AppsStep";
+import type { ModifiedConfig, DiscoveredServer, RemovalTarget } from "./components/AppsStep";
 import EncryptionStep from "./components/EncryptionStep";
 import FinishStep from "./components/FinishStep";
 import MainMenu from "./components/MainMenu";
@@ -19,6 +19,7 @@ export default function App(): React.ReactNode {
   const [setupDone, setSetupDone] = useState<boolean | null>(null);
   const [selectedApps, setSelectedApps] = useState<string[] | null>(null);
   const [discoveredServers, setDiscoveredServers] = useState<DiscoveredServer[]>([]);
+  const [serversToRemove, setServersToRemove] = useState<RemovalTarget[]>([]);
   const [modifiedConfigs, setModifiedConfigs] = useState<ModifiedConfig[]>([]);
   const [edisonSecretKey, setEdisonSecretKey] = useState("");
   const auth = useAuth();
@@ -40,9 +41,10 @@ export default function App(): React.ReactNode {
     if (auth.signedIn) goToStep(1);
   };
 
-  const handleAppsNext = (apps: string[], servers: DiscoveredServer[]) => {
+  const handleAppsNext = (apps: string[], servers: DiscoveredServer[], removedServers: RemovalTarget[]) => {
     setSelectedApps(apps);
     setDiscoveredServers(servers);
+    setServersToRemove(removedServers);
     goToStep(2);
   };
 
@@ -57,6 +59,7 @@ export default function App(): React.ReactNode {
     setModifiedConfigs([]);
     setEdisonSecretKey("");
     setSelectedApps(null);
+    setServersToRemove([]);
     goToStep(1);
   };
 
@@ -100,6 +103,8 @@ export default function App(): React.ReactNode {
           userId={auth.userId}
           selectedApps={selectedApps ?? []}
           discoveredServers={discoveredServers}
+          serversToRemove={serversToRemove}
+          autoQuarantine={auth.autoQuarantineOtherMcpServers}
           onNext={handleEncryptionNext}
         />
       )}

@@ -1,7 +1,8 @@
 import { BrowserWindow } from "electron";
-import { McpConfigMonitor } from "./mcpConfigMonitor";
+import { McpConfigMonitor, type PendingQuarantineEvent } from "./mcpConfigMonitor";
 import { SeenServersStore } from "./seenServersStore";
 import { showQuarantinedServersDialog } from "./mcpServerActionDialog";
+import { quarantineServer } from "./mcpConfigActions";
 import { fetchUserRole } from "./mcpServerSubmit";
 import { fetchAutoQuarantineEnabled } from "./domainConfig";
 import { getApiBaseUrl, getCredentialsForEnv } from "./setupConfig";
@@ -56,9 +57,9 @@ async function startQuarantineMonitor(): Promise<void> {
 
   configMonitor = new McpConfigMonitor(new SeenServersStore());
 
-  configMonitor.on("serversQuarantined", async (quarantinedEvents) => {
-    slog(`[Quarantine] serversQuarantined event: ${quarantinedEvents.length} servers — ${quarantinedEvents.map((e: { server: { name: string } }) => e.server.name).join(", ")}`);
-    if (quarantinedEvents.length === 0) return;
+  configMonitor.on("serversPendingQuarantine", async (pendingEvents: PendingQuarantineEvent[]) => {
+    slog(`[Quarantine] serversPendingQuarantine event: ${pendingEvents.length} servers — ${pendingEvents.map((e) => e.server.name).join(", ")}`);
+    if (pendingEvents.length === 0) return;
 
     const apiBaseUrl = getApiBaseUrl();
     const creds = getCredentialsForEnv();
@@ -71,10 +72,33 @@ async function startQuarantineMonitor(): Promise<void> {
     }
 
     const parentWindow = getMainWindowFn?.() ?? undefined;
-    showQuarantinedServersDialog(quarantinedEvents, parentWindow ?? undefined, isAdminOrOwner).catch((err) => {
+    try {
+      const results = await showQuarantinedServersDialog(pendingEvents, parentWindow ?? undefined, isAdminOrOwner);
+      // After dialog closes, quarantine all servers that were NOT successfully submitted.
+      // Successfully submitted servers are already removed by mcp:handleServerAction/resubmitServer.
+      // Match by fingerprint since the server may have been renamed during resubmit.
+      const submittedFingerprints = new Set(
+        results
+          .filter((r) => r.action === "registered" || r.action === "requested")
+          .map((r) => r.fingerprint)
+      );
+      for (const { server, fingerprint } of pendingEvents) {
+        if (submittedFingerprints.has(fingerprint)) continue; // already handled by submit
+        try {
+          await quarantineServer(server);
+          slog(`[Quarantine] Quarantined skipped/dismissed server: ${server.name}`);
+        } catch (err) {
+          slog(`[Quarantine] Failed to quarantine "${server.name}": ${err}`);
+        }
+      }
+    } catch (err) {
       slog(`[Quarantine] Failed to show quarantine dialog: ${err}`);
       console.error("[McpConfigMonitor] Failed to show quarantine dialog:", err);
-    });
+      // Dialog failed — quarantine all pending servers as safety fallback
+      for (const { server } of pendingEvents) {
+        try { await quarantineServer(server); } catch { /* best effort */ }
+      }
+    }
   });
 
   configMonitor.on("error", (err) => {
@@ -175,7 +199,7 @@ export async function runDebugQuarantine(): Promise<{ success: boolean; error?: 
     }
 
     if (configMonitor) {
-      // Monitor already running — its persistent "serversQuarantined" listener
+      // Monitor already running — its persistent "serversPendingQuarantine" listener
       // (from startQuarantineMonitor) already shows the dialog, so just trigger
       // the workflow directly without adding a second listener.
       await configMonitor.runQuarantineWorkflow();
@@ -186,7 +210,7 @@ export async function runDebugQuarantine(): Promise<{ success: boolean; error?: 
         slog(`[Quarantine] tempMonitor error (debug run): ${err}`);
         console.error("[runDebugQuarantine] Monitor error:", err);
       });
-      tempMonitor.once("serversQuarantined", (events) => {
+      tempMonitor.once("serversPendingQuarantine", (events) => {
         handleQuarantineEvents(events).catch((err) => {
           slog(`[Quarantine] Failed to show quarantine dialog (debug run): ${err}`);
           console.error("[runDebugQuarantine] Failed to show quarantine dialog:", err);

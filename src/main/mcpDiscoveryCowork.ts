@@ -6,6 +6,7 @@ import { promises as fs } from 'fs'
 import { homedir, platform } from 'os'
 import { dirname, join } from 'path'
 import type { DiscoveredMcpServer, McpServerConfig } from './mcpDiscovery'
+import { clientAlias } from './serverDeduplication'
 
 // Claude Cowork config path — same file as Claude Desktop; Cowork is detected
 // via the presence of the vm_bundles/ subdirectory (downloaded on first Cowork launch).
@@ -91,23 +92,30 @@ export function deduplicateByNameAndConfig(servers: DiscoveredMcpServer[]): Disc
 
   const result: DiscoveredMcpServer[] = []
   for (const [, group] of byName) {
-    if (group.length === 1) { result.push(group[0]); continue }
+    if (group.length === 1) { result.push({ ...group[0], clients: [group[0].client] }); continue }
 
-    // Collapse true duplicates (same name + same config).
+    // Collapse true duplicates (same name + same config), merging clients.
     const seen = new Map<string, DiscoveredMcpServer>()
     for (const server of group) {
       const key = configKey(server)
-      if (!seen.has(key)) seen.set(key, server)
+      const existing = seen.get(key)
+      if (existing) {
+        const clients = existing.clients ?? [existing.client]
+        if (!clients.includes(server.client)) clients.push(server.client)
+        existing.clients = clients
+      } else {
+        seen.set(key, { ...server, clients: [server.client] })
+      }
     }
 
     const unique = [...seen.values()]
     if (unique.length === 1) {
       result.push(unique[0])
     } else {
-      // Different configs under the same name — keep all, suffix _2, _3, …
-      result.push(unique[0])
-      for (let i = 1; i < unique.length; i++) {
-        result.push({ ...unique[i], name: `${unique[i].name}_${i + 1}`, originalName: unique[i].name })
+      // Different configs under the same name — rename all to name_clientAlias
+      for (const entry of unique) {
+        const alias = clientAlias(entry.client)
+        result.push({ ...entry, name: `${entry.name}_${alias}`, originalName: entry.name })
       }
     }
   }

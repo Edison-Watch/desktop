@@ -1,6 +1,6 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
-import type { QuarantinedServerEvent } from './mcpConfigMonitor'
+import type { DiscoveredMcpServer } from './mcpDiscovery'
 import { getClientDisplayName } from './mcpConfigMonitor'
 import type { ServerAction } from './seenServersStore'
 import {
@@ -30,7 +30,7 @@ let serverActionWindow: BrowserWindow | null = null
  * will be both requested and auto-approved by the IPC handler.
  */
 export function showQuarantinedServersDialog(
-  events: QuarantinedServerEvent[],
+  events: Array<{ server: DiscoveredMcpServer; fingerprint: string }>,
   parentWindow?: BrowserWindow,
   isAdminOrOwner = false
 ): Promise<ServerActionResult[]> {
@@ -238,12 +238,89 @@ export function showQuarantinedServersDialog(
               if (!bulkOperationInProgress) reenableButtons()
               return
             }
+            const crPanel = item.querySelector('.credential-review')
+            if (crPanel) crPanel.remove()
             const actionsEl = item.querySelector('.server-actions') || item.querySelector('.cr-actions')
             if (actionsEl) {
+              actionsEl.style.display = ''
               actionsEl.innerHTML = '<div class="already-pending-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg>Request already pending with IT admin</div>'
             }
             if (!bulkOperationInProgress) reenableButtons()
             setTimeout(() => removeServerItem(fingerprint), 2500)
+          }
+
+          const NAME_RE = /^[a-zA-Z0-9_]{1,32}$/
+
+          function showConflictRename(fingerprint, serverName, sourceApp, action, errorMessage) {
+            const item = findItemByFingerprint(fingerprint)
+            if (!item) { if (!bulkOperationInProgress) reenableButtons(); return }
+            // Remove credential review panel if present
+            const crPanel = item.querySelector('.credential-review')
+            if (crPanel) crPanel.remove()
+            // Find or create the actions container, ensure it's visible
+            let actionsEl = item.querySelector('.server-actions') || item.querySelector('.cr-actions')
+            if (!actionsEl) {
+              actionsEl = document.createElement('div')
+              actionsEl.className = 'server-actions'
+              item.appendChild(actionsEl)
+            }
+            actionsEl.style.display = ''
+            actionsEl.innerHTML = \`
+              <div style="display:flex;flex-direction:column;gap:6px;width:100%">
+                <div style="color:var(--danger, #e53e3e);font-size:11px;display:flex;align-items:center;gap:4px">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+                  Conflict: \${errorMessage || 'A server with this name already exists'}
+                </div>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <input type="text" class="rename-input" maxlength="32" placeholder="New name (a-z, 0-9, _)" style="flex:1;min-width:0;padding:4px 8px;border-radius:4px;border:1px solid var(--border, #333);background:var(--bg-input, #1a1a1a);color:var(--text-primary, #eee);font-size:11px;outline:none" />
+                  <button class="button button-request rename-btn" disabled style="white-space:nowrap;padding:4px 10px;font-size:11px;opacity:0.4">Resubmit</button>
+                </div>
+                <div class="rename-error" style="font-size:10px;color:var(--danger, #e53e3e);display:none">Max 32 characters, letters, numbers and underscore only</div>
+              </div>
+            \`
+            const input = actionsEl.querySelector('.rename-input')
+            const btn = actionsEl.querySelector('.rename-btn')
+            const errEl = actionsEl.querySelector('.rename-error')
+            input.addEventListener('input', () => {
+              input.value = input.value.replace(/[^a-zA-Z0-9_]/g, '')
+              const valid = NAME_RE.test(input.value.trim())
+              btn.disabled = !valid
+              btn.style.opacity = valid ? '1' : '0.4'
+              errEl.style.display = (input.value.length > 0 && !valid) ? 'block' : 'none'
+            })
+            input.addEventListener('keydown', (e) => {
+              if (e.key === 'Enter' && !btn.disabled) btn.click()
+            })
+            btn.addEventListener('click', async (e) => {
+              e.stopPropagation() // prevent global click handler from interfering
+              const newName = input.value.trim()
+              if (!NAME_RE.test(newName)) return
+              btn.disabled = true
+              btn.textContent = 'Submitting...'
+              try {
+                const serverData = serverConfigs[fingerprint] || {}
+                console.log('[Quarantine] Resubmitting', serverName, 'as', newName)
+                const result = await ipcRenderer.invoke('mcp:resubmitServer', {
+                  originalName: serverName,
+                  newName: newName,
+                  config: serverData.config,
+                  client: sourceApp,
+                  configPath: serverData.path
+                })
+                console.log('[Quarantine] Resubmit result:', JSON.stringify(result))
+                if (result && result.success) {
+                  results.push({ fingerprint, serverName: newName, sourceApp, action })
+                  removeServerItem(fingerprint)
+                } else {
+                  showConflictRename(fingerprint, serverName, sourceApp, action, (result && result.error) || 'Failed')
+                }
+              } catch (err) {
+                console.error('[Quarantine] Resubmit error:', err)
+                const msg = (err && err.message) ? err.message : 'Resubmit failed'
+                showConflictRename(fingerprint, serverName, sourceApp, action, msg)
+              }
+            })
+            if (!bulkOperationInProgress) reenableButtons()
           }
 
           function showStatusBadge(fingerprint, message, isError) {
@@ -252,7 +329,12 @@ export function showQuarantinedServersDialog(
               if (!bulkOperationInProgress) reenableButtons()
               return
             }
-            const actionsEl = item.querySelector('.server-actions') || item.querySelector('.cr-actions')
+            // Remove credential review panel if present
+            const crPanel = item.querySelector('.credential-review')
+            if (crPanel) crPanel.remove()
+            let actionsEl = item.querySelector('.server-actions') || item.querySelector('.cr-actions')
+            if (!actionsEl) { actionsEl = document.createElement('div'); actionsEl.className = 'server-actions'; item.appendChild(actionsEl) }
+            actionsEl.style.display = ''
             if (actionsEl) {
               const color = isError ? 'var(--danger, #e53e3e)' : 'var(--text-muted, #888)'
               const icon = isError
@@ -270,7 +352,6 @@ export function showQuarantinedServersDialog(
             buildCredentialReviewPanel(fingerprint, serverName, sourceApp, action, analysis, {
               onConfirm: async (fp, sn, sa, act, overrides) => {
                 const serverData = serverConfigs[fp] || {}
-                results.push({ fingerprint: fp, serverName: sn, sourceApp: sa, action: act })
                 let result
                 try {
                   result = await ipcRenderer.invoke('mcp:handleServerAction', {
@@ -284,8 +365,9 @@ export function showQuarantinedServersDialog(
                   showStatusBadge(fp, msg, true)
                   return
                 }
-                if (result && result.alreadyPending) { showAlreadyPendingBadge(fp); return }
-                if (result && result.alreadyExists) { showStatusBadge(fp, result.errorMessage || 'Server already exists in your org', false); return }
+                if (result && result.alreadyPending) { showConflictRename(fp, sn, sa, act, 'A server with this name already has a pending approval request'); return }
+                if (result && result.alreadyExists) { showConflictRename(fp, sn, sa, act, result.errorMessage); return }
+                results.push({ fingerprint: fp, serverName: sn, sourceApp: sa, action: act })
                 if (result && result.approveError) { showStatusBadge(fp, 'Request submitted — auto-approval failed', true); return }
                 removeServerItem(fp)
               }
@@ -314,7 +396,6 @@ export function showQuarantinedServersDialog(
               }
             }
 
-            results.push({ fingerprint, serverName, sourceApp, action })
             let result
             try {
               result = await ipcRenderer.invoke('mcp:handleServerAction', {
@@ -327,8 +408,9 @@ export function showQuarantinedServersDialog(
               showStatusBadge(fingerprint, msg, true)
               return
             }
-            if (result && result.alreadyPending) { showAlreadyPendingBadge(fingerprint); return }
-            if (result && result.alreadyExists) { showStatusBadge(fingerprint, result.errorMessage || 'Server already exists in your org', false); return }
+            if (result && result.alreadyPending) { showConflictRename(fingerprint, serverName, sourceApp, action, 'A server with this name already has a pending approval request'); return }
+            if (result && result.alreadyExists) { showConflictRename(fingerprint, serverName, sourceApp, action, result.errorMessage); return }
+            results.push({ fingerprint, serverName, sourceApp, action })
             if (result && result.approveError) { showStatusBadge(fingerprint, 'Request submitted — auto-approval failed', true); return }
             removeServerItem(fingerprint)
           }

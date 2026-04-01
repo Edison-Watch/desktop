@@ -22,6 +22,9 @@ interface EdisonAPI {
   mcp: {
     detectClients: () => Promise<Array<{ id: string; name: string; configPath: string }>>;
     discover: () => Promise<unknown[]>;
+    findDuplicates: () => Promise<unknown[]>;
+    removeServers: (targets: Array<string | { name: string; client: string }>) => Promise<{ removed: string[]; errors: string[] }>;
+    resubmitServer: (params: { originalName: string; newName: string; apiKey?: string; apiBaseUrl?: string; userId?: string; config?: Record<string, unknown>; client?: string; configPath?: string }) => Promise<{ success: boolean; error?: string }>;
     readConfig: (configPath: string) => Promise<string | null>;
     applyAppIntegrations: (args: {
       serverAddress: string;
@@ -31,7 +34,7 @@ interface EdisonAPI {
       apps: string[];
     }) => Promise<{ success: boolean; modifiedConfigs: Array<{ appId: string; configPath: string; backupPath: string }> }>;
     revertAppIntegrations: (args: {
-      configs: Array<{ configPath: string; backupPath: string }>;
+      configs: Array<{ configPath: string; backupPath: string; appId?: string }>;
     }) => Promise<{ reverted: number; errors: string[] }>;
     submitWithTemplates: (params: {
       apiKey?: string;
@@ -49,9 +52,10 @@ interface EdisonAPI {
       autoApproved: number;
       skipped: number;
       total: number;
-      servers?: Array<{ name: string; client: string; source: string }>;
+      servers?: Array<{ name: string; client: string; clients?: string[]; source: string }>;
       error?: string;
       errors?: string[];
+      failures?: Array<{ name: string; client: string; reason: "conflict" | "error"; message: string; config?: Record<string, unknown>; configPath?: string }>;
     }>;
     analyzeSecrets: () => Promise<Array<{
       name: string;
@@ -73,8 +77,10 @@ interface EdisonAPI {
       autoApproved: number;
       skipped: number;
       total: number;
+      servers?: Array<{ name: string; client: string; clients?: string[]; source: string }>;
       error?: string;
       errors?: string[];
+      failures?: Array<{ name: string; client: string; reason: "conflict" | "error"; message: string; config?: Record<string, unknown>; configPath?: string }>;
     }>;
     injectHooks: () => Promise<unknown[]>;
     removeHooks: () => Promise<unknown[]>;

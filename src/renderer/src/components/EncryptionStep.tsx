@@ -6,7 +6,7 @@ import {
   buildCompositeKey,
   cacheSecretKey,
 } from "@edison/shared/crypto";
-import type { ModifiedConfig, DiscoveredServer } from "./AppsStep";
+import type { ModifiedConfig, DiscoveredServer, RemovalTarget } from "./AppsStep";
 import CredentialReviewCard from "./CredentialReviewCard";
 import type { TemplateOverrideEntry } from "./CredentialReviewCard";
 
@@ -17,6 +17,8 @@ interface EncryptionStepProps {
   userId: string;
   selectedApps: string[];
   discoveredServers: DiscoveredServer[];
+  serversToRemove?: RemovalTarget[];
+  autoQuarantine?: boolean;
   onNext: (compositeKey: string, modifiedConfigs: ModifiedConfig[]) => void;
 }
 
@@ -27,6 +29,8 @@ export default function EncryptionStep({
   userId,
   selectedApps,
   discoveredServers,
+  serversToRemove = [],
+  autoQuarantine = false,
   onNext,
 }: EncryptionStepProps): React.ReactNode {
   // Key state
@@ -85,16 +89,27 @@ export default function EncryptionStep({
 
   // Scan & submit state
   const [scanning, setScanning] = useState(false);
+  interface SubmitFailure {
+    name: string;
+    client: string;
+    reason: "conflict" | "error";
+    message: string;
+    config?: Record<string, unknown>;
+    configPath?: string;
+  }
   const [scanResult, setScanResult] = useState<{
     submitted: number;
     autoApproved: number;
     skipped: number;
     total: number;
-    servers?: Array<{ name: string; client: string; source: string }>;
+    servers?: Array<{ name: string; client: string; clients?: string[]; source: string }>;
     error?: string;
     errors?: string[];
+    failures?: SubmitFailure[];
   } | null>(null);
   const [showScanServers, setShowScanServers] = useState(false);
+  const [renameInputs, setRenameInputs] = useState<Record<string, string>>({});
+  const [resubmitting, setResubmitting] = useState<string | null>(null);
 
   // Skip warning state
   const [showSkipWarning, setShowSkipWarning] = useState(false);
@@ -206,11 +221,61 @@ export default function EncryptionStep({
             apiBaseUrl,
             userId,
           });
+      // Remove duplicate-resolved servers from agent configs
+      if (serversToRemove.length > 0) {
+        try {
+          await window.api.mcp.removeServers(serversToRemove);
+        } catch {
+          console.error("[EncryptionStep] Failed to remove resolved duplicate servers");
+        }
+      }
       setScanResult(result);
     } catch {
       // Scan failed
     } finally {
       setScanning(false);
+    }
+  };
+
+  const NAME_PATTERN = /^[a-zA-Z0-9_]{1,32}$/;
+
+  const handleResubmit = async (originalName: string) => {
+    const newName = renameInputs[originalName]?.trim();
+    if (!newName || !NAME_PATTERN.test(newName)) return;
+    const failure = scanResult?.failures?.find((f) => f.name === originalName);
+    setResubmitting(originalName);
+    try {
+      const result = await window.api.mcp.resubmitServer({
+        originalName,
+        newName,
+        apiKey,
+        apiBaseUrl,
+        userId,
+        config: failure?.config,
+        client: failure?.client,
+        configPath: failure?.configPath,
+      });
+      if (result.success) {
+        // Remove from failures list
+        setScanResult((prev) => prev ? {
+          ...prev,
+          submitted: prev.submitted + 1,
+          failures: prev.failures?.filter((f) => f.name !== originalName),
+        } : prev);
+        setRenameInputs((prev) => { const next = { ...prev }; delete next[originalName]; return next; });
+      } else {
+        // Update the failure message
+        setScanResult((prev) => prev ? {
+          ...prev,
+          failures: prev.failures?.map((f) =>
+            f.name === originalName ? { ...f, message: result.error ?? "Failed" } : f
+          ),
+        } : prev);
+      }
+    } catch {
+      // resubmit failed
+    } finally {
+      setResubmitting(null);
     }
   };
 
@@ -445,9 +510,11 @@ export default function EncryptionStep({
                       {showScanServers && (
                         <div className="mt-2 flex flex-col gap-1 max-h-32 overflow-y-auto">
                           {scanResult.servers.map((s) => (
-                            <div key={s.client + ":" + s.name} className="flex items-center gap-2">
+                            <div key={s.name} className="flex items-center gap-2">
                               <span className="text-[var(--text-primary)] font-medium truncate">{s.name}</span>
-                              <span className="text-[var(--text-muted)] shrink-0">{s.client}</span>
+                              <span className="text-[var(--text-muted)] shrink-0">
+                                {(s.clients && s.clients.length > 0 ? s.clients : [s.client]).join(", ")}
+                              </span>
                             </div>
                           ))}
                         </div>
@@ -462,6 +529,63 @@ export default function EncryptionStep({
                       ))}
                     </div>
                   )}
+
+                  {/* Failed to submit section */}
+                  {scanResult.failures && scanResult.failures.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-[var(--border)]/50">
+                      <p className="text-xs font-medium text-red-400 mb-1.5">
+                        Failed to submit ({scanResult.failures.length})
+                      </p>
+                      <div className="flex flex-col gap-2">
+                        {scanResult.failures.map((f) => (
+                          <div key={f.name} className="rounded-md bg-red-500/5 border border-red-500/15 p-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[var(--text-primary)] text-xs font-medium">{f.name}</span>
+                              <span className="text-[var(--text-muted)] text-[10px]">{f.client}</span>
+                            </div>
+                            <p className="text-[10px] text-red-400/80 mt-0.5">
+                              {f.reason === "conflict" ? "Conflict: " : "Error: "}{f.message}
+                            </p>
+                            {f.reason === "conflict" && (() => {
+                              const val = renameInputs[f.name] ?? "";
+                              const isValid = val.trim().length > 0 && NAME_PATTERN.test(val.trim());
+                              const showError = val.length > 0 && !NAME_PATTERN.test(val.trim());
+                              return (
+                                <div className="mt-1.5 flex flex-col gap-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="text"
+                                      maxLength={32}
+                                      placeholder="New name (a-z, 0-9, _)"
+                                      value={val}
+                                      onChange={(e) => {
+                                        const v = e.target.value.replace(/[^a-zA-Z0-9_]/g, "");
+                                        setRenameInputs((prev) => ({ ...prev, [f.name]: v }));
+                                      }}
+                                      onKeyDown={(e) => { if (e.key === "Enter" && isValid) handleResubmit(f.name); }}
+                                      className={`flex-1 min-w-0 px-2 py-1 rounded text-[10px] bg-[var(--bg-input)] border text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none ${showError ? "border-red-500/50" : "border-[var(--border)] focus:border-[var(--accent-dim)]"}`}
+                                    />
+                                    <button
+                                      type="button"
+                                      disabled={!isValid || resubmitting === f.name}
+                                      className="shrink-0 text-[10px] px-2 py-1 rounded bg-[var(--accent-dim)] text-[var(--accent)] hover:bg-[var(--accent)]/20 transition-colors disabled:opacity-40"
+                                      onClick={() => handleResubmit(f.name)}
+                                    >
+                                      {resubmitting === f.name ? "Submitting..." : "Resubmit"}
+                                    </button>
+                                  </div>
+                                  {showError && (
+                                    <span className="text-[9px] text-red-400/70">Max 32 characters, letters, numbers and underscore only</span>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {scanResult.submitted > scanResult.autoApproved && (
                     <button
                       type="button"
@@ -487,6 +611,11 @@ export default function EncryptionStep({
           <p className="text-xs text-orange-400 leading-relaxed">
             Are you sure you want to continue without submitting your servers for approval to be integrated in the Edison Watch platform?
           </p>
+          {autoQuarantine && (
+            <p className="text-xs text-red-400 leading-relaxed font-medium">
+              Your organisation requires all MCP servers to be protected by Edison Watch. Unsubmitted servers will be automatically quarantined and removed from your local configurations.
+            </p>
+          )}
           <div className="flex gap-2 justify-end">
             <Button
               variant="secondary"

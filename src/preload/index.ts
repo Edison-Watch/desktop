@@ -47,6 +47,11 @@ const api = {
     detectClients: (): Promise<Array<{ id: string; name: string; configPath: string }>> =>
       ipcRenderer.invoke("mcp:detectClients"),
     discover: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:discover"),
+    findDuplicates: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:findDuplicates"),
+    removeServers: (targets: Array<string | { name: string; client: string }>): Promise<{ removed: string[]; errors: string[] }> =>
+      ipcRenderer.invoke("mcp:removeServers", targets),
+    resubmitServer: (params: { originalName: string; newName: string; apiKey?: string; apiBaseUrl?: string; userId?: string; config?: Record<string, unknown>; client?: string; configPath?: string }): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke("mcp:resubmitServer", params),
     readConfig: (configPath: string): Promise<string | null> =>
       ipcRenderer.invoke("mcp:readConfig", configPath),
     applyAppIntegrations: (args: {
@@ -58,7 +63,7 @@ const api = {
     }): Promise<{ success: boolean; modifiedConfigs: Array<{ appId: string; configPath: string; backupPath: string }> }> =>
       ipcRenderer.invoke("mcp:applyAppIntegrations", args),
     revertAppIntegrations: (args: {
-      configs: Array<{ configPath: string; backupPath: string }>;
+      configs: Array<{ configPath: string; backupPath: string; appId?: string }>;
     }): Promise<{ reverted: number; errors: string[] }> =>
       ipcRenderer.invoke("mcp:revertAppIntegrations", args),
     submitWithTemplates: (params: {

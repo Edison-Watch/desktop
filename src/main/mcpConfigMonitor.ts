@@ -24,30 +24,14 @@ import {
   type McpClientId
 } from './mcpDiscovery'
 import { SeenServersStore } from './seenServersStore'
-import { quarantineServer, type QuarantineResult } from './mcpConfigActions'
+// quarantineServer import removed — quarantine now happens in quarantineManager after dialog
 
 // Cache static paths that only depend on homedir() (which doesn't change at runtime)
 const CLAUDE_HOME_JSON_PATH = getClaudeCodeHomeJsonPath()
 const CURSOR_PLUGINS_INSTALLED_PATHS = getCursorPluginsInstalledPaths()
 
-const QUARANTINE_MAX_ATTEMPTS = 3
-const QUARANTINE_RETRY_DELAY_MS = 400
+// quarantine retry constants removed — quarantine now happens in quarantineManager
 const DEFAULT_RESCAN_INTERVAL_MS = 60_000 // Safety-net rescan every 60s
-
-async function quarantineWithRetry(server: DiscoveredMcpServer): Promise<QuarantineResult | null> {
-  let lastErr: unknown
-  for (let attempt = 1; attempt <= QUARANTINE_MAX_ATTEMPTS; attempt++) {
-    try {
-      return await quarantineServer(server)
-    } catch (err) {
-      lastErr = err
-      if (attempt < QUARANTINE_MAX_ATTEMPTS) {
-        await new Promise((r) => setTimeout(r, QUARANTINE_RETRY_DELAY_MS))
-      }
-    }
-  }
-  throw lastErr
-}
 
 export interface DetectedServerChange {
   type: 'added' | 'removed' | 'modified'
@@ -66,11 +50,19 @@ export interface QuarantinedServerEvent {
   quarantinedAt: string
 }
 
+/** Event emitted when new servers are detected and pending quarantine (not yet removed). */
+export interface PendingQuarantineEvent {
+  server: DiscoveredMcpServer
+  fingerprint: string
+}
+
 export interface McpConfigMonitorEvents {
   /** Legacy event for other change types (removed, modified) */
   serversChanged: (changes: DetectedServerChange[]) => void
-  /** New event when servers are auto-quarantined */
+  /** Event when servers are auto-quarantined (already removed from config) */
   serversQuarantined: (events: QuarantinedServerEvent[]) => void
+  /** Event when new servers are detected pending quarantine (NOT yet removed — quarantine after user action) */
+  serversPendingQuarantine: (events: PendingQuarantineEvent[]) => void
   error: (error: Error) => void
 }
 
@@ -81,7 +73,6 @@ export interface McpConfigMonitorEvents {
 export class McpConfigMonitor extends EventEmitter {
   private watcher: FSWatcher | null = null
   private workspaceStorageWatcher: FSWatcher | null = null
-  private seenStore: SeenServersStore
   private lastKnownServers: Map<string, DiscoveredMcpServer> = new Map()
   private debounceTimer: NodeJS.Timeout | null = null
   private rescanTimer: NodeJS.Timeout | null = null
@@ -92,9 +83,8 @@ export class McpConfigMonitor extends EventEmitter {
   private pendingRescan = false
   private configFiles: Set<string> = new Set()
 
-  constructor(seenStore: SeenServersStore, debounceMs = 500, rescanIntervalMs = DEFAULT_RESCAN_INTERVAL_MS) {
+  constructor(_seenStore: SeenServersStore, debounceMs = 500, rescanIntervalMs = DEFAULT_RESCAN_INTERVAL_MS) {
     super()
-    this.seenStore = seenStore
     this.debounceMs = debounceMs
     this.rescanIntervalMs = rescanIntervalMs
   }
@@ -474,83 +464,41 @@ export class McpConfigMonitor extends EventEmitter {
     mlog('[Monitor] quarantineExistingServers() starting...')
     const servers = await discoverMcpServers()
     mlog(`[Monitor] quarantineExistingServers: discovered ${servers.length} servers: ${servers.map(s => `${s.name}@${s.client}`).join(', ')}`)
-    const quarantinedEvents: QuarantinedServerEvent[] = []
-    const failedFingerprints = new Set<string>()
+    const pendingEvents: PendingQuarantineEvent[] = []
 
     for (const server of servers) {
       const fingerprint = getServerFingerprint(server)
+      this.lastKnownServers.set(fingerprint, server)
 
       // Skip Edison Watch's own servers
       if (isEdisonWatchServer(server)) {
         console.log(`[McpConfigMonitor] Skipping Edison Watch server on startup: ${server.name}`)
-        this.lastKnownServers.set(fingerprint, server)
         continue
       }
 
-      // Skip project-scoped MCPs from ~/.claude.json — the nested projects structure
-      // can't be safely modified (volatile runtime file, race condition with Claude Code).
-      // Only .mcp.json project files are safe to quarantine.
+      // Skip project-scoped MCPs from ~/.claude.json
       if (server.source === 'project' && server.path === CLAUDE_HOME_JSON_PATH) {
         console.log(`[McpConfigMonitor] Skipping ~/.claude.json project-scoped server on startup: ${server.name}`)
-        this.lastKnownServers.set(fingerprint, server)
         continue
       }
 
-      // Skip Cursor project-scope MCPs (.cursor/mcp.json in workspace directories).
-      // These are team-shared configs checked into repos and should not be quarantined.
+      // Skip Cursor project-scope MCPs
       if (server.source === 'project' && server.client === 'cursor') {
         console.log(`[McpConfigMonitor] Skipping Cursor project-scoped server on startup: ${server.name} (${server.path})`)
-        this.lastKnownServers.set(fingerprint, server)
         continue
       }
 
-      try {
-        // Auto-quarantine: move to disabled file, remove from original (with retries for transient I/O)
-        console.log(`[McpConfigMonitor] Auto-quarantining existing server: ${server.name}`)
-        const result = await quarantineWithRetry(server)
-
-        // null means server was already absent (benign race) — skip notification
-        if (result) {
-          await this.seenStore.markSeen(server, 'quarantined', {
-            disabledPath: result.disabledPath,
-            quarantinedAt: result.quarantinedAt
-          })
-
-          quarantinedEvents.push({
-            server,
-            fingerprint,
-            originalPath: result.originalPath,
-            disabledPath: result.disabledPath,
-            quarantinedAt: result.quarantinedAt
-          })
-        }
-      } catch (err) {
-        failedFingerprints.add(fingerprint)
-        console.error(
-          `[McpConfigMonitor] Failed to quarantine server "${server.name}" on startup after ${QUARANTINE_MAX_ATTEMPTS} attempts:`,
-          err
-        )
-        this.emit('error', err instanceof Error ? err : new Error(String(err)))
-        // Exclude from lastKnownServers so checkForChanges will retry on next cycle.
-      }
+      // Don't quarantine yet — let user submit first, quarantine on success/dismiss
+      console.log(`[McpConfigMonitor] Server pending quarantine on startup: ${server.name}`)
+      pendingEvents.push({ server, fingerprint })
     }
 
-    // Re-discover to get accurate state after quarantine. Exclude failed fingerprints so we retry later.
-    const postQuarantineServers = await discoverMcpServers()
-    this.lastKnownServers.clear()
-    for (const server of postQuarantineServers) {
-      const fingerprint = getServerFingerprint(server)
-      if (failedFingerprints.has(fingerprint)) continue
-      this.lastKnownServers.set(fingerprint, server)
-    }
-
-    // Emit quarantine events for UI notification
-    if (quarantinedEvents.length > 0) {
+    if (pendingEvents.length > 0) {
       console.log(
-        '[McpConfigMonitor] Quarantined servers on startup:',
-        quarantinedEvents.map((e) => e.server.name)
+        '[McpConfigMonitor] Servers pending quarantine on startup:',
+        pendingEvents.map((e) => e.server.name)
       )
-      this.emit('serversQuarantined', quarantinedEvents)
+      this.emit('serversPendingQuarantine', pendingEvents)
     }
   }
 
@@ -628,8 +576,7 @@ export class McpConfigMonitor extends EventEmitter {
     // This ensures that if someone adds a server to their config, it's immediately
     // quarantined for security review - even if that server was seen before.
     mlog(`[Monitor] addedServers: ${addedServers.length}, changes: ${changes.length}`)
-    const quarantinedEvents: QuarantinedServerEvent[] = []
-    const failedFingerprints = new Set<string>()
+    const pendingEvents: PendingQuarantineEvent[] = []
     for (const { server, fingerprint } of addedServers) {
       // Skip Edison Watch's own servers
       if (isEdisonWatchServer(server)) {
@@ -638,74 +585,33 @@ export class McpConfigMonitor extends EventEmitter {
       }
 
       // Skip opaque marketplace servers (e.g. Cursor plugin-installed MCPs with no accessible config).
-      // Non-opaque marketplace servers (Cursor OAuth, VS Code extensions) ARE quarantined via SQLite.
       if (server.source === 'marketplace' && 'type' in server.config && server.config.type === 'opaque') {
         console.log(`[McpConfigMonitor] Skipping opaque marketplace server (IDE-managed): ${server.name}`)
         continue
       }
 
-      // Skip project-scoped MCPs from ~/.claude.json — the nested projects structure
-      // can't be safely modified (volatile runtime file, race condition with Claude Code).
+      // Skip project-scoped MCPs from ~/.claude.json
       if (server.source === 'project' && server.path === CLAUDE_HOME_JSON_PATH) {
         mlog(`[Monitor] Skipping ~/.claude.json project-scoped server: ${server.name}`)
         continue
       }
 
-      // Skip Cursor project-scope MCPs (.cursor/mcp.json in workspace directories).
-      // These are team-shared configs checked into repos and should not be quarantined.
+      // Skip Cursor project-scope MCPs
       if (server.source === 'project' && server.client === 'cursor') {
         mlog(`[Monitor] Skipping Cursor project-scoped server: ${server.name} (${server.path})`)
         continue
       }
 
-      try {
-        // Auto-quarantine: move to disabled file, remove from original (with retries for transient I/O)
-        mlog(`[Monitor] Auto-quarantining server: ${server.name} from ${server.path}`)
-        const result = await quarantineWithRetry(server)
-
-        // null means server was already absent (benign race) — skip notification
-        if (result) {
-          await this.seenStore.markSeen(server, 'quarantined', {
-            disabledPath: result.disabledPath,
-            quarantinedAt: result.quarantinedAt
-          })
-
-          quarantinedEvents.push({
-            server,
-            fingerprint,
-            originalPath: result.originalPath,
-            disabledPath: result.disabledPath,
-            quarantinedAt: result.quarantinedAt
-          })
-        }
-      } catch (err) {
-        failedFingerprints.add(fingerprint)
-        mlog(`[Monitor] FAILED to quarantine "${server.name}": ${err}`)
-        console.error(
-          `[McpConfigMonitor] Failed to quarantine server "${server.name}" after ${QUARANTINE_MAX_ATTEMPTS} attempts:`,
-          err
-        )
-        this.emit('error', err instanceof Error ? err : new Error(String(err)))
-        // Do not mark as quarantined; exclude from lastKnownServers so we retry on next cycle.
-      }
+      // Don't quarantine yet — let user submit first, quarantine on success/dismiss
+      mlog(`[Monitor] Server pending quarantine: ${server.name} from ${server.path}`)
+      pendingEvents.push({ server, fingerprint })
     }
 
-    mlog(`[Monitor] Quarantined ${quarantinedEvents.length} servers, failed ${failedFingerprints.size}`)
+    mlog(`[Monitor] ${pendingEvents.length} servers pending quarantine`)
 
-    // Update last known state - but clear quarantined servers since they're now in disabled files.
-    // Exclude failed fingerprints so they are treated as "added" again next cycle and we retry.
-    const postQuarantineServers = await discoverMcpServers()
-    this.lastKnownServers.clear()
-    for (const server of postQuarantineServers) {
-      const fingerprint = getServerFingerprint(server)
-      if (failedFingerprints.has(fingerprint)) continue
-      this.lastKnownServers.set(fingerprint, server)
-    }
-
-    // Emit quarantine events for UI notification
-    if (quarantinedEvents.length > 0) {
-      console.log('[McpConfigMonitor] Quarantined servers:', quarantinedEvents)
-      this.emit('serversQuarantined', quarantinedEvents)
+    if (pendingEvents.length > 0) {
+      console.log('[McpConfigMonitor] Servers pending quarantine:', pendingEvents.map(e => e.server.name))
+      this.emit('serversPendingQuarantine', pendingEvents)
     }
 
     // Emit other changes (modified, removed) if any

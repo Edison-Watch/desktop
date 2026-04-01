@@ -71,6 +71,8 @@ export interface DiscoveredMcpServer {
   /** Original key in the config file (before deduplication suffix). Falls back to `name` when absent. */
   originalName?: string
   client: McpClientId
+  /** All clients where this server was found (populated by deduplication). */
+  clients?: McpClientId[]
   source: 'user' | 'workspace' | 'remote' | 'unknown' | 'enterprise' | 'project' | 'marketplace'
   path: string
   config: McpServerConfig
@@ -712,7 +714,11 @@ export async function macAppExists(clientId: string): Promise<boolean> {
   return false
 }
 
-export async function discoverMcpServers(): Promise<DiscoveredMcpServer[]> {
+export interface DiscoveryResult { servers: DiscoveredMcpServer[]; raw: DiscoveredMcpServer[] }
+
+export async function discoverMcpServers(): Promise<DiscoveredMcpServer[]>
+export async function discoverMcpServers(opts: { includeRaw: true }): Promise<DiscoveryResult>
+export async function discoverMcpServers(opts?: { includeRaw?: boolean }): Promise<DiscoveredMcpServer[] | DiscoveryResult> {
   const results: DiscoveredMcpServer[] = []
 
   // VS Code (stable + Insiders) - user-level mcp.json files
@@ -769,19 +775,25 @@ export async function discoverMcpServers(): Promise<DiscoveredMcpServer[]> {
 
   // On macOS, filter out servers whose GUI client .app is not actually installed
   const deduped = deduplicateByNameAndConfig(results)
-  if (platform() !== 'darwin') return deduped
+  const wrap = (servers: DiscoveredMcpServer[]) =>
+    opts?.includeRaw ? { servers, raw: results } : servers
+
+  if (platform() !== 'darwin') return wrap(deduped)
 
   const installedCache = new Map<string, boolean>()
   const filtered: DiscoveredMcpServer[] = []
   for (const server of deduped) {
-    let installed = installedCache.get(server.client)
-    if (installed === undefined) {
-      installed = await macAppExists(server.client)
-      installedCache.set(server.client, installed)
+    const clientsToCheck = server.clients ?? [server.client]
+    let anyInstalled = false
+    for (const c of clientsToCheck) {
+      let installed = installedCache.get(c)
+      if (installed === undefined) {
+        installed = await macAppExists(c)
+        installedCache.set(c, installed)
+      }
+      if (installed) { anyInstalled = true; break }
     }
-    if (installed) filtered.push(server)
+    if (anyInstalled) filtered.push(server)
   }
-  return filtered
+  return wrap(filtered)
 }
-
-// McpConfigPaths and getAllConfigPaths moved to ./mcpConfigPaths
