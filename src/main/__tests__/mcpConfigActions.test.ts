@@ -267,6 +267,7 @@ describe("mcpConfigActions", () => {
           cursor: join(testDir, "cursor-mcp.json"),
           cursorWorkspaceStorage: join(testDir, "cursor-ws"),
           claudeCode: [],
+          codex: join(testDir, "codex-config.toml"),
           windsurf: join(testDir, "windsurf-mcp.json"),
           zed: join(testDir, "zed-mcp.json"),
         });
@@ -299,6 +300,65 @@ describe("mcpConfigActions", () => {
         );
         expect(restoredConfig).toHaveProperty("mcpServers");
         expect(restoredConfig.mcpServers).toHaveProperty("test-plugin-server");
+      } finally {
+        pathsSpy.mockRestore();
+        pluginSpy.mockRestore();
+        projectSpy.mockRestore();
+        claudeCodeSpy.mockRestore();
+        jetbrainsSpy.mockRestore();
+      }
+    });
+
+    it("skips Codex TOML configs and reports error", async () => {
+      const codexConfigPath = join(testDir, ".codex", "config.toml");
+      const codexDisabledPath = join(testDir, ".codex", "disabled_config.toml");
+      await fs.mkdir(join(testDir, ".codex"), { recursive: true });
+
+      // Write a disabled file for a quarantined Codex server
+      const disabledContent = {
+        _metadata: { version: 1 },
+        servers: {
+          "notion": {
+            command: "npx",
+            args: ["-y", "@notionhq/notion-mcp-server"],
+            originalFile: codexConfigPath,
+            quarantinedAt: "2026-03-20T00:00:00Z",
+          },
+        },
+      };
+      await fs.writeFile(codexDisabledPath, JSON.stringify(disabledContent), "utf-8");
+
+      const mcpConfigPaths = await import("../mcpConfigPaths");
+      const pathsSpy = vi
+        .spyOn(mcpConfigPaths, "getAllConfigPaths")
+        .mockReturnValue({
+          vscode: join(testDir, "vscode-mcp.json"),
+          vscodeInsiders: join(testDir, "vscode-insiders-mcp.json"),
+          claudeDesktop: join(testDir, "claude-desktop.json"),
+          claudeCowork: join(testDir, "claude-cowork.json"),
+          cursor: join(testDir, "cursor-mcp.json"),
+          cursorWorkspaceStorage: join(testDir, "cursor-ws"),
+          claudeCode: [],
+          codex: codexConfigPath,
+          windsurf: join(testDir, "windsurf-mcp.json"),
+          zed: join(testDir, "zed-mcp.json"),
+        });
+      const mcpDiscovery = await import("../mcpDiscovery");
+      const pluginSpy = vi.spyOn(mcpDiscovery, "getCursorPluginMcpPaths").mockResolvedValue([]);
+      const projectSpy = vi.spyOn(mcpDiscovery, "getCursorProjectMcpPaths").mockResolvedValue([]);
+      const claudeCodeSpy = vi.spyOn(mcpDiscovery, "getClaudeCodeProjectMcpPaths").mockResolvedValue([]);
+      const jetbrainsSpy = vi.spyOn(mcpDiscovery, "getJetBrainsMcpConfigPaths").mockResolvedValue([]);
+
+      try {
+        const result = await restoreAllQuarantinedServers();
+
+        // Should not count as restored
+        expect(result.restored).toBe(0);
+        // Should report an error about TOML not being supported
+        expect(result.errors).toHaveLength(1);
+        expect(result.errors[0]).toContain("Codex config restore not yet supported");
+        // Disabled file should persist (not deleted)
+        await expect(fs.access(codexDisabledPath)).resolves.toBeUndefined();
       } finally {
         pathsSpy.mockRestore();
         pluginSpy.mockRestore();

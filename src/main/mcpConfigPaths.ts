@@ -16,6 +16,7 @@ import {
   getZedConfigPath,
 } from './mcpDiscovery'
 import { getClaudeCoworkConfigPath } from './mcpDiscoveryCowork'
+import { getCodexConfigPath } from './hookInjectionClients'
 
 /** All config paths that should be monitored for changes. */
 export interface McpConfigPaths {
@@ -26,6 +27,7 @@ export interface McpConfigPaths {
   cursor: string
   cursorWorkspaceStorage: string
   claudeCode: string[]
+  codex: string
   windsurf: string
   zed: string
 }
@@ -44,6 +46,7 @@ export function getAllConfigPaths(): McpConfigPaths {
       getClaudeCodeHomeJsonPath(),
       getClaudeCodeDedicatedMcpPath()
     ],
+    codex: getCodexConfigPath(),
     windsurf: getWindsurfConfigPath(),
     zed: getZedConfigPath(),
   }

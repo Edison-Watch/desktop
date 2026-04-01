@@ -117,6 +117,7 @@ export class McpConfigMonitor extends EventEmitter {
       paths.cursor,
       ...CURSOR_PLUGINS_INSTALLED_PATHS, // watch all plugin registry files (legacy + v1 + shared)
       ...paths.claudeCode,
+      paths.codex,
       paths.windsurf,
       paths.zed,
       ...jetbrainsPaths.map((x) => x.path),

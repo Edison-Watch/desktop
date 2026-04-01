@@ -528,6 +528,7 @@ export async function restoreAllQuarantinedServers(): Promise<{
     paths.claudeCowork,
     paths.cursor,
     ...paths.claudeCode,
+    paths.codex,
     paths.windsurf,
     paths.zed,
     ...jetbrainsPaths.map((x) => x.path),
@@ -568,6 +569,15 @@ export async function restoreAllQuarantinedServers(): Promise<{
       // Determine the client type from the original path to know the key format.
       // We infer it from the disabled file's originalFile metadata or from the path itself.
       const clientId = inferClientFromPath(originalPath)
+
+      // Skip Codex configs — readConfigFile/writeConfigFile only handle JSON/JSONC,
+      // not TOML. Restoring Codex quarantined servers requires TOML-aware read/write.
+      if (clientId === 'codex') {
+        const msg = `Codex config restore not yet supported (TOML format): ${originalPath}`
+        console.log(`[MCP Quarantine Reset] ${msg}`)
+        errors.push(msg)
+        continue
+      }
 
       // Read or create the original config file
       let config: ConfigFileFormat
@@ -618,6 +628,7 @@ function inferClientFromPath(configPath: string): McpClientId {
   const lower = configPath.toLowerCase()
   // Check specific patterns before generic ones to avoid false positives
   // (e.g., /Users/alice/code/project/.cursor/mcp.json matching VS Code)
+  if (lower.includes('.codex')) return 'codex'
   if (lower.includes('.cursor')) return 'cursor'
   if (lower.includes('claude') && lower.includes('claude_desktop_config')) return 'claude-desktop'
   if (lower.includes('.claude')) return 'claude-code'
