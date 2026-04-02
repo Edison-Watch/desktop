@@ -29,7 +29,7 @@ const is = { get dev() { return !app.isPackaged; } };
 const electronApp = { setAppUserModelId: (id: string) => { if (process.platform === "win32") app.setAppUserModelId(app.isPackaged ? id : process.execPath); } };
 const optimizer = { watchWindowShortcuts: (_win: BrowserWindow) => { /* no-op: dev shortcuts removed */ } };
 import windowStateKeeper from "electron-window-state";
-import { injectAllHooks } from "./hookInjection";
+import { injectAllHooks, isCodexInstalled } from "./hookInjection";
 import { initSentry } from "./sentry";
 import { startHookHealthMonitor, stopHookHealthMonitor, getHookStatusLabel } from "./hookHealthMonitor";
 import { startUpdateChecker, stopUpdateChecker, getAvailableUpdate, openUpdateDownload, checkForUpdateNow } from "./updateChecker";
@@ -714,27 +714,29 @@ app.whenReady().then(async () => {
     createTray();
     startEventSubscription();
     startHookHealthMonitor();
-    // Await hook injection before starting quarantine monitor to avoid
-    // concurrent read-modify-write races on ~/.claude/settings.json
-    await injectAllHooks().catch((err) =>
-      console.error("[HookInjection] Failed to inject hooks:", err),
-    );
+    // Await hook injection before quarantine monitor to avoid config file races
+    await injectAllHooks().catch((err) => console.error("[HookInjection] Failed:", err));
     startUpdateChecker();
-    startQuarantineMonitorIfEnabled().catch((err) =>
-      console.error("[Quarantine] Failed to start monitor:", err),
-    );
+    startQuarantineMonitorIfEnabled().catch((err) => console.error("[Quarantine] Failed:", err));
     startQuarantinePolling();
 
-    // Self-heal MCP registration on startup for all configured apps.
-    // Checks each app's config file for the edison-watch entry and re-registers
-    // any that are missing. This handles cases where configs are cleared externally
-    // (e.g. by other tools, manual edits, or test harnesses).
+    // Self-heal: re-register edison-watch for any apps where the config was cleared externally
     const setup = getSetupData();
     const mcpBaseUrl = getMcpBaseUrl();
     const creds = getCredentialsForEnv();
     if (mcpBaseUrl && creds?.apiKey) {
       const rawApps = setup.configuredApps?.length ? setup.configuredApps : ALL_SUPPORTED_APPS;
-      const configuredApps = rawApps.filter(app => ALL_SUPPORTED_APPS.includes(app));
+      let configuredApps = rawApps.filter(app => ALL_SUPPORTED_APPS.includes(app));
+
+      // One-time backfill: add Codex for users who onboarded before it was in the detection list
+      const migrations = setup.appliedMigrations ?? [];
+      if (!migrations.includes("codex-backfill") && !configuredApps.includes("codex") && isCodexInstalled()) {
+        slog("startup: backfilling codex into configuredApps");
+        configuredApps = [...configuredApps, "codex"];
+        markSetupComplete({ configuredApps, appliedMigrations: [...migrations, "codex-backfill"] });
+      } else if (!migrations.includes("codex-backfill")) {
+        markSetupComplete({ appliedMigrations: [...migrations, "codex-backfill"] });
+      }
 
       // Claude Code: check via CLI (separate path since it uses `claude mcp get`)
       if (configuredApps.includes("claude-code")) {

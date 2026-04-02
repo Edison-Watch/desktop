@@ -20,7 +20,7 @@ import {
   getClaudeDesktopConfigPath,
   getClaudeCoworkConfigPath,
 } from "./mcpDiscovery";
-import { injectAllHooks, removeAllHooks, getHookStatus, injectVsCodeWorkspaceHook, removeVsCodeWorkspaceHook } from "./hookInjection";
+import { injectAllHooks, removeAllHooks, getHookStatus, injectVsCodeWorkspaceHook, removeVsCodeWorkspaceHook, getCodexConfigPath } from "./hookInjection";
 import { startHookHealthMonitor } from "./hookHealthMonitor";
 import { startUpdateChecker as _startUpdateChecker } from "./updateChecker";
 import { showFeedbackWindow } from "./feedbackWindow";
@@ -293,6 +293,12 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
         getPath: () => Promise.resolve(getClaudeCoworkConfigPath()),
         // Cowork is detected by the presence of vm_bundles/ (downloaded on first Cowork launch)
         detectDir: (configPath) => join(dirname(configPath), 'vm_bundles'),
+      },
+      {
+        id: "codex",
+        name: "Codex CLI",
+        getPath: () => Promise.resolve(getCodexConfigPath()),
+        // Codex is a CLI tool — detected by ~/.codex/ dir (macAppExists returns true for CLI-only clients)
       },
     ];
 

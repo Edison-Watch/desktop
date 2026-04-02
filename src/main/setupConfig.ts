@@ -104,6 +104,8 @@ export interface SetupData {
   configuredApps?: string[];
   /** Per-environment credentials so switching envs also switches API keys. */
   envCredentials?: Record<string, EnvCredentials>;
+  /** One-time migration flags (keyed by migration name). */
+  appliedMigrations?: string[];
 }
 
 let setupCompleted: boolean | null = null;
