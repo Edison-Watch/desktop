@@ -317,9 +317,9 @@ describe("mcpConfigActions", () => {
       const disabledContent = {
         _metadata: { version: 1 },
         servers: {
-          "notion": {
+          "everything": {
             command: "npx",
-            args: ["-y", "mcp-remote", "https://mcp.notion.so/mcp"],
+            args: ["-y", "@modelcontextprotocol/server-everything"],
             originalFile: codexConfigPath,
             quarantinedAt: "2026-03-20T00:00:00Z",
           },

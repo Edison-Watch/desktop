@@ -257,9 +257,9 @@ describe("Config Parsing Functions", () => {
     it("parses settings.json with mcpServers", async () => {
       const config = {
         mcpServers: {
-          notion: {
+          everything: {
             command: "npx",
-            args: ["-y", "mcp-remote", "https://mcp.notion.so/mcp"],
+            args: ["-y", "@modelcontextprotocol/server-everything"],
             env: { HOME: "/tmp" },
           },
         },
@@ -274,7 +274,7 @@ describe("Config Parsing Functions", () => {
       const servers = await parseClaudeCodeSettingsJson(filePath);
 
       expect(servers).toHaveLength(1);
-      expect(servers[0].name).toBe("notion");
+      expect(servers[0].name).toBe("everything");
       expect(servers[0].client).toBe("claude-code");
       expect(servers[0].source).toBe("user");
       expect(
