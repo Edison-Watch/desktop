@@ -21,7 +21,7 @@ interface EdisonAPI {
   };
   mcp: {
     detectClients: () => Promise<Array<{ id: string; name: string; configPath: string }>>;
-    discover: () => Promise<unknown[]>;
+    discover: () => Promise<{ servers: unknown[]; unsupported: unknown[] }>;
     findDuplicates: () => Promise<unknown[]>;
     removeServers: (targets: Array<string | { name: string; client: string }>) => Promise<{ removed: string[]; errors: string[] }>;
     resubmitServer: (params: { originalName: string; newName: string; apiKey?: string; apiBaseUrl?: string; userId?: string; config?: Record<string, unknown>; client?: string; configPath?: string }) => Promise<{ success: boolean; error?: string }>;
@@ -40,6 +40,7 @@ interface EdisonAPI {
       apiKey?: string;
       apiBaseUrl?: string;
       userId?: string;
+      skipServers?: string[];
       templateOverrides: Record<string, Array<{
         entryId: string;
         varName: string;
@@ -57,7 +58,7 @@ interface EdisonAPI {
       errors?: string[];
       failures?: Array<{ name: string; client: string; reason: "conflict" | "error"; message: string; config?: Record<string, unknown>; configPath?: string }>;
     }>;
-    analyzeSecrets: () => Promise<Array<{
+    analyzeSecrets: (params?: { skipServers?: string[] }) => Promise<Array<{
       name: string;
       client: string;
       source: string;
@@ -72,6 +73,7 @@ interface EdisonAPI {
       apiKey?: string;
       apiBaseUrl?: string;
       userId?: string;
+      skipServers?: string[];
     }) => Promise<{
       submitted: number;
       autoApproved: number;

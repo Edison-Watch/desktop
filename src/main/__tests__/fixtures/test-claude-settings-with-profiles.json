@@ -1,0 +1,57 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run test:*)",
+      "Read(~/**)"
+    ]
+  },
+  "mcpServers": {
+    "global-server": {
+      "type": "sse",
+      "url": "http://localhost:3000/global/sse"
+    },
+    "shared-name": {
+      "type": "sse",
+      "url": "http://localhost:3000/shared-top/sse"
+    }
+  },
+  "profiles": {
+    "work": {
+      "permissions": {
+        "allow": ["Bash(kubectl *)"]
+      },
+      "mcpServers": {
+        "work-only-server": {
+          "type": "sse",
+          "url": "http://localhost:4000/work/sse"
+        },
+        "shared-name": {
+          "type": "sse",
+          "url": "http://localhost:4000/shared-work/sse"
+        },
+        "notion": {
+          "command": "npx",
+          "args": ["-y", "@notionhq/notion-mcp-server"],
+          "env": {
+            "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer ntn_work_token\"}"
+          }
+        }
+      }
+    },
+    "personal": {
+      "mcpServers": {
+        "personal-db": {
+          "command": "uvx",
+          "args": ["mcp-server-sqlite", "--db-path", "~/personal.db"]
+        },
+        "notion": {
+          "command": "npx",
+          "args": ["-y", "@notionhq/notion-mcp-server"],
+          "env": {
+            "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer ntn_personal_token\"}"
+          }
+        }
+      }
+    }
+  }
+}

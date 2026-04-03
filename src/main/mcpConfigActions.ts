@@ -111,6 +111,44 @@ export function getServersFromConfig(
 }
 
 /**
+ * Resolve the servers map for a discovered server, handling:
+ * - .claude.json project-scoped servers (projects.*.mcpServers)
+ * - settings.json profile-scoped servers (profiles.*.mcpServers)
+ * - Zed nested structure (assistant.mcp_servers)
+ * - Standard top-level (mcpServers / servers)
+ *
+ * Returns the mutable servers record and whether it was found in a nested scope.
+ * When nested, the returned record is a direct reference into `config` — mutations apply in-place.
+ */
+export function resolveServersMap(
+  config: ConfigFileFormat,
+  server: DiscoveredMcpServer,
+  configKey: string
+): { servers: Record<string, McpServerConfig> | undefined; nested: boolean } {
+  // Check project-scoped (.claude.json → projects.*.mcpServers)
+  // server.projectName stores the full project path key from .claude.json
+  if (server.projectName && config.projects) {
+    const projects = config.projects as Record<string, { mcpServers?: Record<string, McpServerConfig> }>
+    const projCfg = projects[server.projectName]
+    if (projCfg?.mcpServers && configKey in projCfg.mcpServers) {
+      return { servers: projCfg.mcpServers, nested: true }
+    }
+  }
+
+  // Check profile-scoped (settings.json → profiles.*.mcpServers)
+  if (server.profileName && config.profiles) {
+    const profiles = config.profiles as Record<string, { mcpServers?: Record<string, McpServerConfig> }>
+    const profileCfg = profiles[server.profileName]
+    if (profileCfg?.mcpServers && configKey in profileCfg.mcpServers) {
+      return { servers: profileCfg.mcpServers, nested: true }
+    }
+  }
+
+  // Fall back to top-level
+  return { servers: getServersFromConfig(config, server.client), nested: false }
+}
+
+/**
  * Set the servers map in a config, handling Zed's nested structure.
  */
 export function setServersInConfig(
@@ -148,29 +186,30 @@ export async function disableServerInConfig(server: DiscoveredMcpServer): Promis
     console.log(`[MCP Config] Created backup: ${backupPath}`)
   }
 
+  const configKey = server.originalName ?? server.name
+
   if (supportsJsonc(server.client)) {
     // VS Code: Comment out the server entry using JSONC
-    const result = commentOutServerInJsonc(raw, serversKey, server.name)
+    const result = commentOutServerInJsonc(raw, serversKey, configKey)
     await fs.writeFile(server.path, result, 'utf-8')
-    console.log(`[MCP Config] Commented out server "${server.name}" in ${server.path}`)
+    console.log(`[MCP Config] Commented out server "${configKey}" in ${server.path}`)
   } else {
     // Others: Rename with _disabled_ prefix
     const config = JSON.parse(raw) as ConfigFileFormat
-    const servers = config[serversKey] as Record<string, McpServerConfig> | undefined
+    const { servers } = resolveServersMap(config, server, configKey)
 
-    if (!servers || !(server.name in servers)) {
-      throw new Error(`Server "${server.name}" not found in config file`)
+    if (!servers || !(configKey in servers)) {
+      throw new Error(`Server "${configKey}" not found in config file`)
     }
 
     // Move to disabled key
-    const disabledName = `_disabled_${server.name}`
-    servers[disabledName] = servers[server.name]
-    delete servers[server.name]
-    config[serversKey] = servers
+    const disabledName = `_disabled_${configKey}`
+    servers[disabledName] = servers[configKey]
+    delete servers[configKey]
 
     await fs.writeFile(server.path, JSON.stringify(config, null, 2), 'utf-8')
     console.log(
-      `[MCP Config] Renamed server "${server.name}" to "${disabledName}" in ${server.path}`
+      `[MCP Config] Renamed server "${configKey}" to "${disabledName}" in ${server.path}`
     )
   }
 }
@@ -245,10 +284,11 @@ function commentOutServerInJsonc(content: string, serversKey: string, serverName
  */
 export async function removeServerFromConfig(server: DiscoveredMcpServer): Promise<void> {
   const config = await readConfigFile(server.path, server.client)
-  const servers = getServersFromConfig(config, server.client)
+  const configKey = server.originalName ?? server.name
+  const { servers, nested } = resolveServersMap(config, server, configKey)
 
-  if (!servers || !(server.name in servers)) {
-    throw new Error(`Server "${server.name}" not found in config file`)
+  if (!servers || !(configKey in servers)) {
+    throw new Error(`Server "${configKey}" not found in config file`)
   }
 
   // Create backup first
@@ -260,12 +300,15 @@ export async function removeServerFromConfig(server: DiscoveredMcpServer): Promi
     console.log(`[MCP Config] Created backup: ${backupPath}`)
   }
 
-  // Delete the server entry
-  delete servers[server.name]
-  setServersInConfig(config, server.client, servers)
+  // Delete the server entry. For nested (project/profile) entries the servers map is
+  // a direct reference into config, so the mutation applies in-place.
+  delete servers[configKey]
+  if (!nested) {
+    setServersInConfig(config, server.client, servers)
+  }
 
   await fs.writeFile(server.path, JSON.stringify(config, null, 2), 'utf-8')
-  console.log(`[MCP Config] Removed server "${server.name}" from ${server.path}`)
+  console.log(`[MCP Config] Removed server "${configKey}" from ${server.path}`)
 }
 
 /**
@@ -278,10 +321,11 @@ export async function replaceServerWithProxy(
   edisonSecretKey?: string
 ): Promise<void> {
   const config = await readConfigFile(server.path, server.client)
-  const servers = getServersFromConfig(config, server.client)
+  const configKey = server.originalName ?? server.name
+  const { servers, nested } = resolveServersMap(config, server, configKey)
 
-  if (!servers || !(server.name in servers)) {
-    throw new Error(`Server "${server.name}" not found in config file`)
+  if (!servers || !(configKey in servers)) {
+    throw new Error(`Server "${configKey}" not found in config file`)
   }
 
   // Build headers if secret key is available
@@ -293,21 +337,23 @@ export async function replaceServerWithProxy(
   // Keep the original server name but point to Edison Watch
   if (server.client === 'vscode') {
     // VS Code format
-    servers[server.name] = {
+    servers[configKey] = {
       type: 'http',
       url: edisonWatchUrl,
       ...(headers && { headers })
     } as McpServerConfig
   } else {
     // Claude Desktop, Cursor, Claude Code, Windsurf, Zed format
-    servers[server.name] = {
+    servers[configKey] = {
       type: 'sse',
       url: edisonWatchUrl,
       ...(headers && { headers })
     } as McpServerConfig
   }
 
-  setServersInConfig(config, server.client, servers)
+  if (!nested) {
+    setServersInConfig(config, server.client, servers)
+  }
 
   await writeConfigFile(server.path, config)
   console.log(
@@ -432,17 +478,38 @@ export async function quarantineServer(server: DiscoveredMcpServer): Promise<Qua
     const raw = await fs.readFile(originalPath, 'utf-8')
     const parsed = jsonc.parse(raw) as ConfigFileFormat
 
-    // Determine the JSON path to the server entry
+    // Determine the JSON path to the server entry.
+    // For .claude.json project-scoped servers, the path is projects.<projectPath>.mcpServers.<name>
     const serversKey = server.client === 'zed'
       ? ['assistant', 'mcp_servers']
       : [getServersKey(server.client)]
-    const serverPath = [...serversKey, configKey]
+    let serverPath = [...serversKey, configKey]
 
     // Check the server actually exists in the parsed config
-    const servers = server.client === 'zed'
+    let servers = server.client === 'zed'
       ? parsed.assistant?.mcp_servers
       : (parsed as Record<string, unknown>)[serversKey[0]] as Record<string, unknown> | undefined
-    const serverExists = servers && configKey in servers
+    let serverExists = servers && configKey in servers
+
+    // If not found at top level, check project-scoped (.claude.json) and profile-scoped (settings.json)
+    if (!serverExists && server.projectName && parsed.projects) {
+      const projects = parsed.projects as Record<string, { mcpServers?: Record<string, unknown> }>
+      const projCfg = projects[server.projectName]
+      if (projCfg?.mcpServers && configKey in projCfg.mcpServers) {
+        servers = projCfg.mcpServers
+        serverPath = ['projects', server.projectName, 'mcpServers', configKey]
+        serverExists = true
+      }
+    }
+    if (!serverExists && server.profileName && parsed.profiles) {
+      const profiles = parsed.profiles as Record<string, { mcpServers?: Record<string, unknown> }>
+      const profileCfg = profiles[server.profileName]
+      if (profileCfg?.mcpServers && configKey in profileCfg.mcpServers) {
+        servers = profileCfg.mcpServers
+        serverPath = ['profiles', server.profileName, 'mcpServers', configKey]
+        serverExists = true
+      }
+    }
 
     if (serverExists) {
       // Create backup first

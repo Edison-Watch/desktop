@@ -1,0 +1,41 @@
+{
+  "mcpServers": {
+    "global-server": {
+      "type": "sse",
+      "url": "http://localhost:3000/global/sse"
+    }
+  },
+  "projects": {
+    "/Users/gatlingx/work/edison-watch": {
+      "mcpServers": {
+        "sameall": {
+          "type": "sse",
+          "url": "http://localhost:5000/sameall/sse"
+        },
+        "samediff": {
+          "type": "sse",
+          "url": "http://localhost:5000/samediff-ew/sse"
+        },
+        "notion": {
+          "command": "npx",
+          "args": ["-y", "@notionhq/notion-mcp-server"],
+          "env": {
+            "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer ntn_project1\"}"
+          }
+        }
+      }
+    },
+    "/Users/gatlingx/work/other-project": {
+      "mcpServers": {
+        "samediff": {
+          "type": "sse",
+          "url": "http://localhost:5000/samediff-other/sse"
+        },
+        "project-only": {
+          "command": "node",
+          "args": ["server.js"]
+        }
+      }
+    }
+  }
+}

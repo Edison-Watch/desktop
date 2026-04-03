@@ -8,9 +8,9 @@ import type { DiscoveredMcpServer, McpClientId, McpServerConfig } from "./mcpDis
 
 export interface DuplicateGroup {
   fingerprint: string;
-  /** "same-config" = different names, same config. "name-conflict" = same original name, different configs (auto-renamed). */
-  kind: "same-config" | "name-conflict";
-  servers: Array<{ name: string; originalName?: string; client: McpClientId; clients?: McpClientId[]; config: McpServerConfig }>;
+  /** "same-config" = different names, same config. "name-conflict" = same original name, different configs (auto-renamed). "profile-conflict" = same agent, same name, different profiles. */
+  kind: "same-config" | "name-conflict" | "profile-conflict";
+  servers: Array<{ name: string; originalName?: string; client: McpClientId; clients?: McpClientId[]; config: McpServerConfig; profileName?: string }>;
 }
 
 /** Recursively sort object keys for stable JSON comparison. */
@@ -63,10 +63,14 @@ export function findDuplicateGroups(servers: DiscoveredMcpServer[]): DuplicateGr
   }
   for (const [origName, group] of byOrigName) {
     if (group.length > 1) {
+      // Detect profile conflicts: same agent, same original name, different profiles
+      const isProfileConflict = group.length > 1
+        && new Set(group.map((s) => s.client)).size === 1
+        && group.some((s) => s.profileName);
       groups.push({
-        fingerprint: `name-conflict:${origName}`,
-        kind: "name-conflict",
-        servers: group.map((s) => ({ name: s.name, originalName: s.originalName, client: s.client, clients: s.clients, config: s.config })),
+        fingerprint: isProfileConflict ? `profile-conflict:${origName}` : `name-conflict:${origName}`,
+        kind: isProfileConflict ? "profile-conflict" : "name-conflict",
+        servers: group.map((s) => ({ name: s.name, originalName: s.originalName, client: s.client, clients: s.clients, config: s.config, profileName: s.profileName })),
       });
     }
   }
@@ -75,16 +79,37 @@ export function findDuplicateGroups(servers: DiscoveredMcpServer[]): DuplicateGr
 }
 
 /**
- * Build a map from deduped server name → all raw (pre-dedup) server instances.
- * This allows removing a server from ALL agent configs, not just the first one.
+ * Build a map from deduped server name → the raw (pre-dedup) server instances
+ * that should be removed when this deduped entry is submitted.
+ *
+ * When all raw entries with the same name have identical configs, dedup merges
+ * them into a single entry — the removal map points to all of them (remove from
+ * every agent config).
+ *
+ * When configs differ, dedup renames each one (adds originalName). In that case
+ * each deduped entry should only remove the raw entries it actually represents,
+ * matched by config + path + projectName + profileName to avoid double-removal.
  */
 export function buildRemovalMap(
   raw: DiscoveredMcpServer[],
   deduped: DiscoveredMcpServer[],
 ): Map<string, DiscoveredMcpServer[]> {
+  // Deduplicate raw entries so the same server at the same file path is never
+  // removed twice. Multiple discovery paths can find the same config file
+  // (e.g. Cursor global + workspace storage pointing at the same project).
+  const seenRaw = new Set<string>();
+  const uniqueRaw: DiscoveredMcpServer[] = [];
+  for (const s of raw) {
+    const key = `${s.name}\0${s.path}\0${s.projectName ?? ''}\0${s.profileName ?? ''}`;
+    if (!seenRaw.has(key)) {
+      seenRaw.add(key);
+      uniqueRaw.push(s);
+    }
+  }
+
   // Group raw servers by name (original name in config)
   const rawByName = new Map<string, DiscoveredMcpServer[]>();
-  for (const s of raw) {
+  for (const s of uniqueRaw) {
     const group = rawByName.get(s.name) ?? [];
     group.push(s);
     rawByName.set(s.name, group);
@@ -92,10 +117,23 @@ export function buildRemovalMap(
 
   const map = new Map<string, DiscoveredMcpServer[]>();
   for (const server of deduped) {
-    // The original name (before any dedup suffix) maps to the raw entries
     const origName = server.originalName ?? server.name;
     const rawEntries = rawByName.get(origName) ?? [];
-    map.set(server.name, rawEntries);
+
+    if (server.originalName) {
+      // Dedup renamed this server — configs differ across raw entries.
+      // Match only the raw entries that correspond to this specific deduped server.
+      const matched = rawEntries.filter((r) =>
+        configsEqual(r.config, server.config)
+        && r.path === server.path
+        && r.projectName === server.projectName
+        && r.profileName === server.profileName
+      );
+      map.set(server.name, matched.length > 0 ? matched : [server]);
+    } else {
+      // No rename — all raw entries have identical configs, remove from all.
+      map.set(server.name, rawEntries);
+    }
   }
   return map;
 }
@@ -152,9 +190,25 @@ export function deduplicateServers(servers: DiscoveredMcpServer[]): DiscoveredMc
       const clients = [...new Set(group.flatMap((s) => s.clients ?? [s.client]))];
       result.push({ ...group[0], clients });
     } else {
-      // Configs differ — suffix each with its client alias
-      for (const s of group) {
-        result.push({ ...s, name: `${s.name}_${clientAlias(s.client)}`, originalName: s.name, clients: s.clients ?? [s.client] });
+      // Configs differ — suffix each to disambiguate.
+      // If all from different clients, use name_clientAlias.
+      // If some share a client (e.g. same server in multiple Claude Code profiles),
+      // use numeric suffixes: name_ccode_1, name_ccode_2, etc.
+      const clientSet = new Set(group.map((s) => s.client));
+      if (clientSet.size === group.length) {
+        for (const s of group) {
+          result.push({ ...s, name: `${s.name}_${clientAlias(s.client)}`, originalName: s.name, clients: s.clients ?? [s.client] });
+        }
+      } else {
+        const clientCounter = new Map<string, number>();
+        for (const s of group) {
+          const alias = clientAlias(s.client);
+          const count = (clientCounter.get(alias) ?? 0) + 1;
+          clientCounter.set(alias, count);
+          const hasSameClient = group.filter((o) => o.client === s.client).length > 1;
+          const suffix = count > 1 || hasSameClient ? `${alias}_${count}` : alias;
+          result.push({ ...s, name: `${s.name}_${suffix}`, originalName: s.name, clients: s.clients ?? [s.client] });
+        }
       }
     }
   }

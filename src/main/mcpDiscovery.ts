@@ -17,7 +17,19 @@ export { getServerFingerprint } from './seenServersStore'
 export { getClaudeCoworkConfigPath, parseClaudeCoworkConfig } from './mcpDiscoveryCowork'
 export { getCursorStateDbPath, discoverCursorMarketplaceMcps } from './mcpDiscoveryCursorMarketplace'
 export { getVscodeStateDbPath, discoverVscodeStateMcps } from './mcpDiscoveryVscodeState'
+export {
+  getClaudeCodeUserSettingsPath,
+  getClaudeCodeLocalSettingsPath,
+  getClaudeCodeHomeJsonPath,
+  getClaudeCodeDedicatedMcpPath,
+  getClaudeCodeManagedMcpPath,
+  parseClaudeCodeSettingsJson,
+  parseClaudeCodeMcpJson,
+  parseClaudeHomeJson,
+  parseClaudeDedicatedMcpServers,
+} from './mcpDiscoveryClaudeCode'
 import { discoverClaudeCowork, deduplicateByNameAndConfig } from './mcpDiscoveryCowork'
+import { discoverClaudeCode } from './mcpDiscoveryClaudeCode'
 import { discoverCursorMarketplaceMcps } from './mcpDiscoveryCursorMarketplace'
 import { discoverVscodeStateMcps } from './mcpDiscoveryVscodeState'
 
@@ -76,6 +88,13 @@ export interface DiscoveredMcpServer {
   path: string
   config: McpServerConfig
   projectName?: string
+  /** Claude Code profile name (when discovered inside a profiles.{name} block). */
+  profileName?: string
+}
+
+/** Check whether a server config is opaque (IDE-managed, no accessible launch config). */
+export function isOpaqueConfig(config: McpServerConfig): boolean {
+  return 'type' in config && config.type === 'opaque'
 }
 
 // VS Code specific file locations (macOS first pass). We keep this in a function so
@@ -247,234 +266,6 @@ export async function parseVscodeMcpJson(
     })
   }
   return servers
-}
-
-// Claude Code specific file locations
-export function getClaudeCodeUserSettingsPath(): string {
-  return join(homedir(), '.claude', 'settings.json')
-}
-
-export function getClaudeCodeLocalSettingsPath(): string {
-  return join(homedir(), '.claude', 'settings.local.json')
-}
-
-export function getClaudeCodeHomeJsonPath(): string {
-  return join(homedir(), '.claude.json')
-}
-
-export function getClaudeCodeDedicatedMcpPath(): string {
-  return join(homedir(), '.claude', 'mcp_servers.json')
-}
-
-export function getClaudeCodeManagedMcpPath(): string | null {
-  switch (platform()) {
-    case 'darwin':
-      return '/Library/Application Support/ClaudeCode/managed-mcp.json'
-    case 'win32':
-      return 'C:\\ProgramData\\ClaudeCode\\managed-mcp.json'
-    default:
-      return '/etc/claude-code/managed-mcp.json'
-  }
-}
-
-// Parse Claude Code settings.json (shape: { mcpServers?: { [name]: { ... } }, ... })
-// Exported for testing
-export async function parseClaudeCodeSettingsJson(
-  filePath: string
-): Promise<DiscoveredMcpServer[]> {
-  const raw = await fs.readFile(filePath, 'utf-8')
-  const json = JSON.parse(raw) as {
-    mcpServers?: Record<string, McpServerConfig>
-  }
-
-  const servers: DiscoveredMcpServer[] = []
-  const entries = Object.entries(json.mcpServers ?? {})
-  for (const [name, cfg] of entries) {
-    servers.push({
-      name,
-      client: 'claude-code',
-      source: 'user',
-      path: filePath,
-      config: cfg as McpServerConfig
-    })
-  }
-  return servers
-}
-
-// Parse Claude Code managed-mcp.json or .mcp.json (shape: { mcpServers: { [name]: { ... } } })
-// Exported for testing
-export async function parseClaudeCodeMcpJson(
-  filePath: string,
-  source: 'enterprise' | 'project'
-): Promise<DiscoveredMcpServer[]> {
-  const raw = await fs.readFile(filePath, 'utf-8')
-  const json = JSON.parse(raw) as {
-    mcpServers: Record<string, McpServerConfig>
-  }
-
-  const servers: DiscoveredMcpServer[] = []
-  const entries = Object.entries(json.mcpServers ?? {})
-  for (const [name, cfg] of entries) {
-    servers.push({
-      name,
-      client: 'claude-code',
-      source,
-      path: filePath,
-      config: cfg as McpServerConfig
-    })
-  }
-  return servers
-}
-
-// Parse ~/.claude.json which may contain either root mcpServers or a
-// projects map whose values contain mcpServers
-// Exported for testing
-export async function parseClaudeHomeJson(filePath: string): Promise<DiscoveredMcpServer[]> {
-  const raw = await fs.readFile(filePath, 'utf-8')
-  const json = JSON.parse(raw) as {
-    mcpServers?: Record<string, McpServerConfig>
-    projects?: Record<string, { mcpServers?: Record<string, McpServerConfig> }>
-  }
-
-  const servers: DiscoveredMcpServer[] = []
-
-  // Top-level mcpServers (treat as user scope)
-  const topLevel = Object.entries(json.mcpServers ?? {})
-  for (const [name, cfg] of topLevel) {
-    servers.push({
-      name,
-      client: 'claude-code',
-      source: 'user',
-      path: filePath,
-      config: cfg as McpServerConfig
-    })
-  }
-
-  // Projects map (treat as project scope)
-  const projects = json.projects ?? {}
-  for (const [projectPath, projCfg] of Object.entries(projects)) {
-    const projectName = basename(projectPath)
-    const entries = Object.entries(projCfg?.mcpServers ?? {})
-    for (const [name, cfg] of entries) {
-      servers.push({
-        name,
-        client: 'claude-code',
-        source: 'project',
-        path: filePath,
-        config: cfg as McpServerConfig,
-        projectName
-      })
-    }
-  }
-
-  return servers
-}
-
-// Parse dedicated ~/.claude/mcp_servers.json which may either be
-// { mcpServers: { ... } } or a direct mapping of servers
-// Exported for testing
-export async function parseClaudeDedicatedMcpServers(
-  filePath: string
-): Promise<DiscoveredMcpServer[]> {
-  const raw = await fs.readFile(filePath, 'utf-8')
-  const json = JSON.parse(raw) as Record<string, unknown>
-
-  // Check if it has mcpServers key or is a direct mapping
-  let mapping: Record<string, McpServerConfig>
-  if ('mcpServers' in json && json.mcpServers && typeof json.mcpServers === 'object') {
-    mapping = json.mcpServers as Record<string, McpServerConfig>
-  } else {
-    mapping = json as Record<string, McpServerConfig>
-  }
-
-  const servers: DiscoveredMcpServer[] = []
-  const entries = Object.entries(mapping ?? {})
-  for (const [name, cfg] of entries) {
-    servers.push({
-      name,
-      client: 'claude-code',
-      source: 'user',
-      path: filePath,
-      config: cfg as McpServerConfig
-    })
-  }
-  return servers
-}
-
-async function discoverClaudeCode(): Promise<DiscoveredMcpServer[]> {
-  const results: DiscoveredMcpServer[] = []
-
-  // Claude Code user settings: ~/.claude/settings.json
-  try {
-    const userPath = getClaudeCodeUserSettingsPath()
-    await fs.access(userPath)
-    const userServers = await parseClaudeCodeSettingsJson(userPath)
-    results.push(...userServers)
-  } catch {
-    // File not found or unreadable; ignore
-  }
-
-  // Claude Code user local overrides: ~/.claude/settings.local.json
-  try {
-    const localPath = join(homedir(), '.claude', 'settings.local.json')
-    await fs.access(localPath)
-    const localServers = await parseClaudeCodeSettingsJson(localPath)
-    results.push(...localServers)
-  } catch {
-    // ignore
-  }
-
-  // Main ~/.claude.json — top-level user-scoped mcpServers and per-project mcpServers
-  try {
-    const homeJsonPath = join(homedir(), '.claude.json')
-    await fs.access(homeJsonPath)
-    const homeJsonServers = await parseClaudeHomeJson(homeJsonPath)
-    results.push(...homeJsonServers)
-  } catch {
-    // ignore
-  }
-
-  // Dedicated ~/.claude/mcp_servers.json
-  try {
-    const dedicatedPath = join(homedir(), '.claude', 'mcp_servers.json')
-    await fs.access(dedicatedPath)
-    const dedicatedServers = await parseClaudeDedicatedMcpServers(dedicatedPath)
-    results.push(...dedicatedServers)
-  } catch {
-    // ignore
-  }
-
-  // Project-scoped .mcp.json in each known project directory
-  // (project scope: checked into repo, shared with team — distinct from per-project mcpServers in ~/.claude.json)
-  const projectMcpPaths = await getClaudeCodeProjectMcpPaths()
-  for (const mcpPath of projectMcpPaths) {
-    try {
-      await fs.access(mcpPath)
-      const projectName = basename(dirname(mcpPath))
-      const servers = await parseClaudeCodeMcpJson(mcpPath, 'project')
-      // Tag each server with the project name for display
-      for (const s of servers) {
-        s.projectName = projectName
-      }
-      results.push(...servers)
-    } catch {
-      // .mcp.json doesn't exist in this project; ignore
-    }
-  }
-
-  // Claude Code enterprise managed MCP
-  try {
-    const managedPath = getClaudeCodeManagedMcpPath()
-    if (managedPath) {
-      await fs.access(managedPath)
-      const managedServers = await parseClaudeCodeMcpJson(managedPath, 'enterprise')
-      results.push(...managedServers)
-    }
-  } catch {
-    // File not found or unreadable; ignore
-  }
-
-  return results
 }
 
 // Parse Claude Desktop config (shape: { mcpServers?: { [name]: { ... } } })
@@ -695,7 +486,7 @@ export async function macAppExists(clientId: string): Promise<boolean> {
   return false
 }
 
-export interface DiscoveryResult { servers: DiscoveredMcpServer[]; raw: DiscoveredMcpServer[] }
+export interface DiscoveryResult { servers: DiscoveredMcpServer[]; raw: DiscoveredMcpServer[]; unsupported: DiscoveredMcpServer[] }
 
 export async function discoverMcpServers(): Promise<DiscoveredMcpServer[]>
 export async function discoverMcpServers(opts: { includeRaw: true }): Promise<DiscoveryResult>
@@ -749,10 +540,28 @@ export async function discoverMcpServers(opts?: { includeRaw?: boolean }): Promi
     }
   }
 
+  // Separate opaque (unsupported) servers before deduplication
+  const supported: DiscoveredMcpServer[] = []
+  const unsupportedRaw: DiscoveredMcpServer[] = []
+  for (const s of results) {
+    if (isOpaqueConfig(s.config)) unsupportedRaw.push(s)
+    else supported.push(s)
+  }
+  // Deduplicate unsupported list by name+client (same opaque server from multiple config paths)
+  const unsupported: DiscoveredMcpServer[] = []
+  const seenUnsupported = new Set<string>()
+  for (const s of unsupportedRaw) {
+    const key = `${s.name}:${s.client}`
+    if (!seenUnsupported.has(key)) {
+      seenUnsupported.add(key)
+      unsupported.push(s)
+    }
+  }
+
   // On macOS, filter out servers whose GUI client .app is not actually installed
-  const deduped = deduplicateByNameAndConfig(results)
+  const deduped = deduplicateByNameAndConfig(supported)
   const wrap = (servers: DiscoveredMcpServer[]) =>
-    opts?.includeRaw ? { servers, raw: results } : servers
+    opts?.includeRaw ? { servers, raw: supported, unsupported } : servers
 
   if (platform() !== 'darwin') return wrap(deduped)
 

@@ -112,10 +112,28 @@ export function deduplicateByNameAndConfig(servers: DiscoveredMcpServer[]): Disc
     if (unique.length === 1) {
       result.push(unique[0])
     } else {
-      // Different configs under the same name — rename all to name_clientAlias
-      for (const entry of unique) {
-        const alias = clientAlias(entry.client)
-        result.push({ ...entry, name: `${entry.name}_${alias}`, originalName: entry.name })
+      // Different configs under the same name — rename to disambiguate.
+      // If all from different clients, use name_clientAlias.
+      // If some share a client (e.g. same server in multiple Claude Code profiles),
+      // use numeric suffixes: name_ccode_1, name_ccode_2, etc.
+      const clientSet = new Set(unique.map((e) => e.client))
+      if (clientSet.size === unique.length) {
+        // Each entry from a different client — simple alias suffix
+        for (const entry of unique) {
+          const alias = clientAlias(entry.client)
+          result.push({ ...entry, name: `${entry.name}_${alias}`, originalName: entry.name })
+        }
+      } else {
+        // Some entries share a client — use numeric suffixes per client
+        const clientCounter = new Map<string, number>()
+        for (const entry of unique) {
+          const alias = clientAlias(entry.client)
+          const count = (clientCounter.get(alias) ?? 0) + 1
+          clientCounter.set(alias, count)
+          const suffix = count > 1 || unique.filter((e) => e.client === entry.client).length > 1
+            ? `${alias}_${count}` : alias
+          result.push({ ...entry, name: `${entry.name}_${suffix}`, originalName: entry.name })
+        }
       }
     }
   }

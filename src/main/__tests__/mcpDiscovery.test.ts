@@ -377,7 +377,7 @@ describe("Config Parsing Functions", () => {
       expect(servers).toHaveLength(1);
       expect(servers[0].name).toBe("project-server");
       expect(servers[0].source).toBe("project");
-      expect(servers[0].projectName).toBe("my-project");
+      expect(servers[0].projectName).toBe("/Users/test/my-project");
     });
 
     it("combines top-level and project servers", async () => {

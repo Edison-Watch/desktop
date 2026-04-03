@@ -46,7 +46,7 @@ const api = {
   mcp: {
     detectClients: (): Promise<Array<{ id: string; name: string; configPath: string }>> =>
       ipcRenderer.invoke("mcp:detectClients"),
-    discover: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:discover"),
+    discover: (): Promise<{ servers: unknown[]; unsupported: unknown[] }> => ipcRenderer.invoke("mcp:discover"),
     findDuplicates: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:findDuplicates"),
     removeServers: (targets: Array<string | { name: string; client: string }>): Promise<{ removed: string[]; errors: string[] }> =>
       ipcRenderer.invoke("mcp:removeServers", targets),
@@ -70,6 +70,7 @@ const api = {
       apiKey?: string;
       apiBaseUrl?: string;
       userId?: string;
+      skipServers?: string[];
       templateOverrides: Record<string, Array<{
         entryId: string;
         varName: string;
@@ -86,7 +87,7 @@ const api = {
       error?: string;
       errors?: string[];
     }> => ipcRenderer.invoke("mcp:submitWithTemplates", params),
-    analyzeSecrets: (): Promise<Array<{
+    analyzeSecrets: (params?: { skipServers?: string[] }): Promise<Array<{
       name: string;
       client: string;
       source: string;
@@ -96,11 +97,12 @@ const api = {
         templateFields: Record<string, Record<string, { description: string; example: string }>>;
         secretValues: Record<string, string>;
       };
-    }>> => ipcRenderer.invoke("mcp:analyzeSecrets"),
+    }>> => ipcRenderer.invoke("mcp:analyzeSecrets", params),
     submitAllDiscovered: (params?: {
       apiKey?: string;
       apiBaseUrl?: string;
       userId?: string;
+      skipServers?: string[];
     }): Promise<{
       submitted: number;
       autoApproved: number;

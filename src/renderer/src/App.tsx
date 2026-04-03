@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import WizardLayout from "./components/WizardLayout";
 import WelcomeStep from "./components/WelcomeStep";
 import AppsStep from "./components/AppsStep";
-import type { ModifiedConfig, DiscoveredServer, RemovalTarget } from "./components/AppsStep";
+import type { ModifiedConfig, DiscoveredServer, RemovalTarget, DuplicateSelections } from "./components/AppsStep";
 import EncryptionStep from "./components/EncryptionStep";
 import FinishStep from "./components/FinishStep";
 import MainMenu from "./components/MainMenu";
@@ -20,6 +20,8 @@ export default function App(): React.ReactNode {
   const [selectedApps, setSelectedApps] = useState<string[] | null>(null);
   const [discoveredServers, setDiscoveredServers] = useState<DiscoveredServer[]>([]);
   const [serversToRemove, setServersToRemove] = useState<RemovalTarget[]>([]);
+  const [skipServers, setSkipServers] = useState<string[]>([]);
+  const [duplicateSelections, setDuplicateSelections] = useState<DuplicateSelections | null>(null);
   const [modifiedConfigs, setModifiedConfigs] = useState<ModifiedConfig[]>([]);
   const [edisonSecretKey, setEdisonSecretKey] = useState("");
   const auth = useAuth();
@@ -41,10 +43,12 @@ export default function App(): React.ReactNode {
     if (auth.signedIn) goToStep(1);
   };
 
-  const handleAppsNext = (apps: string[], servers: DiscoveredServer[], removedServers: RemovalTarget[]) => {
+  const handleAppsNext = (apps: string[], servers: DiscoveredServer[], removedServers: RemovalTarget[], dupeSelections: DuplicateSelections, skip: string[]) => {
     setSelectedApps(apps);
     setDiscoveredServers(servers);
     setServersToRemove(removedServers);
+    setDuplicateSelections(dupeSelections);
+    setSkipServers(skip);
     goToStep(2);
   };
 
@@ -93,6 +97,7 @@ export default function App(): React.ReactNode {
         <AppsStep
           onNext={handleAppsNext}
           initialSelectedApps={selectedApps}
+          initialDuplicateSelections={duplicateSelections}
         />
       )}
       {currentStep === 2 && (
@@ -104,6 +109,7 @@ export default function App(): React.ReactNode {
           selectedApps={selectedApps ?? []}
           discoveredServers={discoveredServers}
           serversToRemove={serversToRemove}
+          skipServers={skipServers}
           autoQuarantine={auth.autoQuarantineOtherMcpServers}
           onNext={handleEncryptionNext}
         />

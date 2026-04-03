@@ -64,6 +64,7 @@ interface CredentialReviewCardProps {
   onSave: (overrides: Record<string, TemplateOverrideEntry[]>) => void;
   onCancel: () => void;
   saved: boolean;
+  skipServers?: string[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -142,6 +143,7 @@ export default function CredentialReviewCard({
   onSave,
   onCancel,
   saved,
+  skipServers = [],
 }: CredentialReviewCardProps): React.ReactNode {
   const [servers, setServers] = useState<AnalyzedServer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -197,7 +199,7 @@ export default function CredentialReviewCard({
     setLoading(true);
     setError("");
     try {
-      const result = await window.api.mcp.analyzeSecrets();
+      const result = await window.api.mcp.analyzeSecrets(skipServers.length > 0 ? { skipServers } : undefined);
       setServers(result);
 
       // Initialize markings from auto-detected secrets
@@ -248,7 +250,8 @@ export default function CredentialReviewCard({
     } finally {
       setLoading(false);
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skipServers.join(",")]);
 
   useEffect(() => {
     void analyze();

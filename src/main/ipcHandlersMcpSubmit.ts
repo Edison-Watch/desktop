@@ -22,27 +22,27 @@ import { DRY_RUN, getApiBaseUrl, getSetupData, getCredentialsForEnv } from "./se
 
 // ── Discovery cache ─────────────────────────────────────────────────────
 // Populated by mcp:discover; consumed by submit/resubmit so they never re-discover.
-let discoveryCache: { servers: DiscoveredMcpServer[]; raw: DiscoveredMcpServer[] } | null = null;
+let discoveryCache: { servers: DiscoveredMcpServer[]; raw: DiscoveredMcpServer[]; unsupported: DiscoveredMcpServer[] } | null = null;
 
 /** Run discovery, populate cache, return filtered+deduped servers. */
 async function runDiscovery() {
-  const { servers, raw } = await discoverMcpServers({ includeRaw: true });
+  const { servers, raw, unsupported } = await discoverMcpServers({ includeRaw: true });
   const filtered = filterOutEdisonWatchServers(servers);
   const rawFiltered = filterOutEdisonWatchServers(raw);
-  discoveryCache = { servers: filtered, raw: rawFiltered };
+  discoveryCache = { servers: filtered, raw: rawFiltered, unsupported };
   return discoveryCache;
 }
 
 /** Get cached discovery or return empty if cache is not populated. */
 function getCachedDiscovery() {
-  return discoveryCache ?? { servers: [] as DiscoveredMcpServer[], raw: [] as DiscoveredMcpServer[] };
+  return discoveryCache ?? { servers: [] as DiscoveredMcpServer[], raw: [] as DiscoveredMcpServer[], unsupported: [] as DiscoveredMcpServer[] };
 }
 
 export function registerMcpSubmitHandlers(): void {
   ipcMain.handle("mcp:discover", async () => {
-    const { servers } = await runDiscovery();
-    console.log("[mcp:discover] Found", servers.length, "servers");
-    return servers;
+    const { servers, unsupported } = await runDiscovery();
+    console.log("[mcp:discover] Found", servers.length, "servers,", unsupported.length, "unsupported");
+    return { servers, unsupported };
   });
 
   ipcMain.handle("mcp:findDuplicates", async () => {
@@ -217,7 +217,7 @@ export function registerMcpSubmitHandlers(): void {
   });
 
   // Analyze discovered servers for secrets (without submitting)
-  ipcMain.handle("mcp:analyzeSecrets", async (): Promise<Array<{
+  ipcMain.handle("mcp:analyzeSecrets", async (_event, params?: { skipServers?: string[] }): Promise<Array<{
     name: string;
     client: string;
     source: string;
@@ -225,7 +225,9 @@ export function registerMcpSubmitHandlers(): void {
     templatized: TemplatizedConfig;
   }>> => {
     const { servers: cached } = getCachedDiscovery();
-    const servers = deduplicateServers(cached);
+    const allServers = deduplicateServers(cached);
+    const skipSet = new Set(params?.skipServers ?? []);
+    const servers = skipSet.size > 0 ? allServers.filter((s) => !skipSet.has(s.name)) : allServers;
     return servers.map((server) => ({
       name: server.name,
       client: server.client,
@@ -263,6 +265,7 @@ export function registerMcpSubmitHandlers(): void {
     apiKey?: string;
     apiBaseUrl?: string;
     userId?: string;
+    skipServers?: string[];
     templateOverrides: Record<string, Array<{
       entryId: string;
       varName: string;
@@ -292,7 +295,9 @@ export function registerMcpSubmitHandlers(): void {
     }
 
     const { servers: cached, raw: cachedRaw } = getCachedDiscovery();
-    const servers = deduplicateServers(cached);
+    const allServers = deduplicateServers(cached);
+    const skipSet = new Set(params.skipServers ?? []);
+    const servers = skipSet.size > 0 ? allServers.filter((s) => !skipSet.has(s.name)) : allServers;
     const removalMap = buildRemovalMap(cachedRaw, servers);
 
     const serverList = servers.map((s) => ({ name: s.name, client: s.client, clients: s.clients, source: s.source }));
@@ -360,6 +365,7 @@ export function registerMcpSubmitHandlers(): void {
     apiKey?: string;
     apiBaseUrl?: string;
     userId?: string;
+    skipServers?: string[];
   }): Promise<{
     submitted: number;
     autoApproved: number;
@@ -384,7 +390,9 @@ export function registerMcpSubmitHandlers(): void {
     const { servers: cached, raw: cachedRaw } = getCachedDiscovery();
 
     // Deduplicate servers with the same name across different clients.
-    const servers = deduplicateServers(cached);
+    const allServers = deduplicateServers(cached);
+    const skipSet = new Set(params?.skipServers ?? []);
+    const servers = skipSet.size > 0 ? allServers.filter((s) => !skipSet.has(s.name)) : allServers;
     const removalMap = buildRemovalMap(cachedRaw, servers);
 
     const serverList = servers.map((s) => ({ name: s.name, client: s.client, clients: s.clients, source: s.source }));

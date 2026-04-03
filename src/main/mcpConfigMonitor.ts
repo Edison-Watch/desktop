@@ -12,6 +12,7 @@ function mlog(msg: string): void {
 import { getAllConfigPaths } from './mcpConfigPaths'
 import {
   discoverMcpServers,
+  isOpaqueConfig,
   getJetBrainsMcpConfigPaths,
   getCursorProjectMcpPaths,
   getCursorPluginMcpPaths,
@@ -584,9 +585,9 @@ export class McpConfigMonitor extends EventEmitter {
         continue
       }
 
-      // Skip opaque marketplace servers (e.g. Cursor plugin-installed MCPs with no accessible config).
-      if (server.source === 'marketplace' && 'type' in server.config && server.config.type === 'opaque') {
-        console.log(`[McpConfigMonitor] Skipping opaque marketplace server (IDE-managed): ${server.name}`)
+      // Skip opaque servers (IDE-managed MCPs with no accessible config — e.g. Cursor marketplace).
+      if (isOpaqueConfig(server.config)) {
+        console.log(`[McpConfigMonitor] Skipping opaque server (IDE-managed): ${server.name}`)
         continue
       }
 

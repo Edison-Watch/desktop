@@ -26,22 +26,29 @@ export interface DiscoveredServer {
 
 export interface DuplicateGroup {
   fingerprint: string;
-  kind: "same-config" | "name-conflict";
-  servers: Array<{ name: string; originalName?: string; client: string; clients?: string[]; config?: Record<string, unknown> }>;
-  /** Set when user resolves: "keep-both" = keep all (default), string = name of server to keep */
-  resolution?: "keep-both" | string;
+  kind: "same-config" | "name-conflict" | "profile-conflict";
+  servers: Array<{ name: string; originalName?: string; client: string; clients?: string[]; config?: Record<string, unknown>; profileName?: string }>;
+  /** Set of selected server names to keep. Initialized with all names (all selected). */
+  selected: Set<string>;
 }
 
 export type RemovalTarget = string | { name: string; client: string };
 
+/** Serializable snapshot of duplicate group selections (Set<string> → string[]). */
+export interface DuplicateSelections {
+  [fingerprint: string]: string[];
+}
+
 interface AppsStepProps {
-  onNext: (selectedApps: string[], discoveredServers: DiscoveredServer[], serversToRemove: RemovalTarget[]) => void;
+  onNext: (selectedApps: string[], discoveredServers: DiscoveredServer[], serversToRemove: RemovalTarget[], dupeSelections: DuplicateSelections, skipServers: string[]) => void;
   initialSelectedApps?: string[] | null;
+  initialDuplicateSelections?: DuplicateSelections | null;
 }
 
 export default function AppsStep({
   onNext,
   initialSelectedApps,
+  initialDuplicateSelections,
 }: AppsStepProps): React.ReactNode {
   const [clients, setClients] = useState<DetectedClient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,14 +57,28 @@ export default function AppsStep({
   // Scan state
   const [scanning, setScanning] = useState(false);
   const [discoveredServers, setDiscoveredServers] = useState<DiscoveredServer[]>([]);
+  const [unsupportedServers, setUnsupportedServers] = useState<DiscoveredServer[]>([]);
   const [scanned, setScanned] = useState(false);
   const scannedRef = useRef(false);
   const [showServers, setShowServers] = useState(false);
+  const [showUnsupported, setShowUnsupported] = useState(false);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [expandedDupeServers, setExpandedDupeServers] = useState<Set<string>>(new Set());
 
   // null = first visit (all enabled by default), string[] = returning (restore selection)
   const initialSelectedSet = useRef(initialSelectedApps != null ? new Set(initialSelectedApps) : null);
+  const savedDupeSelections = useRef(initialDuplicateSelections ?? null);
+
+  /** Initialize duplicate groups, restoring saved selections when returning to this step. */
+  const initDuplicateGroups = (dupes: Array<{ fingerprint: string; kind: string; servers: Array<{ name: string; [k: string]: unknown }> }>) => {
+    const saved = savedDupeSelections.current;
+    setDuplicateGroups(dupes.map((g) => ({
+      ...g as DuplicateGroup,
+      selected: saved && saved[g.fingerprint]
+        ? new Set(saved[g.fingerprint])
+        : new Set(g.servers.map((s) => s.name)),
+    })));
+  };
 
   const detectClients = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -96,10 +117,20 @@ export default function AppsStep({
         // Also re-scan discovered servers if already scanned
         if (scannedRef.current) {
           try {
-            const all = await window.api.mcp.discover() as Array<{ name: string; client: string; clients?: string[]; source: string }>;
-            setDiscoveredServers(all);
+            // Snapshot current duplicate selections so they survive the refresh
+            setDuplicateGroups((prev) => {
+              if (prev.length > 0) {
+                const snap: Record<string, string[]> = {};
+                for (const g of prev) snap[g.fingerprint] = [...g.selected];
+                savedDupeSelections.current = snap;
+              }
+              return prev;
+            });
+            const result = await window.api.mcp.discover() as { servers: DiscoveredServer[]; unsupported: DiscoveredServer[] };
+            setDiscoveredServers(result.servers);
+            setUnsupportedServers(result.unsupported);
             const dupes = await window.api.mcp.findDuplicates() as DuplicateGroup[];
-            setDuplicateGroups(dupes.map((g) => ({ ...g, resolution: "keep-both" })));
+            initDuplicateGroups(dupes);
           } catch {
             // Re-scan failed
           }
@@ -152,15 +183,16 @@ export default function AppsStep({
   const handleScan = async () => {
     setScanning(true);
     try {
-      const all = await window.api.mcp.discover() as Array<{ name: string; client: string; clients?: string[]; source: string }>;
-      console.log("[AppsStep] Discovered", all.length, "MCP servers");
-      setDiscoveredServers(all);
+      const result = await window.api.mcp.discover() as { servers: DiscoveredServer[]; unsupported: DiscoveredServer[] };
+      console.log("[AppsStep] Discovered", result.servers.length, "MCP servers,", result.unsupported.length, "unsupported");
+      setDiscoveredServers(result.servers);
+      setUnsupportedServers(result.unsupported);
       setScanned(true);
       scannedRef.current = true;
       // Fetch duplicate groups
       try {
         const dupes = await window.api.mcp.findDuplicates() as DuplicateGroup[];
-        setDuplicateGroups(dupes.map((g) => ({ ...g, resolution: "keep-both" })));
+        initDuplicateGroups(dupes);
       } catch { /* ignore */ }
     } catch {
       // Scan failed
@@ -169,9 +201,23 @@ export default function AppsStep({
     }
   };
 
-  const resolveDuplicateGroup = (fingerprint: string, resolution: "keep-both" | string) => {
+  const toggleDupeServer = (fingerprint: string, serverName: string) => {
     setDuplicateGroups((prev) =>
-      prev.map((g) => (g.fingerprint === fingerprint ? { ...g, resolution } : g)),
+      prev.map((g) => {
+        if (g.fingerprint !== fingerprint) return g;
+        const next = new Set(g.selected);
+        if (next.has(serverName)) next.delete(serverName); else next.add(serverName);
+        return { ...g, selected: next };
+      }),
+    );
+  };
+
+  const setAllDupeSelected = (fingerprint: string, selectAll: boolean) => {
+    setDuplicateGroups((prev) =>
+      prev.map((g) => {
+        if (g.fingerprint !== fingerprint) return g;
+        return { ...g, selected: selectAll ? new Set(g.servers.map((s) => s.name)) : new Set<string>() };
+      }),
     );
   };
 
@@ -307,11 +353,20 @@ export default function AppsStep({
               <p className="text-sm font-medium text-[var(--text-primary)]">
                 Discovered MCP servers
                 {scanned && discoveredServers.length > 0 && (() => {
+                  // Collect all deselected server names from duplicate groups
+                  const deselectedNames = new Set<string>();
+                  for (const g of duplicateGroups) {
+                    for (const s of g.servers) {
+                      if (!g.selected.has(s.name)) deselectedNames.add(s.name);
+                    }
+                  }
                   const conflictRenamedCount = duplicateGroups
-                    .filter((g) => g.kind === "name-conflict")
-                    .reduce((sum, g) => sum + g.servers.length, 0);
-                  const conflictGroupCount = duplicateGroups.filter((g) => g.kind === "name-conflict").length;
-                  const displayCount = discoveredServers.length - conflictRenamedCount + conflictGroupCount;
+                    .filter((g) => g.kind === "name-conflict" || g.kind === "profile-conflict")
+                    .reduce((sum, g) => sum + g.servers.filter((s) => g.selected.has(s.name)).length, 0);
+                  const conflictGroupCount = duplicateGroups
+                    .filter((g) => (g.kind === "name-conflict" || g.kind === "profile-conflict") && g.servers.some((s) => g.selected.has(s.name)))
+                    .length;
+                  const displayCount = discoveredServers.filter((s) => !deselectedNames.has(s.name)).length - conflictRenamedCount + conflictGroupCount;
                   return (
                     <span className="ml-1.5 text-xs text-[var(--text-muted)] font-normal">
                       ({displayCount})
@@ -344,19 +399,28 @@ export default function AppsStep({
               ) : (
                 <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
                   {(() => {
+                    // Collect deselected server names from duplicate groups
+                    const deselectedNames = new Set<string>();
+                    for (const g of duplicateGroups) {
+                      for (const s of g.servers) {
+                        if (!g.selected.has(s.name)) deselectedNames.add(s.name);
+                      }
+                    }
                     // Build display list: merge name-conflict entries back to original name
                     const conflictNames = new Set<string>();
                     const conflictEntries: Array<{ name: string; clients: string[] }> = [];
                     for (const g of duplicateGroups) {
-                      if (g.kind !== "name-conflict") continue;
+                      if (g.kind !== "name-conflict" && g.kind !== "profile-conflict") continue;
+                      const selectedServers = g.servers.filter((s) => g.selected.has(s.name));
+                      if (selectedServers.length === 0) continue;
                       const origName = g.servers[0]?.originalName ?? "";
-                      const allClients = g.servers.flatMap((s) => s.clients && s.clients.length > 0 ? s.clients : [s.client]);
+                      const allClients = selectedServers.flatMap((s) => s.clients && s.clients.length > 0 ? s.clients : [s.client]);
                       conflictEntries.push({ name: origName, clients: [...new Set(allClients)] });
                       for (const s of g.servers) conflictNames.add(s.name);
                     }
-                    // Filter out renamed entries, append merged conflict entries
+                    // Filter out renamed entries and deselected entries, append merged conflict entries
                     const display = [
-                      ...discoveredServers.filter((s) => !conflictNames.has(s.name)),
+                      ...discoveredServers.filter((s) => !conflictNames.has(s.name) && !deselectedNames.has(s.name)),
                       ...conflictEntries.map((e) => ({ ...e, conflict: true })),
                     ];
                     return display.map((s) => (
@@ -378,6 +442,49 @@ export default function AppsStep({
         </div>
       </Card>
 
+      {/* Unsupported servers (opaque / IDE-managed) */}
+      {scanned && unsupportedServers.length > 0 && (
+        <Card>
+          <button
+            type="button"
+            className="flex items-center justify-between w-full text-left"
+            onClick={() => setShowUnsupported((v) => !v)}
+          >
+            <div>
+              <p className="text-sm font-medium text-[var(--text-secondary)]">
+                Unsupported servers
+                <span className="ml-1.5 text-xs text-[var(--text-muted)] font-normal">
+                  ({unsupportedServers.length})
+                </span>
+              </p>
+              <p className="text-xs text-[var(--text-muted)]">
+                IDE-managed servers with no accessible config. These cannot be imported.
+              </p>
+            </div>
+            <svg
+              viewBox="0 0 12 12"
+              fill="none"
+              className={`h-4 w-4 shrink-0 text-[var(--text-muted)] transition-transform ${showUnsupported ? "rotate-180" : ""}`}
+              aria-hidden="true"
+            >
+              <path d="M3 4.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          {showUnsupported && (
+            <div className="mt-2 rounded-md bg-[var(--bg-input)] p-3 text-xs">
+              <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
+                {unsupportedServers.map((s) => (
+                  <div key={`${s.name}-${s.client}`} className="flex items-center gap-2">
+                    <span className="text-[var(--text-secondary)] font-medium truncate">{s.name}</span>
+                    <span className="text-[var(--text-muted)] shrink-0">{s.client}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* Cross-name duplicates (different names, same config) */}
       {duplicateGroups.length > 0 && (
         <Card>
@@ -389,14 +496,37 @@ export default function AppsStep({
               <p className="text-[10px] text-[var(--text-muted)] mb-1">
                 {group.kind === "same-config"
                   ? "Same server config under different names:"
-                  : `Same name "${group.servers[0]?.originalName ?? ""}" with different configs — auto-renamed:`}
+                  : group.kind === "profile-conflict"
+                    ? `Same name "${group.servers[0]?.originalName ?? ""}" in different profiles — auto-renamed:`
+                    : `Same name "${group.servers[0]?.originalName ?? ""}" with different configs — auto-renamed:`}
               </p>
               {group.servers.map((s) => {
                 const expandKey = `${group.fingerprint}:${s.name}`;
                 const isExpanded = expandedDupeServers.has(expandKey);
+                const isSelected = group.selected.has(s.name);
                 return (
                   <div key={s.name}>
                     <div className="flex items-center gap-2">
+                      {/* Selection checkbox */}
+                      <button
+                        type="button"
+                        className="shrink-0"
+                        onClick={() => toggleDupeServer(group.fingerprint, s.name)}
+                      >
+                        <div
+                          className={`flex h-3.5 w-3.5 items-center justify-center rounded transition-all ${
+                            isSelected
+                              ? "bg-[var(--accent)] border-[var(--accent)]"
+                              : "border-2 border-[var(--border)]"
+                          }`}
+                        >
+                          {isSelected && (
+                            <svg viewBox="0 0 12 12" fill="none" className="h-2 w-2" aria-hidden="true">
+                              <path d="M2 6l3 3 5-5" stroke="var(--bg-base)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </div>
+                      </button>
                       <button
                         type="button"
                         className="text-[var(--text-primary)] text-xs font-medium hover:text-[var(--accent)] transition-colors text-left"
@@ -411,17 +541,8 @@ export default function AppsStep({
                       </button>
                       <span className="text-[var(--text-muted)] text-[10px]">
                         {(s.clients && s.clients.length > 0 ? s.clients : [s.client]).join(", ")}
+                        {s.profileName && ` (profile: ${s.profileName})`}
                       </span>
-                      {group.resolution === s.name && (
-                        <span className="text-[10px] font-medium text-emerald-400/80 bg-emerald-400/10 px-1 py-0.5 rounded">
-                          kept
-                        </span>
-                      )}
-                      {group.resolution && group.resolution !== "keep-both" && group.resolution !== s.name && (
-                        <span className="text-[10px] font-medium text-red-400/80 bg-red-400/10 px-1 py-0.5 rounded">
-                          removed
-                        </span>
-                      )}
                     </div>
                     {isExpanded && s.config && (
                       <pre className="ml-5 mt-1 mb-1 max-h-28 overflow-auto rounded-md bg-[var(--bg-input)] p-2 text-[10px] text-[var(--text-secondary)]">
@@ -432,25 +553,22 @@ export default function AppsStep({
                 );
               })}
 
-              {/* Resolve actions */}
-              <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+              {/* Select all / Deselect all */}
+              <div className="mt-1.5 flex items-center gap-2">
                 <button
                   type="button"
-                  className={`text-[10px] transition-colors ${group.resolution === "keep-both" ? "text-[var(--accent)] font-medium" : "text-[var(--accent-muted)] hover:text-[var(--accent)]"}`}
-                  onClick={() => resolveDuplicateGroup(group.fingerprint, "keep-both")}
+                  className="text-[10px] text-[var(--accent-muted)] hover:text-[var(--accent)] transition-colors"
+                  onClick={() => setAllDupeSelected(group.fingerprint, true)}
                 >
-                  Keep both
+                  Select all
                 </button>
-                {group.servers.map((s) => (
-                  <button
-                    key={s.name}
-                    type="button"
-                    className={`text-[10px] transition-colors ${group.resolution === s.name ? "text-[var(--accent)] font-medium" : "text-[var(--accent-muted)] hover:text-[var(--accent)]"}`}
-                    onClick={() => resolveDuplicateGroup(group.fingerprint, s.name)}
-                  >
-                    Keep &ldquo;{s.name}&rdquo;
-                  </button>
-                ))}
+                <button
+                  type="button"
+                  className="text-[10px] text-[var(--accent-muted)] hover:text-[var(--accent)] transition-colors"
+                  onClick={() => setAllDupeSelected(group.fingerprint, false)}
+                >
+                  Deselect all
+                </button>
               </div>
             </div>
           ))}
@@ -460,22 +578,29 @@ export default function AppsStep({
       <Button
         variant="primary"
         onClick={() => {
-          // Collect removal targets and compute filtered server list
+          // Collect removal targets from deselected servers in duplicate groups
           const removedNames = new Set<string>();
           const removalTargets: RemovalTarget[] = duplicateGroups.flatMap((g): RemovalTarget[] => {
-            if (!g.resolution || g.resolution === "keep-both") return [];
-            const removed = g.servers.filter((s) => s.name !== g.resolution);
-            removed.forEach((s) => removedNames.add(s.name));
-            if (g.kind === "name-conflict") {
-              return removed.map((s) => ({
+            const deselected = g.servers.filter((s) => !g.selected.has(s.name));
+            if (deselected.length === 0) return [];
+            deselected.forEach((s) => removedNames.add(s.name));
+            if (g.kind === "name-conflict" || g.kind === "profile-conflict") {
+              return deselected.map((s) => ({
                 name: s.originalName ?? s.name,
                 client: s.client,
               }));
             }
-            return removed.map((s) => s.name);
+            return deselected.map((s) => s.name);
           });
           const effectiveServers = discoveredServers.filter((s) => !removedNames.has(s.name));
-          onNext(clients.filter((c) => c.enabled).map((c) => c.id), effectiveServers, removalTargets);
+          // Serialize duplicate selections for persistence across back-navigation
+          const dupeSelections: DuplicateSelections = {};
+          for (const g of duplicateGroups) {
+            dupeSelections[g.fingerprint] = [...g.selected];
+          }
+          // Collect deduped (renamed) names of deselected servers for backend skip filtering
+          const skipServers = [...removedNames];
+          onNext(clients.filter((c) => c.enabled).map((c) => c.id), effectiveServers, removalTargets, dupeSelections, skipServers);
         }}
         className="w-full"
       >

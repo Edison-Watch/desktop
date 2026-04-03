@@ -18,6 +18,7 @@ interface EncryptionStepProps {
   selectedApps: string[];
   discoveredServers: DiscoveredServer[];
   serversToRemove?: RemovalTarget[];
+  skipServers?: string[];
   autoQuarantine?: boolean;
   onNext: (compositeKey: string, modifiedConfigs: ModifiedConfig[]) => void;
 }
@@ -30,6 +31,7 @@ export default function EncryptionStep({
   selectedApps,
   discoveredServers,
   serversToRemove = [],
+  skipServers = [],
   autoQuarantine = false,
   onNext,
 }: EncryptionStepProps): React.ReactNode {
@@ -214,12 +216,14 @@ export default function EncryptionStep({
             apiKey,
             apiBaseUrl,
             userId,
+            skipServers,
             templateOverrides: savedTemplates,
           })
         : await window.api.mcp.submitAllDiscovered({
             apiKey,
             apiBaseUrl,
             userId,
+            skipServers,
           });
       // Remove duplicate-resolved servers from agent configs
       if (serversToRemove.length > 0) {
@@ -448,6 +452,7 @@ export default function EncryptionStep({
         onSave={handleTemplateSave}
         onCancel={handleTemplateCancel}
         saved={templatesSaved}
+        skipServers={skipServers}
       />
 
       {/* Register MCP Servers */}
