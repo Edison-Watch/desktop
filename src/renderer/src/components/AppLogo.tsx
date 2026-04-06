@@ -94,22 +94,22 @@ export function AppLogo({ id, name }: AppLogoProps) {
         style={{ background: "#1a1a1a" }}
         aria-label={name}
       >
-        <svg viewBox="0 -15 90 90" xmlns="http://www.w3.org/2000/svg" className="h-full w-full" aria-hidden="true">
-          <g fill="#ffffff">
-            <rect x="15" y="0" width="5" height="20" />
-            <path d="M20 0 h10 v10 h-5 v10 h-5 z" />
-            <rect x="30" y="0" width="30" height="20" />
-            <path d="M60 0 h10 v20 h-5 v-10 h-5 z" />
-            <rect x="70" y="0" width="5" height="20" />
-            <rect x="5" y="20" width="5" height="10" />
-            <path d="M10 20 h10 v20 h-5 v-10 h-5 z" />
-            <rect x="20" y="20" width="50" height="20" />
-            <path d="M70 20 h10 v10 h-5 v10 h-5 z" />
-            <rect x="80" y="20" width="5" height="10" />
+        <svg viewBox="0 -20 90 90" xmlns="http://www.w3.org/2000/svg" className="h-full w-full" shapeRendering="crispEdges" aria-hidden="true">
+          <g fill="#da7756">
+            <rect x="15" y="0" width="60" height="10" />
+            <rect x="15" y="10" width="10" height="10" />
+            <rect x="30" y="10" width="30" height="10" />
+            <rect x="65" y="10" width="10" height="10" />
+            <rect x="5" y="20" width="80" height="10" />
+            <rect x="15" y="30" width="60" height="10" />
             <rect x="20" y="40" width="5" height="10" />
             <rect x="30" y="40" width="5" height="10" />
             <rect x="55" y="40" width="5" height="10" />
             <rect x="65" y="40" width="5" height="10" />
+          </g>
+          <g fill="#1a1a1a">
+            <rect x="25" y="10" width="5" height="10" />
+            <rect x="60" y="10" width="5" height="10" />
           </g>
         </svg>
       </div>
