@@ -325,7 +325,7 @@ export function getMcpBaseUrl(): string | null {
 export function getEventsUrl(apiKey: string): string | null {
   const baseUrl = getApiBaseUrl();
   if (!baseUrl) return null;
-  return `${baseUrl.replace(/\/$/, "")}/api/v1/events?api_key=${encodeURIComponent(apiKey)}`;
+  return `${baseUrl.replace(/\/$/, "")}/api/v1/events?api_key=${encodeURIComponent(apiKey)}&source=desktop`;
 }
 
 export function getApprovalUrl(): string | null {
