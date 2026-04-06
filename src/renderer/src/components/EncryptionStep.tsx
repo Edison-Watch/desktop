@@ -632,8 +632,28 @@ export default function EncryptionStep({
             <Button
               variant="warning"
               size="sm"
-              onClick={() => {
+              onClick={async () => {
                 setShowSkipWarning(false);
+                // When auto-quarantine is enabled, remove all discovered servers
+                // from configs before proceeding. Otherwise the quarantine monitor
+                // will immediately pick them up post-setup and prompt the user again.
+                if (autoQuarantine) {
+                  if (discoveredServers.length > 0) {
+                    try {
+                      const targets = discoveredServers.map((s) => s.name);
+                      await window.api.mcp.removeServers(targets);
+                    } catch {
+                      console.error("[EncryptionStep] Failed to remove discovered servers before skip");
+                    }
+                  }
+                  if (serversToRemove.length > 0) {
+                    try {
+                      await window.api.mcp.removeServers(serversToRemove);
+                    } catch {
+                      console.error("[EncryptionStep] Failed to remove resolved duplicate servers");
+                    }
+                  }
+                }
                 handleSubmit();
               }}
               loading={applying}

@@ -3,13 +3,7 @@ import { existsSync } from 'fs'
 import { dirname, basename, join } from 'path'
 import * as jsonc from 'jsonc-parser'
 import type { DiscoveredMcpServer, McpServerConfig, McpClientId } from './mcpDiscovery'
-import {
-  getJetBrainsMcpConfigPaths,
-  getCursorPluginMcpPaths,
-  getCursorProjectMcpPaths,
-  getClaudeCodeProjectMcpPaths,
-} from './mcpDiscovery'
-import { getAllConfigPaths } from './mcpConfigPaths'
+import { getAllConfigEntries, buildEntryMap } from './mcpConfigPaths'
 import {
   quarantineMarketplaceServer,
   restoreAllMarketplaceServers,
@@ -578,30 +572,13 @@ export async function restoreAllQuarantinedServers(): Promise<{
   errors: string[]
 }> {
 
-  // Collect all known config paths (including plugin, project, and workspace paths)
-  const paths = getAllConfigPaths()
-  const [jetbrainsPaths, cursorPluginPaths, cursorProjectPaths, claudeCodeProjectPaths] =
-    await Promise.all([
-      getJetBrainsMcpConfigPaths(),
-      getCursorPluginMcpPaths(),
-      getCursorProjectMcpPaths(),
-      getClaudeCodeProjectMcpPaths()
-    ])
+  // Use the unified config registry for all paths
+  const entries = await getAllConfigEntries()
+  const entryMap = buildEntryMap(entries)
 
-  const allOriginalPaths = [...new Set([
-    paths.vscode,
-    paths.claudeDesktop,
-    paths.claudeCowork,
-    paths.cursor,
-    ...paths.claudeCode,
-    paths.codex,
-    paths.windsurf,
-    paths.zed,
-    ...jetbrainsPaths.map((x) => x.path),
-    ...cursorPluginPaths,
-    ...cursorProjectPaths,
-    ...claudeCodeProjectPaths
-  ])]
+  // Separate file-based configs from sqlite-state (marketplace) entries
+  const fileEntries = entries.filter((e) => e.kind !== 'sqlite-state')
+  const allOriginalPaths = [...new Set(fileEntries.map((e) => e.path))]
 
   let restored = 0
   const errors: string[] = []
@@ -632,9 +609,9 @@ export async function restoreAllQuarantinedServers(): Promise<{
         continue
       }
 
-      // Determine the client type from the original path to know the key format.
-      // We infer it from the disabled file's originalFile metadata or from the path itself.
-      const clientId = inferClientFromPath(originalPath)
+      // Determine the client type from the registry entry, falling back to path inference
+      const entry = entryMap.get(originalPath)
+      const clientId = entry?.client ?? inferClientFromPath(originalPath)
 
       // Skip Codex configs — readConfigFile/writeConfigFile only handle JSON/JSONC,
       // not TOML. Restoring Codex quarantined servers requires TOML-aware read/write.

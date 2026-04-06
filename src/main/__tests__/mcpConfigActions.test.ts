@@ -255,34 +255,13 @@ describe("mcpConfigActions", () => {
         "utf-8",
       );
 
-      // Mock all path functions for full isolation
+      // Mock the unified config registry for full isolation
       const mcpConfigPaths = await import("../mcpConfigPaths");
-      const pathsSpy = vi
-        .spyOn(mcpConfigPaths, "getAllConfigPaths")
-        .mockReturnValue({
-          vscode: join(testDir, "vscode-mcp.json"),
-          claudeDesktop: join(testDir, "claude-desktop.json"),
-          claudeCowork: join(testDir, "claude-cowork.json"),
-          cursor: join(testDir, "cursor-mcp.json"),
-          cursorWorkspaceStorage: join(testDir, "cursor-ws"),
-          claudeCode: [],
-          codex: join(testDir, "codex-config.toml"),
-          windsurf: join(testDir, "windsurf-mcp.json"),
-          zed: join(testDir, "zed-mcp.json"),
-        });
-      const mcpDiscovery = await import("../mcpDiscovery");
-      const pluginSpy = vi
-        .spyOn(mcpDiscovery, "getCursorPluginMcpPaths")
-        .mockResolvedValue([pluginMcpPath]);
-      const projectSpy = vi
-        .spyOn(mcpDiscovery, "getCursorProjectMcpPaths")
-        .mockResolvedValue([]);
-      const claudeCodeSpy = vi
-        .spyOn(mcpDiscovery, "getClaudeCodeProjectMcpPaths")
-        .mockResolvedValue([]);
-      const jetbrainsSpy = vi
-        .spyOn(mcpDiscovery, "getJetBrainsMcpConfigPaths")
-        .mockResolvedValue([]);
+      const entriesSpy = vi
+        .spyOn(mcpConfigPaths, "getAllConfigEntries")
+        .mockResolvedValue([
+          { client: "cursor", path: pluginMcpPath, kind: "json", scope: "user" },
+        ]);
 
       try {
         const result = await restoreAllQuarantinedServers();
@@ -300,11 +279,7 @@ describe("mcpConfigActions", () => {
         expect(restoredConfig).toHaveProperty("mcpServers");
         expect(restoredConfig.mcpServers).toHaveProperty("test-plugin-server");
       } finally {
-        pathsSpy.mockRestore();
-        pluginSpy.mockRestore();
-        projectSpy.mockRestore();
-        claudeCodeSpy.mockRestore();
-        jetbrainsSpy.mockRestore();
+        entriesSpy.mockRestore();
       }
     });
 
@@ -328,24 +303,11 @@ describe("mcpConfigActions", () => {
       await fs.writeFile(codexDisabledPath, JSON.stringify(disabledContent), "utf-8");
 
       const mcpConfigPaths = await import("../mcpConfigPaths");
-      const pathsSpy = vi
-        .spyOn(mcpConfigPaths, "getAllConfigPaths")
-        .mockReturnValue({
-          vscode: join(testDir, "vscode-mcp.json"),
-          claudeDesktop: join(testDir, "claude-desktop.json"),
-          claudeCowork: join(testDir, "claude-cowork.json"),
-          cursor: join(testDir, "cursor-mcp.json"),
-          cursorWorkspaceStorage: join(testDir, "cursor-ws"),
-          claudeCode: [],
-          codex: codexConfigPath,
-          windsurf: join(testDir, "windsurf-mcp.json"),
-          zed: join(testDir, "zed-mcp.json"),
-        });
-      const mcpDiscovery = await import("../mcpDiscovery");
-      const pluginSpy = vi.spyOn(mcpDiscovery, "getCursorPluginMcpPaths").mockResolvedValue([]);
-      const projectSpy = vi.spyOn(mcpDiscovery, "getCursorProjectMcpPaths").mockResolvedValue([]);
-      const claudeCodeSpy = vi.spyOn(mcpDiscovery, "getClaudeCodeProjectMcpPaths").mockResolvedValue([]);
-      const jetbrainsSpy = vi.spyOn(mcpDiscovery, "getJetBrainsMcpConfigPaths").mockResolvedValue([]);
+      const entriesSpy = vi
+        .spyOn(mcpConfigPaths, "getAllConfigEntries")
+        .mockResolvedValue([
+          { client: "codex", path: codexConfigPath, kind: "toml", scope: "user" },
+        ]);
 
       try {
         const result = await restoreAllQuarantinedServers();
@@ -358,11 +320,7 @@ describe("mcpConfigActions", () => {
         // Disabled file should persist (not deleted)
         await expect(fs.access(codexDisabledPath)).resolves.toBeUndefined();
       } finally {
-        pathsSpy.mockRestore();
-        pluginSpy.mockRestore();
-        projectSpy.mockRestore();
-        claudeCodeSpy.mockRestore();
-        jetbrainsSpy.mockRestore();
+        entriesSpy.mockRestore();
       }
     });
   });

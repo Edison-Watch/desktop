@@ -120,22 +120,34 @@ export function registerMcpSubmitHandlers(): void {
   });
 
   /** Remove specific servers from their agent config files.
-   *  Accepts either plain names (removes from ALL agents) or {name, client} pairs (targeted removal). */
+   *  Accepts either plain names (removes from ALL agents) or {name, client} pairs (targeted removal).
+   *  Names can be dedup-renamed (e.g. "same_cursor") — resolved back to raw names via the deduped cache. */
   ipcMain.handle("mcp:removeServers", async (_event, targets: Array<string | { name: string; client: string }>): Promise<{
     removed: string[];
     errors: string[];
   }> => {
     // Use cached raw (pre-dedup) list so we find ALL per-agent instances
-    const { raw: filtered } = getCachedDiscovery();
+    const { servers: deduped, raw: filtered } = getCachedDiscovery();
     const removed: string[] = [];
     const errors: string[] = [];
 
-    // Build lookup sets
+    // Build lookup sets from targets
     const nameOnly = new Set<string>();
     const nameAndClient = new Set<string>();
     for (const t of targets) {
       if (typeof t === "string") nameOnly.add(t);
       else nameAndClient.add(`${t.name}:${t.client}`);
+    }
+
+    // Resolve dedup-renamed names back to original names so they match the raw list.
+    // e.g. target "same_cursor" → deduped server with originalName "same" → matches raw server "same"
+    for (const s of deduped) {
+      if (s.originalName && nameOnly.has(s.name)) {
+        nameOnly.add(s.originalName);
+      }
+      if (s.originalName && nameAndClient.has(`${s.name}:${s.client}`)) {
+        nameAndClient.add(`${s.originalName}:${s.client}`);
+      }
     }
 
     for (const server of filtered) {

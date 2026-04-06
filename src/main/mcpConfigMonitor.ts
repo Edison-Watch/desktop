@@ -9,16 +9,19 @@ function mlog(msg: string): void {
   try { appendFileSync(MONITOR_LOG, line) } catch { /* ignore */ }
   console.log(msg)
 }
-import { getAllConfigPaths } from './mcpConfigPaths'
+import {
+  getAllConfigEntries,
+  buildEntryMap,
+  getWatchablePaths,
+  getCursorWorkspaceStoragePath,
+  type McpConfigEntry,
+} from './mcpConfigPaths'
 import {
   discoverMcpServers,
   isOpaqueConfig,
-  getJetBrainsMcpConfigPaths,
   getCursorProjectMcpPaths,
   getCursorPluginMcpPaths,
-  getCursorPluginsInstalledPaths,
   getClaudeCodeProjectMcpPaths,
-  getCursorWorkspaceStoragePath,
   getClaudeCodeHomeJsonPath,
   getServerFingerprint,
   type DiscoveredMcpServer,
@@ -29,7 +32,6 @@ import { SeenServersStore } from './seenServersStore'
 
 // Cache static paths that only depend on homedir() (which doesn't change at runtime)
 const CLAUDE_HOME_JSON_PATH = getClaudeCodeHomeJsonPath()
-const CURSOR_PLUGINS_INSTALLED_PATHS = getCursorPluginsInstalledPaths()
 
 // quarantine retry constants removed — quarantine now happens in quarantineManager
 const DEFAULT_RESCAN_INTERVAL_MS = 60_000 // Safety-net rescan every 60s
@@ -83,6 +85,8 @@ export class McpConfigMonitor extends EventEmitter {
   private isCheckingForChanges = false
   private pendingRescan = false
   private configFiles: Set<string> = new Set()
+  /** Lookup map from path → entry metadata (for triggersDynamicRescan etc.) */
+  private configEntryByPath: Map<string, McpConfigEntry> = new Map()
 
   constructor(_seenStore: SeenServersStore, debounceMs = 500, rescanIntervalMs = DEFAULT_RESCAN_INTERVAL_MS) {
     super()
@@ -101,30 +105,12 @@ export class McpConfigMonitor extends EventEmitter {
     // This ensures all servers are secured even if they existed before the app started
     await this.quarantineExistingServers()
 
-    // Get all config paths to watch (sync paths + async scans for JetBrains/Cursor projects/Claude Code projects)
-    const paths = getAllConfigPaths()
-    const [jetbrainsPaths, cursorProjectPaths, cursorPluginPaths, claudeCodeProjectPaths] =
-      await Promise.all([
-        getJetBrainsMcpConfigPaths(),
-        getCursorProjectMcpPaths(),
-        getCursorPluginMcpPaths(),
-        getClaudeCodeProjectMcpPaths()
-      ])
-    this.configFiles = new Set([
-      paths.vscode,
-      paths.claudeDesktop,
-      paths.claudeCowork,
-      paths.cursor,
-      ...CURSOR_PLUGINS_INSTALLED_PATHS, // watch all plugin registry files (legacy + v1 + shared)
-      ...paths.claudeCode,
-      paths.codex,
-      paths.windsurf,
-      paths.zed,
-      ...jetbrainsPaths.map((x) => x.path),
-      ...cursorProjectPaths,
-      ...cursorPluginPaths,
-      ...claudeCodeProjectPaths
-    ])
+    // Get all config paths from the unified registry (static + dynamically-scanned)
+    const entries = await getAllConfigEntries()
+    this.configEntryByPath = buildEntryMap(entries)
+    // Exclude sqlite-state paths (marketplace DBs) from chokidar — they change frequently
+    // for unrelated reasons. The periodic rescan via discoverMcpServers() reads them.
+    this.configFiles = new Set(getWatchablePaths(entries))
 
     // Build list of paths to watch - files that exist + parent dirs for files that don't
     const existingPaths: string[] = []
@@ -443,10 +429,11 @@ export class McpConfigMonitor extends EventEmitter {
     this.debounceTimer = setTimeout(async () => {
       try {
         // Register new paths before scanning so they're included in checkForChanges
-        if (path === getClaudeCodeHomeJsonPath()) {
+        const entry = this.configEntryByPath.get(path)
+        if (entry?.triggersDynamicRescan === 'claude-code-projects') {
           await this.handleClaudeHomeJsonChange()
         }
-        if (CURSOR_PLUGINS_INSTALLED_PATHS.includes(path)) {
+        if (entry?.triggersDynamicRescan === 'cursor-plugins') {
           await this.handleCursorPluginsInstalledChange()
         }
         await this.checkForChanges()
