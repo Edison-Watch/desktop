@@ -1,9 +1,15 @@
 /**
  * App logos for MCP client discovery.
- * SVG paths sourced from simple-icons (https://simpleicons.org, MIT license).
- * VS Code icon extracted from the installed macOS app bundle.
+ *
+ * Icon data sourced from @edison/shared/agent-registry (simple-icons, MIT license).
+ * Claude Cowork and VS Code use local PNG assets for best rendering quality in the
+ * Electron context (VS Code's SVG path exists in the registry but the PNG looks
+ * better at the 32 px display size used here).
  */
-import { OPENAI_PATH } from "../../../shared/logoPaths";
+import {
+  AGENT_REGISTRY,
+  type AgentId,
+} from "@edison/shared/agent-registry";
 import vscodePng from "../assets/logo-vscode.png";
 import claudeCoworkPng from "../assets/logo-claude-cowork.png";
 
@@ -12,111 +18,9 @@ interface AppLogoProps {
   name: string;
 }
 
-// ---------------------------------------------------------------------------
-// Data — SVG paths from simple-icons + brand background color
-// ---------------------------------------------------------------------------
-
-const SI_LOGOS: Record<string, { bg: string; path: string }> = {
-  "claude-desktop": {
-    bg: "#D97757",
-    path: "m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z",
-  },
-  cursor: {
-    bg: "#1A1A1A",
-    path: "M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23",
-  },
-  windsurf: {
-    // Windsurf's actual teal brand color (more distinctive than their near-black simple-icons default)
-    bg: "#09B6A2",
-    path: "M23.55 5.067c-1.2038-.002-2.1806.973-2.1806 2.1765v4.8676c0 .972-.8035 1.7594-1.7597 1.7594-.568 0-1.1352-.286-1.4718-.7659l-4.9713-7.1003c-.4125-.5896-1.0837-.941-1.8103-.941-1.1334 0-2.1533.9635-2.1533 2.153v4.8957c0 .972-.7969 1.7594-1.7596 1.7594-.57 0-1.1363-.286-1.4728-.7658L.4076 5.1598C.2822 4.9798 0 5.0688 0 5.2882v4.2452c0 .2147.0656.4228.1884.599l5.4748 7.8183c.3234.462.8006.8052 1.3509.9298 1.3771.313 2.6446-.747 2.6446-2.0977v-4.893c0-.972.7875-1.7593 1.7596-1.7593h.003a1.798 1.798 0 0 1 1.4718.7658l4.9723 7.0994c.4135.5905 1.05.941 1.8093.941 1.1587 0 2.1515-.9645 2.1515-2.153v-4.8948c0-.972.7875-1.7594 1.7596-1.7594h.194a.22.22 0 0 0 .2204-.2202v-4.622a.22.22 0 0 0-.2203-.2203Z",
-  },
-  zed: {
-    bg: "#084CCF",
-    path: "M2.25 1.5a.75.75 0 0 0-.75.75v16.5H0V2.25A2.25 2.25 0 0 1 2.25 0h20.095c1.002 0 1.504 1.212.795 1.92L10.764 14.298h3.486V12.75h1.5v1.922a1.125 1.125 0 0 1-1.125 1.125H9.264l-2.578 2.578h11.689V9h1.5v9.375a1.5 1.5 0 0 1-1.5 1.5H5.185L2.562 22.5H21.75a.75.75 0 0 0 .75-.75V5.25H24v16.5A2.25 2.25 0 0 1 21.75 24H1.655C.653 24 .151 22.788.86 22.08L13.19 9.75H9.75v1.5h-1.5V9.375A1.125 1.125 0 0 1 9.375 8.25h5.314l2.625-2.625H5.625V15h-1.5V5.625a1.5 1.5 0 0 1 1.5-1.5h13.19L21.438 1.5z",
-  },
-  intellij: {
-    bg: "#000000",
-    path: "M0 0v24h24V0zm3.723 3.111h5v1.834h-1.39v6.277h1.39v1.834h-5v-1.834h1.444V4.945H3.723zm11.055 0H17v6.5c0 .612-.055 1.111-.222 1.556-.167.444-.39.777-.723 1.11-.277.279-.666.557-1.11.668a3.933 3.933 0 0 1-1.445.278c-.778 0-1.444-.167-1.944-.445a4.81 4.81 0 0 1-1.279-1.056l1.39-1.555c.277.334.555.555.833.722.277.167.611.278.945.278.389 0 .721-.111 1-.389.221-.278.333-.667.333-1.278zM2.222 19.5h9V21h-9z",
-  },
-  pycharm: {
-    bg: "#000000",
-    path: "M7.833 6.666v-.055c0-1-.667-1.5-1.778-1.5H4.389v3.055h1.723c1.111 0 1.721-.666 1.721-1.5zM0 0v24h24V0H0zm2.223 3.167h4c2.389 0 3.833 1.389 3.833 3.445v.055c0 2.278-1.778 3.5-4.001 3.5H4.389v2.945H2.223V3.167zM11.277 21h-9v-1.5h9V21zm4.779-7.777c-2.944.055-5.111-2.223-5.111-5.057C10.944 5.333 13.056 3 16.111 3c1.889 0 3 .611 3.944 1.556l-1.389 1.61c-.778-.722-1.556-1.111-2.556-1.111-1.658 0-2.873 1.375-2.887 3.084.014 1.709 1.174 3.083 2.887 3.083 1.111 0 1.833-.445 2.61-1.167l1.39 1.389c-.999 1.112-2.166 1.779-4.054 1.779z",
-  },
-  webstorm: {
-    bg: "#000000",
-    path: "M0 0v24h24V0H0zm17.889 2.889c1.444 0 2.667.444 3.667 1.278l-1.111 1.667c-.889-.611-1.722-1-2.556-1s-1.278.389-1.278.889v.056c0 .667.444.889 2.111 1.333 2 .556 3.111 1.278 3.111 3v.056c0 2-1.5 3.111-3.611 3.111-1.5-.056-3-.611-4.167-1.667l1.278-1.556c.889.722 1.833 1.222 2.944 1.222.889 0 1.389-.333 1.389-.944v-.056c0-.556-.333-.833-2-1.278-2-.5-3.222-1.056-3.222-3.056v-.056c0-1.833 1.444-3 3.444-3zm-16.111.222h2.278l1.5 5.778 1.722-5.778h1.667l1.667 5.778 1.5-5.778h2.333l-2.833 9.944H9.723L8.112 7.277l-1.667 5.778H4.612L1.779 3.111zm.5 16.389h9V21h-9v-1.5z",
-  },
-  codex: {
-    bg: "#000000",
-    path: "M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364l2.0201-1.1638a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.4091-.6765zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0974-2.3616l2.603-1.5018 2.6032 1.5018v3.0036l-2.6032 1.5018-2.603-1.5018Z",
-  },
-};
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 export function AppLogo({ id, name }: AppLogoProps) {
-  if (id === "codex") {
-    return (
-      <div
-        className="h-8 w-8 shrink-0 overflow-hidden rounded-lg flex items-center justify-center p-1.5 ring-1 ring-black/10"
-        style={{ background: "#FFFFFF" }}
-        aria-label={name}
-      >
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="h-full w-full" aria-hidden="true">
-          <path d={OPENAI_PATH} fill="#000000" />
-        </svg>
-      </div>
-    );
-  }
+  // --- PNG overrides (assets that can't be expressed as SVG paths) ---
 
-  const si = SI_LOGOS[id];
-  if (si) {
-    return (
-      <div
-        className="h-8 w-8 shrink-0 overflow-hidden rounded-lg flex items-center justify-center p-1.5"
-        style={{ background: si.bg }}
-        aria-label={name}
-      >
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="h-full w-full" aria-hidden="true">
-          <path d={si.path} fill="white" />
-        </svg>
-      </div>
-    );
-  }
-
-  // Claude Code — alien sprite SVG
-  if (id === "claude-code") {
-    return (
-      <div
-        className="h-8 w-8 shrink-0 overflow-hidden rounded-lg flex items-center justify-center"
-        style={{ background: "#1a1a1a" }}
-        aria-label={name}
-      >
-        <svg viewBox="0 -20 90 90" xmlns="http://www.w3.org/2000/svg" className="h-full w-full" shapeRendering="crispEdges" aria-hidden="true">
-          <g fill="#da7756">
-            <rect x="15" y="0" width="60" height="10" />
-            <rect x="15" y="10" width="10" height="10" />
-            <rect x="30" y="10" width="30" height="10" />
-            <rect x="65" y="10" width="10" height="10" />
-            <rect x="5" y="20" width="80" height="10" />
-            <rect x="15" y="30" width="60" height="10" />
-            <rect x="20" y="40" width="5" height="10" />
-            <rect x="30" y="40" width="5" height="10" />
-            <rect x="55" y="40" width="5" height="10" />
-            <rect x="65" y="40" width="5" height="10" />
-          </g>
-          <g fill="#1a1a1a">
-            <rect x="25" y="10" width="5" height="10" />
-            <rect x="60" y="10" width="5" height="10" />
-          </g>
-        </svg>
-      </div>
-    );
-  }
-
-  // Claude Cowork — custom PNG logo
   if (id === "claude-cowork") {
     return (
       <img
@@ -127,7 +31,6 @@ export function AppLogo({ id, name }: AppLogoProps) {
     );
   }
 
-  // VS Code — icon extracted from the installed macOS app bundle (64×64 @2×)
   if (id === "vscode") {
     return (
       <img
@@ -138,7 +41,44 @@ export function AppLogo({ id, name }: AppLogoProps) {
     );
   }
 
-  // Fallback: first-letter badge
+  // --- Registry-driven rendering ---
+
+  const entry = AGENT_REGISTRY[id as AgentId];
+
+  if (entry?.svgPath) {
+    return (
+      <div
+        className="h-8 w-8 shrink-0 overflow-hidden rounded-lg flex items-center justify-center p-1.5 ring-1 ring-black/10"
+        style={{ background: entry.brandColor }}
+        aria-label={name}
+      >
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="h-full w-full" aria-hidden="true">
+          <path d={entry.svgPath} fill={entry.svgFill ?? "white"} />
+        </svg>
+      </div>
+    );
+  }
+
+  if (entry?.customSvg) {
+    return (
+      <div
+        className="h-8 w-8 shrink-0 overflow-hidden rounded-lg flex items-center justify-center"
+        style={{ background: entry.brandColor }}
+        aria-label={name}
+      >
+        <svg
+          viewBox={entry.customViewBox ?? "0 0 24 24"}
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-full w-full"
+          shapeRendering={entry.customViewBox ? "crispEdges" : undefined}
+          aria-hidden="true"
+          dangerouslySetInnerHTML={{ __html: entry.customSvg }}
+        />
+      </div>
+    );
+  }
+
+  // --- Fallback: first-letter badge ---
   return (
     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--bg-input)] text-sm font-medium text-[var(--text-secondary)]">
       {name[0]}
