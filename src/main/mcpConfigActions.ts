@@ -8,6 +8,10 @@ import {
   quarantineMarketplaceServer,
   restoreAllMarketplaceServers,
 } from './mcpQuarantineSqlite'
+import {
+  quarantineCursorPlugin,
+  restoreAllCursorPlugins,
+} from './mcpQuarantineCursorPlugins'
 
 /**
  * Structure for the disabled/quarantined servers file.
@@ -275,8 +279,15 @@ function commentOutServerInJsonc(content: string, serversKey: string, serverName
 /**
  * Remove a server from its original config file (deletes the entry).
  * Creates a backup of the original file.
+ *
+ * Cursor plugin cache files must NOT be edited — those are disabled via
+ * project dir renames in quarantineCursorPlugin(). Guard against accidental calls.
  */
 export async function removeServerFromConfig(server: DiscoveredMcpServer): Promise<void> {
+  if (server.source === 'plugin') {
+    console.warn(`[MCP Config] Refusing to edit plugin cache file — use quarantineCursorPlugin instead: ${server.path}`)
+    return
+  }
   const config = await readConfigFile(server.path, server.client)
   const configKey = server.originalName ?? server.name
   const { servers, nested } = resolveServersMap(config, server, configKey)
@@ -443,6 +454,10 @@ export async function quarantineServer(server: DiscoveredMcpServer): Promise<Qua
   if (server.source === 'marketplace') {
     return quarantineMarketplaceServer(server)
   }
+  // Cursor plugin servers — quarantine by renaming plugin dirs in projects/
+  if (server.source === 'plugin' && server.client === 'cursor') {
+    return quarantineCursorPlugin(server)
+  }
   const originalPath = server.path
   const disabledPath = getDisabledConfigPath(originalPath)
   const quarantinedAt = new Date().toISOString()
@@ -588,6 +603,11 @@ export async function restoreAllQuarantinedServers(): Promise<{
   restored += marketplace.restored
   errors.push(...marketplace.errors)
 
+  // Restore Cursor plugin directories (ew-disabled-plugin-* → plugin-*)
+  const plugins = await restoreAllCursorPlugins()
+  restored += plugins.restored
+  errors.push(...plugins.errors)
+
   // Restore file-based servers
   for (const originalPath of allOriginalPaths) {
     const disabledPath = getDisabledConfigPath(originalPath)
@@ -686,3 +706,6 @@ function inferClientFromPath(configPath: string): McpClientId {
   // Default to claude-code style (mcpServers key) which is the most common
   return 'claude-code'
 }
+
+// Re-export cursor plugin quarantine functions
+export { quarantineCursorPlugin, restoreAllCursorPlugins } from './mcpQuarantineCursorPlugins'

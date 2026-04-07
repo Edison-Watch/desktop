@@ -14,6 +14,7 @@ import {
   buildEntryMap,
   getWatchablePaths,
   getCursorWorkspaceStoragePath,
+  getCursorPluginCachePath,
   type McpConfigEntry,
 } from './mcpConfigPaths'
 import {
@@ -76,6 +77,7 @@ export interface McpConfigMonitorEvents {
 export class McpConfigMonitor extends EventEmitter {
   private watcher: FSWatcher | null = null
   private workspaceStorageWatcher: FSWatcher | null = null
+  private pluginCacheWatcher: FSWatcher | null = null
   private lastKnownServers: Map<string, DiscoveredMcpServer> = new Map()
   private debounceTimer: NodeJS.Timeout | null = null
   private rescanTimer: NodeJS.Timeout | null = null
@@ -159,6 +161,9 @@ export class McpConfigMonitor extends EventEmitter {
     // new project in Cursor, the new workspace.json triggers discovery of its .cursor/mcp.json.
     await this.startWorkspaceStorageWatcher()
 
+    // Watch Cursor's plugin cache directory so that new plugin installs are detected.
+    await this.startPluginCacheWatcher()
+
     // Set isRunning before starting the rescan timer so the timer's guard
     // doesn't skip the first tick.
     this.isRunning = true
@@ -192,6 +197,11 @@ export class McpConfigMonitor extends EventEmitter {
     if (this.workspaceStorageWatcher) {
       await this.workspaceStorageWatcher.close()
       this.workspaceStorageWatcher = null
+    }
+
+    if (this.pluginCacheWatcher) {
+      await this.pluginCacheWatcher.close()
+      this.pluginCacheWatcher = null
     }
 
     this.isRunning = false
@@ -378,9 +388,42 @@ export class McpConfigMonitor extends EventEmitter {
   }
 
   /**
-   * When a Cursor plugin registry file changes (new plugin installed), register
-   * any .mcp.json files bundled by the newly-installed plugin.
-   * Handles both legacy installed.json and Cursor 2.5+ installed_plugins.json.
+   * Watch Cursor's plugin cache directory so newly-installed plugins are detected.
+   * Layout: cache/<marketplace>/<plugin_name>/<sha>/mcp.json
+   */
+  private async startPluginCacheWatcher(): Promise<void> {
+    const cacheDir = getCursorPluginCachePath()
+    try {
+      await fs.access(cacheDir)
+    } catch {
+      // Cursor not installed or plugin cache doesn't exist yet; skip
+      return
+    }
+
+    this.pluginCacheWatcher = watch(cacheDir, {
+      persistent: true,
+      ignoreInitial: true,
+      depth: 3, // marketplace/plugin_name/sha/mcp.json
+      awaitWriteFinish: {
+        stabilityThreshold: 300,
+        pollInterval: 100
+      }
+    })
+
+    const handlePluginCacheEvent = async (changedPath: string): Promise<void> => {
+      if (!changedPath.endsWith('mcp.json')) return
+      await this.handleCursorPluginsInstalledChange()
+    }
+
+    this.pluginCacheWatcher.on('add', handlePluginCacheEvent)
+    this.pluginCacheWatcher.on('change', handlePluginCacheEvent)
+    this.pluginCacheWatcher.on('error', (error) => this.emit('error', error))
+    console.log('[McpConfigMonitor] Watching Cursor plugin cache:', cacheDir)
+  }
+
+  /**
+   * When a Cursor plugin registry or cache file changes, rescan plugin MCP paths
+   * and register any new ones with the watcher.
    */
   private async handleCursorPluginsInstalledChange(): Promise<void> {
     try {

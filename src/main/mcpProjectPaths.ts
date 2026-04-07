@@ -78,20 +78,78 @@ export function getCursorPluginsInstalledPath(): string {
 }
 
 /**
- * Scan installed Cursor plugins for bundled .mcp.json files.
+ * Return the base path to the Cursor plugin cache directory.
+ * Layout: cache/<marketplace>/<plugin_name>/<git_sha>/mcp.json
+ */
+export function getCursorPluginCachePath(): string {
+  return join(homedir(), '.cursor', 'plugins', 'cache')
+}
+
+/** Cursor projects directory (stores per-project MCP tool caches and plugin install state). */
+function getCursorProjectsDirLocal(): string {
+  return join(homedir(), '.cursor', 'projects')
+}
+
+/**
+ * Check if a Cursor plugin (by cache mcp.json path) has at least one active
+ * (non-disabled) project installation.
  *
- * Supports two manifest formats:
+ * A plugin at `cache/<marketplace>/<name>/<sha>/mcp.json` is considered active
+ * if any `projects/<project>/mcps/plugin-<name>-<name>/` directory exists that
+ * is NOT prefixed with `ew-disabled-`.
+ */
+export async function isCursorPluginActive(cacheMcpPath: string): Promise<boolean> {
+  // Extract plugin name from cache path: .../cache/<marketplace>/<name>/<sha>/mcp.json
+  // Split on both / and \ so this works on Windows where path.join() uses backslashes
+  const parts = cacheMcpPath.split(/[/\\]/)
+  const cacheIdx = parts.indexOf('cache')
+  if (cacheIdx === -1 || cacheIdx + 2 >= parts.length) return true // can't determine — assume active
+
+  const pluginName = parts[cacheIdx + 2]
+  const prefixes = [
+    `plugin-${pluginName}-${pluginName}`,
+    `plugin-${parts[cacheIdx + 1]}-${pluginName}`,
+    `plugin-${pluginName}`,
+  ]
+
+  const projectsDir = getCursorProjectsDirLocal()
+  try {
+    const projectEntries = await fs.readdir(projectsDir, { withFileTypes: true })
+    for (const projDir of projectEntries) {
+      if (!projDir.isDirectory()) continue
+      const mcpsDir = join(projectsDir, projDir.name, 'mcps')
+      try {
+        const mcpEntries = await fs.readdir(mcpsDir, { withFileTypes: true })
+        for (const mcpDir of mcpEntries) {
+          if (!mcpDir.isDirectory()) continue
+          if (mcpDir.name.startsWith('ew-disabled-')) continue
+          if (prefixes.includes(mcpDir.name)) return true
+        }
+      } catch { /* mcps/ doesn't exist */ }
+    }
+  } catch { /* projects dir doesn't exist */ }
+
+  return false
+}
+
+/**
+ * Scan installed Cursor plugins for bundled mcp.json files.
+ *
+ * Primary: direct scan of ~/.cursor/plugins/cache/<marketplace>/<name>/<sha>/mcp.json
+ *
+ * Fallback for installs that use a registry manifest:
  * - **Legacy (Cursor <2.5):** installed.json with { user?: string[], projects?: Record, team?: Record, local?: Record }
- *   Cache path: ~/.cursor/plugins/cache/<marketplace>/<plugin>/latest/.mcp.json
  * - **v1+ (Cursor 2.5+):** installed_plugins.json with { version: number, plugins: { "name@marketplace": { installPath, ... } } }
- *   Cache path: taken directly from each plugin's installPath field
- *
- * Also checks ~/.claude/plugins/installed_plugins.json (shared config surface).
+ * - Also checks ~/.claude/plugins/installed_plugins.json (shared config surface).
  */
 export async function getCursorPluginMcpPaths(): Promise<string[]> {
   const seen = new Set<string>()
 
-  // Try all registry files (new and legacy, plus shared config surface)
+  // Primary: scan the cache directory tree for mcp.json files
+  // Structure: cache/<marketplace>/<plugin_name>/<git_sha>/mcp.json
+  await scanCursorPluginCache(seen)
+
+  // Fallback: try registry files for installs that use them
   const registryPaths = getCursorPluginsInstalledPaths()
 
   for (const registryPath of registryPaths) {
@@ -100,14 +158,10 @@ export async function getCursorPluginMcpPaths(): Promise<string[]> {
       const json = JSON.parse(raw) as Record<string, unknown>
 
       if ('version' in json && 'plugins' in json && json.version === 1) {
-        // Cursor 2.5+ format: { version: 1, plugins: { "name@marketplace": { installPath, ... } } }
         parseInstalledPluginsV1(json, seen)
       } else if ('version' in json && 'plugins' in json) {
-        // Unknown future format — log so we know when Cursor bumps the version
         console.warn(`[getCursorPluginMcpPaths] Unknown installed_plugins.json version (${json.version}), skipping: ${registryPath}`)
       } else {
-        // Legacy format: { user?: string[], projects?: Record, team?: Record, local?: Record }
-        // Derive base from registry path so cache paths are correct for each config surface
         const registryBase = dirname(registryPath)
         parseInstalledPluginsLegacy(json, registryBase, seen)
       }
@@ -117,6 +171,55 @@ export async function getCursorPluginMcpPaths(): Promise<string[]> {
   }
 
   return Array.from(seen)
+}
+
+/**
+ * Scan ~/.cursor/plugins/cache for mcp.json files.
+ * Layout: cache/<marketplace>/<plugin_name>/<sha>/mcp.json
+ */
+async function scanCursorPluginCache(seen: Set<string>): Promise<void> {
+  const cacheDir = getCursorPluginCachePath()
+  try {
+    // Level 1: marketplace directories (e.g. "cursor-public")
+    const marketplaces = await fs.readdir(cacheDir, { withFileTypes: true })
+    for (const mkt of marketplaces) {
+      if (!mkt.isDirectory()) continue
+      const mktPath = join(cacheDir, mkt.name)
+      try {
+        // Level 2: plugin name directories (e.g. "datadog", "slack")
+        const plugins = await fs.readdir(mktPath, { withFileTypes: true })
+        for (const plugin of plugins) {
+          if (!plugin.isDirectory()) continue
+          const pluginPath = join(mktPath, plugin.name)
+          try {
+            // Level 3: sha directories — pick the most recent one
+            const shas = await fs.readdir(pluginPath, { withFileTypes: true })
+            const shaDirs = shas.filter((d) => d.isDirectory())
+            if (shaDirs.length === 0) continue
+
+            // If multiple sha dirs, pick the most recently modified
+            let bestDir = shaDirs[0].name
+            if (shaDirs.length > 1) {
+              let bestMtime = 0
+              for (const d of shaDirs) {
+                try {
+                  const stat = await fs.stat(join(pluginPath, d.name))
+                  if (stat.mtimeMs > bestMtime) {
+                    bestMtime = stat.mtimeMs
+                    bestDir = d.name
+                  }
+                } catch { /* skip */ }
+              }
+            }
+
+            seen.add(join(pluginPath, bestDir, 'mcp.json'))
+          } catch { /* unreadable plugin dir */ }
+        }
+      } catch { /* unreadable marketplace dir */ }
+    }
+  } catch {
+    // cache dir doesn't exist; ignore
+  }
 }
 
 /**

@@ -11,7 +11,7 @@ import { resolve, sep } from "path";
 
 import { discoverMcpServers } from "./mcpDiscovery";
 import type { DiscoveredMcpServer, McpClientId, McpServerConfig } from "./mcpDiscovery";
-import { removeServerFromConfig } from "./mcpConfigActions";
+import { removeServerFromConfig, quarantineCursorPlugin } from "./mcpConfigActions";
 import { fetchUserRole, submitServerRequest, submitServerWithOverrides, approveServerRequest } from "./mcpServerSubmit";
 import { detectSecrets } from "./secretDetection";
 import type { TemplatizedConfig } from "./secretDetection";
@@ -19,6 +19,15 @@ import { filterOutEdisonWatchServers } from "./mcpConfigMonitor";
 import { applyAppIntegrations } from "./mcpConfigWriter";
 import { deduplicateServers, findDuplicateGroups, buildRemovalMap } from "./serverDeduplication";
 import { DRY_RUN, getApiBaseUrl, getSetupData, getCredentialsForEnv } from "./setupConfig";
+
+/** Remove or disable a server from its config. Cursor plugins are disabled via project dir renames. */
+async function removeOrDisableServer(server: DiscoveredMcpServer): Promise<void> {
+  if (server.source === 'plugin' && server.client === 'cursor') {
+    await quarantineCursorPlugin(server);
+  } else {
+    await removeServerFromConfig(server);
+  }
+}
 
 // ── Discovery cache ─────────────────────────────────────────────────────
 // Populated by mcp:discover; consumed by submit/resubmit so they never re-discover.
@@ -109,7 +118,7 @@ export function registerMcpSubmitHandlers(): void {
       // Remove from all agent configs if still present (using original name, not renamed)
       const entriesToRemove = rawEntries.length > 0 ? rawEntries : [server];
       for (const entry of entriesToRemove) {
-        try { await removeServerFromConfig(entry); } catch { /* non-fatal */ }
+        try { await removeOrDisableServer(entry); } catch { /* non-fatal */ }
       }
       return { success: true };
     } catch (e) {
@@ -155,7 +164,7 @@ export function registerMcpSubmitHandlers(): void {
       const matchByPair = nameAndClient.has(`${server.name}:${server.client}`);
       if (!matchByName && !matchByPair) continue;
       try {
-        await removeServerFromConfig(server);
+        await removeOrDisableServer(server);
         removed.push(`${server.name} (${server.client})`);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -355,7 +364,7 @@ export function registerMcpSubmitHandlers(): void {
         // Remove from ALL agent configs, not just the first
         const rawEntries = removalMap.get(server.name) ?? [server];
         for (const entry of rawEntries) {
-          try { await removeServerFromConfig(entry); } catch { /* non-fatal */ }
+          try { await removeOrDisableServer(entry); } catch { /* non-fatal */ }
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -448,7 +457,7 @@ export function registerMcpSubmitHandlers(): void {
         const rawEntries = removalMap.get(server.name) ?? [server];
         for (const entry of rawEntries) {
           try {
-            await removeServerFromConfig(entry);
+            await removeOrDisableServer(entry);
           } catch (removeErr) {
             console.error(`[mcp:submitAllDiscovered] Failed to remove "${entry.name}" from ${entry.path}:`, removeErr);
           }
@@ -538,7 +547,7 @@ export function registerMcpSubmitHandlers(): void {
     }
 
     // Remove server from config after successful submission
-    try { await removeServerFromConfig(server); } catch { /* non-fatal — quarantine manager handles fallback */ }
+    try { await removeOrDisableServer(server); } catch { /* non-fatal — quarantine manager handles fallback */ }
 
     return { request_id, action: params.action, autoApproved, approveError };
   });

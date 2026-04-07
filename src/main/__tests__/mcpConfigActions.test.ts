@@ -262,6 +262,11 @@ describe("mcpConfigActions", () => {
         .mockResolvedValue([
           { client: "cursor", path: pluginMcpPath, kind: "json", scope: "user" },
         ]);
+      // Mock getCursorProjectsDir so restoreAllCursorPlugins doesn't scan real filesystem
+      const mcpDiscovery = await import("../mcpDiscovery");
+      const projectsDirSpy = vi
+        .spyOn(mcpDiscovery, "getCursorProjectsDir")
+        .mockReturnValue(join(testDir, "nonexistent-projects"));
 
       try {
         const result = await restoreAllQuarantinedServers();
@@ -280,6 +285,7 @@ describe("mcpConfigActions", () => {
         expect(restoredConfig.mcpServers).toHaveProperty("test-plugin-server");
       } finally {
         entriesSpy.mockRestore();
+        projectsDirSpy.mockRestore();
       }
     });
 
@@ -308,6 +314,10 @@ describe("mcpConfigActions", () => {
         .mockResolvedValue([
           { client: "codex", path: codexConfigPath, kind: "toml", scope: "user" },
         ]);
+      const mcpDiscovery = await import("../mcpDiscovery");
+      const projectsDirSpy = vi
+        .spyOn(mcpDiscovery, "getCursorProjectsDir")
+        .mockReturnValue(join(testDir, "nonexistent-projects"));
 
       try {
         const result = await restoreAllQuarantinedServers();
@@ -321,6 +331,7 @@ describe("mcpConfigActions", () => {
         await expect(fs.access(codexDisabledPath)).resolves.toBeUndefined();
       } finally {
         entriesSpy.mockRestore();
+        projectsDirSpy.mockRestore();
       }
     });
   });

@@ -147,6 +147,9 @@ export function getWatchablePaths(entries: McpConfigEntry[]): string[] {
 /** Get the Cursor workspaceStorage path (for the depth:1 watcher that detects new projects). */
 export { getCursorWorkspaceStoragePath } from './mcpDiscovery'
 
+/** Get the Cursor plugin cache path (for the watcher that detects new plugin installs). */
+export { getCursorPluginCachePath } from './mcpDiscovery'
+
 // ── Deprecated — use getAllConfigEntries() instead ───────────────────────────
 
 /** @deprecated Use getStaticConfigEntries() or getAllConfigEntries() instead. */

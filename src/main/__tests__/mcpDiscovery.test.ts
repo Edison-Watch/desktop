@@ -719,7 +719,7 @@ describe("discoverMcpServers and fingerprinting", () => {
       expect(typeof s.path).toBe("string");
       expect(s.config).toBeDefined();
       expect(
-        ["user", "workspace", "remote", "unknown", "enterprise", "project", "marketplace"],
+        ["user", "workspace", "remote", "unknown", "enterprise", "project", "marketplace", "plugin"],
       ).toContain(s.source);
     }
   });

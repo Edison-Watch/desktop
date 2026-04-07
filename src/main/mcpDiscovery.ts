@@ -8,14 +8,16 @@ import {
   getCursorPluginsInstalledPath,
   getCursorPluginsInstalledPaths,
   getCursorPluginMcpPaths,
+  getCursorPluginCachePath,
+  isCursorPluginActive,
   getClaudeCodeProjectMcpPaths
 } from './mcpProjectPaths'
 
 // Re-export so callers don't need to know about the split
-export { getCursorWorkspaceStoragePath, getCursorProjectMcpPaths, getCursorPluginsInstalledPath, getCursorPluginsInstalledPaths, getCursorPluginMcpPaths, getClaudeCodeProjectMcpPaths }
+export { getCursorWorkspaceStoragePath, getCursorProjectMcpPaths, getCursorPluginsInstalledPath, getCursorPluginsInstalledPaths, getCursorPluginMcpPaths, getCursorPluginCachePath, isCursorPluginActive, getClaudeCodeProjectMcpPaths }
 export { getServerFingerprint } from './seenServersStore'
 export { getClaudeCoworkConfigPath, parseClaudeCoworkConfig } from './mcpDiscoveryCowork'
-export { getCursorStateDbPath, discoverCursorMarketplaceMcps } from './mcpDiscoveryCursorMarketplace'
+export { getCursorStateDbPath, getCursorProjectsDir, discoverCursorMarketplaceMcps } from './mcpDiscoveryCursorMarketplace'
 export { getVscodeStateDbPath, discoverVscodeStateMcps } from './mcpDiscoveryVscodeState'
 export {
   getClaudeCodeUserSettingsPath,
@@ -84,7 +86,7 @@ export interface DiscoveredMcpServer {
   client: McpClientId
   /** All clients where this server was found (populated by deduplication). */
   clients?: McpClientId[]
-  source: 'user' | 'workspace' | 'remote' | 'unknown' | 'enterprise' | 'project' | 'marketplace'
+  source: 'user' | 'workspace' | 'remote' | 'unknown' | 'enterprise' | 'project' | 'marketplace' | 'plugin'
   path: string
   config: McpServerConfig
   projectName?: string
@@ -359,12 +361,14 @@ async function discoverCursor(): Promise<DiscoveredMcpServer[]> {
     }
   }
 
-  // Plugin-bundled MCP servers: ~/.cursor/plugins/cache/<marketplace>/<plugin>/latest/.mcp.json
+  // Plugin-bundled MCP servers: ~/.cursor/plugins/cache/<marketplace>/<plugin>/<sha>/mcp.json
+  // Only include plugins that have at least one active (non-disabled) project installation.
   const pluginMcpPaths = await getCursorPluginMcpPaths()
   for (const mcpPath of pluginMcpPaths) {
     try {
       await fs.access(mcpPath)
-      const servers = await parseCursorMcpJson(mcpPath, 'user')
+      if (!(await isCursorPluginActive(mcpPath))) continue
+      const servers = await parseCursorMcpJson(mcpPath, 'plugin')
       results.push(...servers)
     } catch {
       // Plugin doesn't define MCP servers; ignore

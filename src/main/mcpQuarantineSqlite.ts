@@ -125,6 +125,73 @@ export async function quarantineCursorOAuthMcp(
 }
 
 /**
+ * Remove a Cursor plugin's entries from the anysphere.cursor-mcp state DB key.
+ * Plugin entries use prefixes like `[plugin-slack-slack]` or `[plugin-datadog-datadog]`.
+ * Non-fatal: logs and returns silently if no entries found (e.g. datadog has no OAuth).
+ */
+export async function removeCursorPluginFromStateDb(
+  pluginDirPrefixes: string[]
+): Promise<void> {
+  const dbPath = getCursorStateDbPath()
+  const raw = await queryStateDb(dbPath, CURSOR_MCP_STATE_KEY)
+  if (!raw) return
+
+  const state = JSON.parse(raw) as Record<string, string>
+  const newState: Record<string, string> = {}
+  let removedCount = 0
+
+  for (const [key, value] of Object.entries(state)) {
+    const matched = pluginDirPrefixes.some((p) => key.startsWith(`[${p}] `))
+    if (matched) {
+      removedCount++
+    } else {
+      newState[key] = value
+    }
+  }
+
+  if (removedCount > 0) {
+    await updateStateDb(dbPath, CURSOR_MCP_STATE_KEY, JSON.stringify(newState))
+    console.log(`[MCP Quarantine SQLite] Removed ${removedCount} plugin entries from ${CURSOR_MCP_STATE_KEY}`)
+  }
+}
+
+const CURSOR_SERVER_CONFIG_KEY = 'cursorai/serverConfig'
+
+/**
+ * Remove plugin names from onboardingConfig.marketplacePluginNames in Cursor's serverConfig.
+ * This prevents Cursor from re-cloning and re-activating quarantined plugins.
+ *
+ * @param pluginNames The plugin names to remove (e.g. ["datadog", "slack"])
+ */
+export async function removeCursorPluginsFromServerConfig(
+  pluginNames: string[]
+): Promise<void> {
+  const dbPath = getCursorStateDbPath()
+  const raw = await queryStateDb(dbPath, CURSOR_SERVER_CONFIG_KEY)
+  if (!raw) return
+
+  try {
+    const config = JSON.parse(raw) as Record<string, unknown>
+    const onboarding = config.onboardingConfig as { marketplacePluginNames?: string[] } | undefined
+    if (!onboarding?.marketplacePluginNames || !Array.isArray(onboarding.marketplacePluginNames)) return
+
+    const removeSet = new Set(pluginNames.map((n) => n.toLowerCase()))
+    const before = onboarding.marketplacePluginNames.length
+    onboarding.marketplacePluginNames = onboarding.marketplacePluginNames.filter(
+      (name) => !removeSet.has(name.toLowerCase())
+    )
+    const removed = before - onboarding.marketplacePluginNames.length
+
+    if (removed > 0) {
+      await updateStateDb(dbPath, CURSOR_SERVER_CONFIG_KEY, JSON.stringify(config))
+      console.log(`[MCP Quarantine SQLite] Removed ${removed} plugin(s) from onboardingConfig.marketplacePluginNames`)
+    }
+  } catch (err) {
+    console.warn(`[MCP Quarantine SQLite] Failed to update serverConfig:`, err)
+  }
+}
+
+/**
  * Restore a Cursor OAuth marketplace MCP by adding its entries back to state.vscdb.
  */
 export async function restoreCursorOAuthMcp(

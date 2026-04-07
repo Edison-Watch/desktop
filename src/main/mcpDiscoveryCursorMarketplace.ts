@@ -32,8 +32,8 @@ export function getCursorStateDbPath(): string {
   }
 }
 
-// Cursor projects directory (stores per-project MCP tool caches)
-function getCursorProjectsDir(): string {
+// Cursor projects directory (stores per-project MCP tool caches and plugin install state)
+export function getCursorProjectsDir(): string {
   return join(homedir(), '.cursor', 'projects')
 }
 
