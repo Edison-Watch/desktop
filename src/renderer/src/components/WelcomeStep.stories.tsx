@@ -16,6 +16,8 @@ const baseAuth: Parameters<typeof WelcomeStep>[0]['auth'] = {
   loading: false,
   error: '',
   warning: '',
+  awaitingBrowserCallback: false,
+  pendingAuthMethod: null,
   signedIn: false,
   email: '',
   userId: '',
@@ -29,6 +31,7 @@ const baseAuth: Parameters<typeof WelcomeStep>[0]['auth'] = {
   signInWithGoogle: async () => {},
   signInWithPassword: async () => {},
   checkDomain: () => {},
+  cancelPendingAuth: () => {},
 };
 
 export const SignInForm: Story = {

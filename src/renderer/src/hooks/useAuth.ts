@@ -58,6 +58,10 @@ export interface AuthState {
   error: string;
   /** Informational warning (e.g. duplicate account created for same email). */
   warning: string;
+  /** True while we're waiting for an external browser OAuth/SSO callback. */
+  awaitingBrowserCallback: boolean;
+  /** Which auth method initiated the pending browser flow, if any. */
+  pendingAuthMethod: "sso" | "google" | null;
 }
 
 const initialState: AuthState = {
@@ -73,6 +77,8 @@ const initialState: AuthState = {
   loading: false,
   error: "",
   warning: "",
+  awaitingBrowserCallback: false,
+  pendingAuthMethod: null,
 };
 
 // Timeout before clearing loading if external browser never calls back (5 minutes)
@@ -84,6 +90,10 @@ export default function useAuth() {
   const domainTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const domainAbort = useRef<AbortController | null>(null);
   const authBrowserTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Mirrors the awaitingBrowserCallback state for use inside the long-lived
+  // onCallback listener closure (which captures stale state otherwise).
+  // Bumped to false on cancel/timeout so late callbacks are ignored.
+  const awaitingBrowserCallbackRef = useRef(false);
 
   const update = useCallback((patch: Partial<AuthState>) => {
     setState((prev) => ({ ...prev, ...patch }));
@@ -209,7 +219,13 @@ export default function useAuth() {
   const startAuthBrowserTimeout = useCallback(() => {
     if (authBrowserTimeout.current) clearTimeout(authBrowserTimeout.current);
     authBrowserTimeout.current = setTimeout(() => {
-      update({ loading: false, error: "Authentication timed out. Please try again." });
+      awaitingBrowserCallbackRef.current = false;
+      update({
+        loading: false,
+        awaitingBrowserCallback: false,
+        pendingAuthMethod: null,
+        error: "Authentication timed out. Please try again.",
+      });
     }, AUTH_BROWSER_TIMEOUT_MS);
   }, [update]);
 
@@ -219,6 +235,18 @@ export default function useAuth() {
       authBrowserTimeout.current = undefined;
     }
   }, []);
+
+  // Let the user cancel a pending OAuth/SSO flow (e.g. they dismissed the browser)
+  const cancelPendingAuth = useCallback(() => {
+    clearAuthBrowserTimeout();
+    awaitingBrowserCallbackRef.current = false;
+    update({
+      loading: false,
+      error: "",
+      awaitingBrowserCallback: false,
+      pendingAuthMethod: null,
+    });
+  }, [clearAuthBrowserTimeout, update]);
 
   // SSO sign-in
   const signInWithSSO = useCallback(async (email: string) => {
@@ -241,6 +269,8 @@ export default function useAuth() {
 
     if (data?.url) {
       window.api.shell.openExternal(data.url);
+      awaitingBrowserCallbackRef.current = true;
+      update({ awaitingBrowserCallback: true, pendingAuthMethod: "sso" });
       startAuthBrowserTimeout();
     }
   }, [getRedirectTo, startAuthBrowserTimeout, update]);
@@ -266,6 +296,8 @@ export default function useAuth() {
 
     if (data?.url) {
       window.api.shell.openExternal(data.url);
+      awaitingBrowserCallbackRef.current = true;
+      update({ awaitingBrowserCallback: true, pendingAuthMethod: "google" });
       startAuthBrowserTimeout();
     }
   }, [getRedirectTo, startAuthBrowserTimeout, update]);
@@ -331,8 +363,17 @@ export default function useAuth() {
   // Listen for auth callbacks from main process
   useEffect(() => {
     const unsubscribe = window.api.auth.onCallback(async (url: string) => {
+      // Ignore late callbacks: the user cancelled, the flow timed out,
+      // or no auth flow was in progress to begin with.
+      if (!awaitingBrowserCallbackRef.current) return;
+      awaitingBrowserCallbackRef.current = false;
       clearAuthBrowserTimeout();
-      update({ loading: true, error: "" });
+      update({
+        loading: true,
+        error: "",
+        awaitingBrowserCallback: false,
+        pendingAuthMethod: null,
+      });
 
       const normalized = url.replace("edison-watch://", "http://");
       const parsed = new URL(normalized);
@@ -419,5 +460,6 @@ export default function useAuth() {
     signInWithGoogle,
     signInWithPassword,
     checkDomain,
+    cancelPendingAuth,
   };
 }

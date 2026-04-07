@@ -33,6 +33,7 @@ interface WelcomeStepProps {
     signInWithGoogle: () => Promise<void>;
     signInWithPassword: (email: string, password: string) => Promise<void>;
     checkDomain: (email: string) => void;
+    cancelPendingAuth: () => void;
   };
   onNext: () => void;
 }
@@ -176,14 +177,25 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
             </div>
           )}
 
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={!email || auth.loading}
-            className="w-full mt-1"
-          >
-            {authMode === "sso" || auth.ssoOnly ? "Continue with SSO" : "Sign In"}
-          </Button>
+          {auth.awaitingBrowserCallback && auth.pendingAuthMethod === "sso" ? (
+            <Button
+              type="button"
+              variant="danger"
+              onClick={auth.cancelPendingAuth}
+              className="w-full mt-1"
+            >
+              Cancel sign-in
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={!email || auth.loading}
+              className="w-full mt-1"
+            >
+              {authMode === "sso" || auth.ssoOnly ? "Continue with SSO" : "Sign In"}
+            </Button>
+          )}
         </form>
 
         {/* Google OAuth + mode toggle — hidden when SSO-only */}
@@ -199,16 +211,26 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
               </div>
             </div>
 
-            {/* Google Sign In */}
-            <button
-              type="button"
-              onClick={auth.signInWithGoogle}
-              disabled={auth.loading}
-              className="w-full flex items-center justify-center gap-2.5 bg-white text-gray-700 font-medium py-2 px-4 rounded-md border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-            >
-              <GoogleIcon />
-              Sign in with Google
-            </button>
+            {/* Google Sign In — becomes Cancel while a Google flow is pending */}
+            {auth.awaitingBrowserCallback && auth.pendingAuthMethod === "google" ? (
+              <button
+                type="button"
+                onClick={auth.cancelPendingAuth}
+                className="w-full flex items-center justify-center gap-2.5 bg-[var(--danger)] text-white font-medium py-2 px-4 rounded-md border border-[var(--danger)] hover:opacity-90 transition-opacity text-sm"
+              >
+                Cancel Google sign-in
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={auth.signInWithGoogle}
+                disabled={auth.loading}
+                className="w-full flex items-center justify-center gap-2.5 bg-white text-gray-700 font-medium py-2 px-4 rounded-md border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+              >
+                <GoogleIcon />
+                Sign in with Google
+              </button>
+            )}
 
             {/* Toggle auth mode */}
             <div className="mt-4 text-center">
