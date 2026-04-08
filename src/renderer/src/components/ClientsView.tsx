@@ -15,6 +15,7 @@ interface HookStatus {
   mcpConnected: boolean;
   mcpConfigured: boolean;
   mcpApplicable: boolean;
+  hooksApplicable: boolean;
   mcpRuntimeStatus?: ClaudeCodeMcpStatus;
 }
 
@@ -28,6 +29,7 @@ interface ClientInfo {
   mcpConnected: boolean;
   mcpConfigured: boolean;
   mcpApplicable: boolean;
+  hooksApplicable: boolean;
   mcpRuntimeStatus?: ClaudeCodeMcpStatus;
 }
 
@@ -38,6 +40,12 @@ const CLIENT_NAMES: Record<string, string> = {
   windsurf: "Windsurf",
   codex: "Codex CLI",
   vscode: "VS Code",
+  "claude-desktop": "Claude Desktop",
+  "claude-cowork": "Claude Cowork",
+  zed: "Zed",
+  intellij: "IntelliJ IDEA",
+  pycharm: "PyCharm",
+  webstorm: "WebStorm",
 };
 
 type ClientStatus = "connected" | "partial-setup" | "installed" | "missing";
@@ -64,8 +72,11 @@ function StatusDot({ status }: { status: ClientStatus }) {
 function getClientStatus(client: ClientInfo): ClientStatus {
   if (!client.installed) return "missing";
   const needsMcp = client.mcpApplicable;
-  if (client.hasHook && (!needsMcp || client.mcpConnected)) return "connected";
-  if (client.hasHook || client.hookCount > 0 || (needsMcp && client.mcpConfigured)) return "partial-setup";
+  const needsHooks = client.hooksApplicable;
+  const hooksSatisfied = !needsHooks || client.hasHook;
+  const mcpSatisfied = !needsMcp || client.mcpConnected;
+  if (hooksSatisfied && mcpSatisfied) return "connected";
+  if ((needsHooks && (client.hasHook || client.hookCount > 0)) || (needsMcp && client.mcpConfigured)) return "partial-setup";
   return "installed";
 }
 
@@ -83,10 +94,12 @@ function getIssueDetail(client: ClientInfo): string {
       issues.push(client.mcpConfigured ? "MCP gateway unreachable" : "MCP gateway not configured");
     }
   }
-  if (!client.hasHook && client.hookCount > 0) {
-    issues.push(`${client.hookCount}/${client.totalHooks} hooks installed`);
-  } else if (!client.hasHook) {
-    issues.push("Hooks not installed");
+  if (client.hooksApplicable) {
+    if (!client.hasHook && client.hookCount > 0) {
+      issues.push(`${client.hookCount}/${client.totalHooks} hooks installed`);
+    } else if (!client.hasHook) {
+      issues.push("Hooks not installed");
+    }
   }
   return issues.join(" · ");
 }
@@ -95,10 +108,12 @@ function getIssueDetail(client: ClientInfo): string {
 function ConditionTooltip({ client }: { client: ClientInfo }) {
   const conditions = [
     { label: "Installed", met: client.installed },
-    {
-      label: `Hooks (${client.hookCount}/${client.totalHooks})`,
-      met: client.hasHook,
-    },
+    ...(client.hooksApplicable
+      ? [{
+          label: `Hooks (${client.hookCount}/${client.totalHooks})`,
+          met: client.hasHook,
+        }]
+      : [{ label: "Hooks: N/A", met: true }]),
     ...(client.mcpApplicable
       ? [{
           label: client.mcpRuntimeStatus && client.mcpRuntimeStatus !== "unknown"
@@ -151,6 +166,7 @@ export default function ClientsView(): React.ReactNode {
           mcpConnected: s.mcpConnected ?? false,
           mcpConfigured: s.mcpConfigured ?? false,
           mcpApplicable: s.mcpApplicable ?? true,
+          hooksApplicable: s.hooksApplicable ?? true,
           mcpRuntimeStatus: s.mcpRuntimeStatus,
         })),
       );

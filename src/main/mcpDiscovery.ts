@@ -187,6 +187,30 @@ const JETBRAINS_IDE_PREFIXES: Array<{ prefix: string; client: 'intellij' | 'pych
 ]
 
 /**
+ * Scan JetBrains base dir and return which IDEs have a preferences folder present
+ * (regardless of whether mcp/servers.json exists yet).
+ * Only supports macOS and Windows; returns empty set on other platforms.
+ */
+export async function getInstalledJetBrainsIdes(): Promise<Set<'intellij' | 'pycharm' | 'webstorm'>> {
+  const base = getJetBrainsBaseDir()
+  if (!base) return new Set()
+  const result = new Set<'intellij' | 'pycharm' | 'webstorm'>()
+  try {
+    const entries = await fs.readdir(base, { withFileTypes: true })
+    for (const dirent of entries) {
+      if (!dirent.isDirectory()) continue
+      for (const { prefix, client } of JETBRAINS_IDE_PREFIXES) {
+        if (dirent.name.startsWith(prefix)) {
+          result.add(client)
+          break
+        }
+      }
+    }
+  } catch { /* Base dir missing or unreadable */ }
+  return result
+}
+
+/**
  * Scan JetBrains base dir for IDE folders and return MCP config paths.
  * Only supports macOS and Windows; returns [] on other platforms.
  */

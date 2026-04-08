@@ -10,7 +10,7 @@
 
 import { promises as fs, existsSync } from 'fs'
 import { platform } from 'os'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import { parse as parseJsonc } from 'jsonc-parser'
 import type { McpClientId } from './mcpDiscovery'
 import {
@@ -18,7 +18,13 @@ import {
   getCursorConfigPath,
   getWindsurfConfigPath,
   getClaudeCodeHomeJsonPath,
+  getClaudeDesktopConfigPath,
+  getZedConfigPath,
+  getJetBrainsMcpConfigPaths,
+  getInstalledJetBrainsIdes,
+  MAC_APP_NAMES,
 } from './mcpDiscovery'
+import { getClaudeCoworkConfigPath } from './mcpDiscoveryCowork'
 import { captureError } from './sentry'
 import {
   getVsCodeWorkspacePaths,
@@ -332,6 +338,8 @@ export interface HookStatusEntry {
   mcpConfigured: boolean
   /** Whether MCP config is applicable for this client (false for hooks-only clients like Codex) */
   mcpApplicable: boolean
+  /** Whether hooks are applicable for this client (false for hookless clients like Claude Desktop, Zed, JetBrains) */
+  hooksApplicable: boolean
   /** Actual runtime MCP connection status from the client CLI (only set for clients that support it) */
   mcpRuntimeStatus?: import('../main/setupConfig').ClaudeCodeMcpStatus
 }
@@ -393,6 +401,27 @@ async function checkCodexMcpEntry(
   }
 }
 
+/**
+ * Check if Zed's settings.json contains an edison-watch entry under assistant.mcp_servers.
+ */
+async function checkZedMcpEntry(
+  configPath: string,
+  expectedMcpUrl: string | null,
+): Promise<boolean> {
+  if (!expectedMcpUrl) return false
+  try {
+    if (!existsSync(configPath)) return false
+    const raw = await fs.readFile(configPath, 'utf-8')
+    const json = parseJsonc(raw) as { assistant?: { mcp_servers?: Record<string, { url?: string }> }; [k: string]: unknown }
+    const entry = json.assistant?.mcp_servers?.['edison-watch']
+    if (!entry?.url) return false
+    const strip = (u: string) => u.replace(/\?.*$/, '').replace(/\/+$/, '')
+    return strip(entry.url) === strip(expectedMcpUrl)
+  } catch {
+    return false
+  }
+}
+
 export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAlive = false, claudeCodeMcpStatus?: import('../main/setupConfig').ClaudeCodeMcpStatus): Promise<HookStatusEntry[]> {
   const results: HookStatusEntry[] = []
 
@@ -433,7 +462,7 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
   const claudeMcpConnected = claudeCodeMcpStatus && claudeCodeMcpStatus !== 'unknown'
     ? claudeCodeMcpStatus === 'connected'
     : claudeMcpConfigured && mcpServerAlive
-  results.push({ client: 'claude-code', installed: claudeInstalled, hasHook: claudeHookCount === claudeTotalHooks, hookCount: claudeHookCount, totalHooks: claudeTotalHooks, mcpConnected: claudeMcpConnected, mcpConfigured: claudeMcpConfigured, mcpApplicable: true, mcpRuntimeStatus: claudeCodeMcpStatus })
+  results.push({ client: 'claude-code', installed: claudeInstalled, hasHook: claudeHookCount === claudeTotalHooks, hookCount: claudeHookCount, totalHooks: claudeTotalHooks, mcpConnected: claudeMcpConnected, mcpConfigured: claudeMcpConfigured, mcpApplicable: true, hooksApplicable: true, mcpRuntimeStatus: claudeCodeMcpStatus })
 
   // Cursor — expects 3 hooks
   const cursorInstalled = isCursorInstalled()
@@ -459,7 +488,7 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
   const cursorMcpConfigured = cursorInstalled
     ? await checkMcpEntry(getCursorConfigPath(), 'mcpServers', expectedMcpUrl ?? null)
     : false
-  results.push({ client: 'cursor', installed: cursorInstalled, hasHook: cursorHookCount === cursorTotalHooks, hookCount: cursorHookCount, totalHooks: cursorTotalHooks, mcpConnected: cursorMcpConfigured && mcpServerAlive, mcpConfigured: cursorMcpConfigured, mcpApplicable: true })
+  results.push({ client: 'cursor', installed: cursorInstalled, hasHook: cursorHookCount === cursorTotalHooks, hookCount: cursorHookCount, totalHooks: cursorTotalHooks, mcpConnected: cursorMcpConfigured && mcpServerAlive, mcpConfigured: cursorMcpConfigured, mcpApplicable: true, hooksApplicable: true })
 
   // Windsurf
   const windsurfInstalled = isWindsurfInstalled()
@@ -480,11 +509,11 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
   const windsurfMcpConfigured = windsurfInstalled
     ? await checkMcpEntry(getWindsurfConfigPath(), 'mcpServers', expectedMcpUrl ?? null)
     : false
-  results.push({ client: 'windsurf', installed: windsurfInstalled, hasHook: windsurfHasHook, hookCount: windsurfHasHook ? 1 : 0, totalHooks: windsurfTotal, mcpConnected: windsurfMcpConfigured && mcpServerAlive, mcpConfigured: windsurfMcpConfigured, mcpApplicable: true })
+  results.push({ client: 'windsurf', installed: windsurfInstalled, hasHook: windsurfHasHook, hookCount: windsurfHasHook ? 1 : 0, totalHooks: windsurfTotal, mcpConnected: windsurfMcpConfigured && mcpServerAlive, mcpConfigured: windsurfMcpConfigured, mcpApplicable: true, hooksApplicable: true })
 
   // VS Code — report true if any known workspace has the hook OR Copilot hooks exist
   if (!appBundleExists(['Visual Studio Code.app'])) {
-    results.push({ client: 'vscode', installed: false, hasHook: false, hookCount: 0, totalHooks: 1, mcpConnected: false, mcpConfigured: false, mcpApplicable: true })
+    results.push({ client: 'vscode', installed: false, hasHook: false, hookCount: 0, totalHooks: 1, mcpConnected: false, mcpConfigured: false, mcpApplicable: true, hooksApplicable: true })
   } else {
     let vsHookCount = 0
     let vsTotalHooks = 0
@@ -525,9 +554,9 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
       const vsMcpConfigured = installed
         ? await checkMcpEntry(getVscodeUserMcpPath(), 'servers', expectedMcpUrl ?? null)
         : false
-      results.push({ client: 'vscode', installed, hasHook: vsTotalHooks > 0 && vsHookCount === vsTotalHooks, hookCount: vsHookCount, totalHooks: vsTotalHooks, mcpConnected: vsMcpConfigured && mcpServerAlive, mcpConfigured: vsMcpConfigured, mcpApplicable: true })
+      results.push({ client: 'vscode', installed, hasHook: vsTotalHooks > 0 && vsHookCount === vsTotalHooks, hookCount: vsHookCount, totalHooks: vsTotalHooks, mcpConnected: vsMcpConfigured && mcpServerAlive, mcpConfigured: vsMcpConfigured, mcpApplicable: true, hooksApplicable: true })
     } catch {
-      results.push({ client: 'vscode', installed: false, hasHook: false, hookCount: 0, totalHooks: 1, mcpConnected: false, mcpConfigured: false, mcpApplicable: true })
+      results.push({ client: 'vscode', installed: false, hasHook: false, hookCount: 0, totalHooks: 1, mcpConnected: false, mcpConfigured: false, mcpApplicable: true, hooksApplicable: true })
     }
   }
 
@@ -548,7 +577,56 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
   const codexMcpConfigured = codexInstalled
     ? await checkCodexMcpEntry(getCodexConfigPath(), expectedMcpUrl ?? null)
     : false
-  results.push({ client: 'codex', installed: codexInstalled, hasHook: codexHookCount === codexTotalHooks, hookCount: codexHookCount, totalHooks: codexTotalHooks, mcpConnected: codexMcpConfigured && mcpServerAlive, mcpConfigured: codexMcpConfigured, mcpApplicable: true })
+  results.push({ client: 'codex', installed: codexInstalled, hasHook: codexHookCount === codexTotalHooks, hookCount: codexHookCount, totalHooks: codexTotalHooks, mcpConnected: codexMcpConfigured && mcpServerAlive, mcpConfigured: codexMcpConfigured, mcpApplicable: true, hooksApplicable: true })
+
+  // ── Hookless clients (MCP-only, no hook support) ──────────────────────────
+  // These clients have MCP config written during onboarding but no scriptable
+  // hook system, so hooksApplicable is false.
+
+  // Claude Desktop
+  const claudeDesktopConfigPath = getClaudeDesktopConfigPath()
+  const claudeDesktopInstalled = existsSync(dirname(claudeDesktopConfigPath)) && appBundleExists(['Claude.app'])
+  const claudeDesktopMcpConfigured = claudeDesktopInstalled
+    ? await checkMcpEntry(claudeDesktopConfigPath, 'mcpServers', expectedMcpUrl ?? null)
+    : false
+  results.push({ client: 'claude-desktop', installed: claudeDesktopInstalled, hasHook: true, hookCount: 0, totalHooks: 0, mcpConnected: claudeDesktopMcpConfigured && mcpServerAlive, mcpConfigured: claudeDesktopMcpConfigured, mcpApplicable: true, hooksApplicable: false })
+
+  // Claude Cowork (shares config file with Desktop; detected by vm_bundles/ dir)
+  const claudeCoworkConfigPath = getClaudeCoworkConfigPath()
+  const coworkVmBundlesDir = join(dirname(claudeCoworkConfigPath), 'vm_bundles')
+  const claudeCoworkInstalled = existsSync(coworkVmBundlesDir) && appBundleExists(['Claude.app'])
+  const claudeCoworkMcpConfigured = claudeCoworkInstalled
+    ? await checkMcpEntry(claudeCoworkConfigPath, 'mcpServers', expectedMcpUrl ?? null)
+    : false
+  results.push({ client: 'claude-cowork', installed: claudeCoworkInstalled, hasHook: true, hookCount: 0, totalHooks: 0, mcpConnected: claudeCoworkMcpConfigured && mcpServerAlive, mcpConfigured: claudeCoworkMcpConfigured, mcpApplicable: true, hooksApplicable: false })
+
+  // Zed (MCP servers live under assistant.mcp_servers in settings.json)
+  const zedConfigPath = getZedConfigPath()
+  const zedInstalled = existsSync(dirname(zedConfigPath)) && appBundleExists(['Zed.app'])
+  const zedMcpConfigured = zedInstalled
+    ? await checkZedMcpEntry(zedConfigPath, expectedMcpUrl ?? null)
+    : false
+  results.push({ client: 'zed', installed: zedInstalled, hasHook: true, hookCount: 0, totalHooks: 0, mcpConnected: zedMcpConfigured && mcpServerAlive, mcpConfigured: zedMcpConfigured, mcpApplicable: true, hooksApplicable: false })
+
+  // JetBrains IDEs (IntelliJ, PyCharm, WebStorm) — scan for version-specific config dirs
+  // Installation is detected by IDE preferences folder existence + app bundle check;
+  // MCP config is detected separately by servers.json content.
+  const installedJetBrains = await getInstalledJetBrainsIdes()
+  const jetbrainsEntries = await getJetBrainsMcpConfigPaths()
+  for (const jbClient of ['intellij', 'pycharm', 'webstorm'] as const) {
+    const jbInstalled = installedJetBrains.has(jbClient) && appBundleExists(MAC_APP_NAMES[jbClient] ?? [])
+    let jbMcpConfigured = false
+    if (jbInstalled) {
+      const paths = jetbrainsEntries.filter((e) => e.client === jbClient)
+      for (const { path } of paths) {
+        if (await checkMcpEntry(path, 'mcpServers', expectedMcpUrl ?? null)) {
+          jbMcpConfigured = true
+          break
+        }
+      }
+    }
+    results.push({ client: jbClient, installed: jbInstalled, hasHook: true, hookCount: 0, totalHooks: 0, mcpConnected: jbMcpConfigured && mcpServerAlive, mcpConfigured: jbMcpConfigured, mcpApplicable: true, hooksApplicable: false })
+  }
 
   return results
 }

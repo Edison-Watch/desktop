@@ -19,12 +19,18 @@ vi.mock("../sentry", () => ({
   captureError: vi.fn(),
 }));
 
+// Mock setupConfig (imported by hookHealthMonitor for getMcpUrl / getIsServerOnline)
+vi.mock("../setupConfig", () => ({
+  getMcpUrl: vi.fn().mockReturnValue(null),
+  getIsServerOnline: vi.fn().mockReturnValue(false),
+}));
+
 // Mock hookInjection so we can control getHookStatus and getPendingErrorsDir
 vi.mock("../hookInjection", () => ({
   getHookStatus: vi.fn().mockResolvedValue([
-    { client: "claude-code", installed: true, hasHook: true },
-    { client: "cursor", installed: true, hasHook: false },
-    { client: "windsurf", installed: false, hasHook: false },
+    { client: "claude-code", installed: true, hasHook: true, hooksApplicable: true, mcpApplicable: true, hookCount: 4, totalHooks: 4, mcpConnected: false, mcpConfigured: false },
+    { client: "cursor", installed: true, hasHook: false, hooksApplicable: true, mcpApplicable: true, hookCount: 0, totalHooks: 3, mcpConnected: false, mcpConfigured: false },
+    { client: "windsurf", installed: false, hasHook: false, hooksApplicable: true, mcpApplicable: true, hookCount: 0, totalHooks: 1, mcpConnected: false, mcpConfigured: false },
   ]),
   getPendingErrorsDir: vi
     .fn()

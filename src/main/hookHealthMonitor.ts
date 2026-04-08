@@ -10,6 +10,7 @@ import { promises as fs, existsSync } from 'fs'
 import { getHookStatus, getPendingErrorsDir, getPendingRegistrationsDir } from './hookInjection'
 import type { HookStatusEntry } from './hookInjection'
 import { captureError } from './sentry'
+import { getMcpUrl, getIsServerOnline } from './setupConfig'
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
 
@@ -35,11 +36,16 @@ export function setOnHooksMissingCallback(cb: (entries: HookStatusEntry[]) => vo
 export function getHookStatusLabel(): string {
   const s = lastKnownStatus
   if (s.length === 0) return 'Hooks: -'
-  const withHooks = s.filter((e) => e.hasHook).length
-  const total = s.length
-  if (withHooks === total) return 'All MCP clients have Edison installed'
-  if (withHooks === 0) return '0 MCP clients have Edison installed'
-  return `${withHooks}/${total} MCP clients have Edison installed`
+  const installed = s.filter((e) => e.installed)
+  if (installed.length === 0) return '0 MCP clients have Edison installed'
+  // Hook-based clients: hooks present. Hookless clients: MCP entry configured.
+  // Uses mcpConfigured (not mcpConnected) because the label reflects "installed" state
+  // (config on disk), not live connection — matching hasHook semantics for hook clients.
+  const withEdison = installed.filter((e) => e.hooksApplicable ? e.hasHook : e.mcpConfigured).length
+  const total = installed.length
+  if (withEdison === total) return 'All MCP clients have Edison installed'
+  if (withEdison === 0) return '0 MCP clients have Edison installed'
+  return `${withEdison}/${total} MCP clients have Edison installed`
 }
 
 /**
@@ -159,7 +165,7 @@ function startErrorsDirWatcher(): void {
  * Run one hook status check: detect if any previously-installed hook is now missing.
  */
 async function runStatusCheck(): Promise<void> {
-  const current = await getHookStatus()
+  const current = await getHookStatus(getMcpUrl(), getIsServerOnline())
   const prevMap = new Map(current.map((e) => [e.client, e]))
   const missing: HookStatusEntry[] = []
 
@@ -186,7 +192,7 @@ async function runStatusCheck(): Promise<void> {
  * Start periodic hook status checks and the errors-dir watcher.
  */
 export function startHookHealthMonitor(): void {
-  getHookStatus().then((s) => {
+  getHookStatus(getMcpUrl(), getIsServerOnline()).then((s) => {
     lastKnownStatus = s
   })
 
