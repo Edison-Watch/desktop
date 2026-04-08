@@ -186,3 +186,11 @@ export class SeenServersStore {
     await this.save()
   }
 }
+
+/** Shared singleton instance used by both quarantine and submission flows. */
+let sharedInstance: SeenServersStore | null = null
+
+export function getSharedSeenStore(): SeenServersStore {
+  if (!sharedInstance) sharedInstance = new SeenServersStore()
+  return sharedInstance
+}

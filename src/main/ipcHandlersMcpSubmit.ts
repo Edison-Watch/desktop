@@ -19,6 +19,7 @@ import { filterOutEdisonWatchServers } from "./mcpConfigMonitor";
 import { applyAppIntegrations } from "./mcpConfigWriter";
 import { deduplicateServers, findDuplicateGroups, buildRemovalMap } from "./serverDeduplication";
 import { DRY_RUN, getApiBaseUrl, getSetupData, getCredentialsForEnv } from "./setupConfig";
+import { getSharedSeenStore } from "./seenServersStore";
 
 /** Remove or disable a server from its config. Cursor plugins are disabled via project dir renames. */
 async function removeOrDisableServer(server: DiscoveredMcpServer): Promise<void> {
@@ -110,10 +111,14 @@ export function registerMcpSubmitHandlers(): void {
         return { success: false, error: result.errorMessage ?? `"${params.newName}" already exists.` };
       }
 
+      let wasAutoApproved = false;
       const role = await fetchUserRole(apiBaseUrl, apiKey);
       if (role === "admin" || role === "owner") {
-        try { await approveServerRequest(result.request_id, apiBaseUrl, apiKey); } catch { /* non-fatal */ }
+        try { await approveServerRequest(result.request_id, apiBaseUrl, apiKey); wasAutoApproved = true; } catch { /* non-fatal */ }
       }
+
+      // Mark in seen store so quarantine recognises it as known
+      try { await getSharedSeenStore().markSeen(server, wasAutoApproved ? "registered" : "requested"); } catch { /* non-fatal */ }
 
       // Remove from all agent configs if still present (using original name, not renamed)
       const entriesToRemove = rawEntries.length > 0 ? rawEntries : [server];
@@ -351,15 +356,20 @@ export function registerMcpSubmitHandlers(): void {
         }
         submitted++;
 
+        let wasAutoApproved = false;
         if (canAutoApprove) {
           try {
             await approveServerRequest(submitResult.request_id, apiBaseUrl, apiKey);
             autoApproved++;
+            wasAutoApproved = true;
           } catch (approveErr) {
             const msg = approveErr instanceof Error ? approveErr.message : String(approveErr);
             errors.push(`${server.name}: auto-approval failed — ${msg}`);
           }
         }
+
+        // Mark in seen store so quarantine recognises it as known
+        try { await getSharedSeenStore().markSeen(server, wasAutoApproved ? "registered" : "requested"); } catch { /* non-fatal */ }
 
         // Remove from ALL agent configs, not just the first
         const rawEntries = removalMap.get(server.name) ?? [server];
@@ -442,16 +452,21 @@ export function registerMcpSubmitHandlers(): void {
         }
         submitted++;
         const { request_id } = submitResult;
+        let wasAutoApproved = false;
         if (canAutoApprove) {
           try {
             await approveServerRequest(request_id, apiBaseUrl, apiKey);
             autoApproved++;
+            wasAutoApproved = true;
           } catch (approveErr) {
             const msg = approveErr instanceof Error ? approveErr.message : String(approveErr);
             errors.push(`${server.name}: auto-approval failed — ${msg}`);
             console.error(`[mcp:submitAllDiscovered] Auto-approval failed for "${server.name}":`, approveErr);
           }
         }
+
+        // Mark in seen store so quarantine recognises it as known
+        try { await getSharedSeenStore().markSeen(server, wasAutoApproved ? "registered" : "requested"); } catch { /* non-fatal */ }
 
         // Remove from ALL agent configs, not just the first
         const rawEntries = removalMap.get(server.name) ?? [server];
@@ -545,6 +560,10 @@ export function registerMcpSubmitHandlers(): void {
         }
       }
     }
+
+    // Mark in seen store so quarantine recognises it as known
+    const seenAction = autoApproved ? "registered" : "requested";
+    try { await getSharedSeenStore().markSeen(server, seenAction as "registered" | "requested"); } catch { /* non-fatal */ }
 
     // Remove server from config after successful submission
     try { await removeOrDisableServer(server); } catch { /* non-fatal — quarantine manager handles fallback */ }

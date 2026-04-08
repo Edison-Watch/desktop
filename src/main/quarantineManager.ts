@@ -1,6 +1,6 @@
 import { BrowserWindow } from "electron";
 import { McpConfigMonitor, type PendingQuarantineEvent } from "./mcpConfigMonitor";
-import { SeenServersStore } from "./seenServersStore";
+import { getSharedSeenStore } from "./seenServersStore";
 import { showQuarantinedServersDialog } from "./mcpServerActionDialog";
 import { quarantineServer } from "./mcpConfigActions";
 import { fetchUserRole } from "./mcpServerSubmit";
@@ -55,11 +55,34 @@ async function startQuarantineMonitor(): Promise<void> {
   autoQuarantineEnabled = true;
   updateTrayMenuFn?.();
 
-  configMonitor = new McpConfigMonitor(new SeenServersStore());
+  const seenStore = getSharedSeenStore();
+  configMonitor = new McpConfigMonitor(seenStore);
 
   configMonitor.on("serversPendingQuarantine", async (pendingEvents: PendingQuarantineEvent[]) => {
     slog(`[Quarantine] serversPendingQuarantine event: ${pendingEvents.length} servers — ${pendingEvents.map((e) => e.server.name).join(", ")}`);
     if (pendingEvents.length === 0) return;
+
+    // Separate already-known servers (previously submitted/registered) from truly new ones.
+    // Known servers are silently quarantined without a prompt — handles re-installs like Cursor plugins.
+    const newEvents: PendingQuarantineEvent[] = [];
+    for (const event of pendingEvents) {
+      const seen = await getSharedSeenStore().get(event.fingerprint);
+      if (seen && (seen.action === "registered" || seen.action === "requested")) {
+        slog(`[Quarantine] Silently quarantining known server: ${event.server.name} (action=${seen.action})`);
+        try {
+          await quarantineServer(event.server);
+        } catch (err) {
+          slog(`[Quarantine] Failed to silently quarantine "${event.server.name}": ${err}`);
+        }
+      } else {
+        newEvents.push(event);
+      }
+    }
+
+    if (newEvents.length === 0) {
+      slog("[Quarantine] All servers were known — no dialog needed");
+      return;
+    }
 
     const apiBaseUrl = getApiBaseUrl();
     const creds = getCredentialsForEnv();
@@ -73,7 +96,7 @@ async function startQuarantineMonitor(): Promise<void> {
 
     const parentWindow = getMainWindowFn?.() ?? undefined;
     try {
-      const results = await showQuarantinedServersDialog(pendingEvents, parentWindow ?? undefined, isAdminOrOwner);
+      const results = await showQuarantinedServersDialog(newEvents, parentWindow ?? undefined, isAdminOrOwner);
       // After dialog closes, quarantine all servers that were NOT successfully submitted.
       // Successfully submitted servers are already removed by mcp:handleServerAction/resubmitServer.
       // Match by fingerprint since the server may have been renamed during resubmit.
@@ -82,7 +105,7 @@ async function startQuarantineMonitor(): Promise<void> {
           .filter((r) => r.action === "registered" || r.action === "requested")
           .map((r) => r.fingerprint)
       );
-      for (const { server, fingerprint } of pendingEvents) {
+      for (const { server, fingerprint } of newEvents) {
         if (submittedFingerprints.has(fingerprint)) continue; // already handled by submit
         try {
           await quarantineServer(server);
@@ -95,7 +118,7 @@ async function startQuarantineMonitor(): Promise<void> {
       slog(`[Quarantine] Failed to show quarantine dialog: ${err}`);
       console.error("[McpConfigMonitor] Failed to show quarantine dialog:", err);
       // Dialog failed — quarantine all pending servers as safety fallback
-      for (const { server } of pendingEvents) {
+      for (const { server } of newEvents) {
         try { await quarantineServer(server); } catch { /* best effort */ }
       }
     }
@@ -205,7 +228,7 @@ export async function runDebugQuarantine(): Promise<{ success: boolean; error?: 
       await configMonitor.runQuarantineWorkflow();
     } else {
       // No monitor running — spin up a temporary one for this single run
-      const tempMonitor = new McpConfigMonitor(new SeenServersStore());
+      const tempMonitor = new McpConfigMonitor(getSharedSeenStore());
       tempMonitor.on("error", (err) => {
         slog(`[Quarantine] tempMonitor error (debug run): ${err}`);
         console.error("[runDebugQuarantine] Monitor error:", err);

@@ -493,7 +493,9 @@ export class McpConfigMonitor extends EventEmitter {
    */
   private async quarantineExistingServers(): Promise<void> {
     mlog('[Monitor] quarantineExistingServers() starting...')
-    const servers = await discoverMcpServers()
+    // Use raw (non-deduped) servers — quarantine handles each server individually,
+    // dedup renaming is only for the onboarding UI.
+    const { raw: servers } = await discoverMcpServers({ includeRaw: true })
     mlog(`[Monitor] quarantineExistingServers: discovered ${servers.length} servers: ${servers.map(s => `${s.name}@${s.client}`).join(', ')}`)
     const pendingEvents: PendingQuarantineEvent[] = []
 
@@ -557,7 +559,8 @@ export class McpConfigMonitor extends EventEmitter {
   }
 
   private async _checkForChangesImpl(): Promise<DetectedServerChange[]> {
-    const currentServers = await discoverMcpServers()
+    // Use raw (non-deduped) servers — quarantine handles each server individually.
+    const { raw: currentServers } = await discoverMcpServers({ includeRaw: true })
     const currentMap = new Map<string, DiscoveredMcpServer>()
 
     for (const server of currentServers) {
