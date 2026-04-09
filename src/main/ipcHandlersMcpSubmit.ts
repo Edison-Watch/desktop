@@ -71,6 +71,7 @@ export function registerMcpSubmitHandlers(): void {
     config?: Record<string, unknown>;
     client?: string;
     configPath?: string;
+    source?: string;
   }): Promise<{ success: boolean; error?: string }> => {
     const setup = getSetupData();
     const creds = getCredentialsForEnv();
@@ -91,7 +92,7 @@ export function registerMcpSubmitHandlers(): void {
       server = {
         name: params.originalName,
         client: params.client as McpClientId,
-        source: "user",
+        source: (params.source as DiscoveredMcpServer['source']) || "user",
         path: params.configPath ?? "",
         config: params.config as McpServerConfig,
       };
@@ -502,6 +503,7 @@ export function registerMcpSubmitHandlers(): void {
     action: string;
     config: Record<string, unknown>;
     configPath: string;
+    source?: string;
     templateOverrides?: Array<{
       entryId: string;
       varName: string;
@@ -527,7 +529,7 @@ export function registerMcpSubmitHandlers(): void {
     const server: DiscoveredMcpServer = {
       name: params.serverName,
       client: params.sourceApp as McpClientId,
-      source: "user",
+      source: (params.source as DiscoveredMcpServer['source']) || "user",
       path: params.configPath,
       config: params.config as McpServerConfig,
     };

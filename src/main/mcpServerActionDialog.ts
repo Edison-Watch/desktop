@@ -71,11 +71,12 @@ export function showQuarantinedServersDialog(
     })
 
     // Build config map for passing to IPC (so we can include full config in requests)
-    const configMap: Record<string, { config: unknown; path: string }> = {}
+    const configMap: Record<string, { config: unknown; path: string; source: string }> = {}
     events.forEach((event) => {
       configMap[event.fingerprint] = {
         config: event.server.config,
-        path: event.server.path
+        path: event.server.path,
+        source: event.server.source
       }
     })
 
@@ -305,7 +306,8 @@ export function showQuarantinedServersDialog(
                   newName: newName,
                   config: serverData.config,
                   client: sourceApp,
-                  configPath: serverData.path
+                  configPath: serverData.path,
+                  source: serverData.source
                 })
                 console.log('[Quarantine] Resubmit result:', JSON.stringify(result))
                 if (result && result.success) {
@@ -358,6 +360,7 @@ export function showQuarantinedServersDialog(
                     fingerprint: fp, serverName: sn, sourceApp: sa, action: act,
                     config: serverData.config,
                     configPath: serverData.path,
+                    source: serverData.source,
                     templateOverrides: overrides
                   })
                 } catch (err) {
@@ -401,7 +404,8 @@ export function showQuarantinedServersDialog(
               result = await ipcRenderer.invoke('mcp:handleServerAction', {
                 fingerprint, serverName, sourceApp, action,
                 config: serverData.config,
-                configPath: serverData.path
+                configPath: serverData.path,
+                source: serverData.source
               })
             } catch (err) {
               const msg = (err && err.message) ? err.message : 'Something went wrong'
