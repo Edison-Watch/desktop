@@ -25,7 +25,7 @@ const BASE_PROPS = {
   onNext: () => {},
 };
 
-/** Initial state — no keys entered yet. */
+/** Initial state - no keys entered yet. */
 export const Initial: Story = {
   args: BASE_PROPS,
   decorators: [
@@ -37,7 +37,7 @@ export const Initial: Story = {
   ],
 };
 
-/** No apps selected — shows "Continue" CTA. */
+/** No apps selected - shows "Continue" CTA. */
 export const NoAppsSelected: Story = {
   args: {
     ...BASE_PROPS,

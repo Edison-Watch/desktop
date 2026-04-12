@@ -7,7 +7,7 @@ import { homedir, platform } from 'os'
 import { join, dirname, isAbsolute } from 'path'
 import { fileURLToPath } from 'url'
 
-// Cursor workspace storage path — used to discover per-project .cursor/mcp.json files
+// Cursor workspace storage path - used to discover per-project .cursor/mcp.json files
 export function getCursorWorkspaceStoragePath(): string {
   switch (platform()) {
     case 'darwin':
@@ -41,7 +41,7 @@ export async function getCursorProjectMcpPaths(): Promise<string[]> {
         const raw = await fs.readFile(workspaceJsonPath, 'utf-8')
         const json = JSON.parse(raw) as { folder?: string }
         const folder = json.folder
-        // Only handle local file:// URIs — skip SSH remotes, vscode-remote, etc.
+        // Only handle local file:// URIs - skip SSH remotes, vscode-remote, etc.
         if (folder && folder.startsWith('file://')) {
           // Use fileURLToPath for correct cross-platform handling (avoids leading slash
           // before drive letter on Windows, e.g. file:///C:/... → C:\...)
@@ -103,7 +103,7 @@ export async function isCursorPluginActive(cacheMcpPath: string): Promise<boolea
   // Split on both / and \ so this works on Windows where path.join() uses backslashes
   const parts = cacheMcpPath.split(/[/\\]/)
   const cacheIdx = parts.indexOf('cache')
-  if (cacheIdx === -1 || cacheIdx + 2 >= parts.length) return true // can't determine — assume active
+  if (cacheIdx === -1 || cacheIdx + 2 >= parts.length) return true // can't determine - assume active
 
   const pluginName = parts[cacheIdx + 2]
   const prefixes = [
@@ -192,7 +192,7 @@ async function scanCursorPluginCache(seen: Set<string>): Promise<void> {
           if (!plugin.isDirectory()) continue
           const pluginPath = join(mktPath, plugin.name)
           try {
-            // Level 3: sha directories — pick the most recent one
+            // Level 3: sha directories - pick the most recent one
             const shas = await fs.readdir(pluginPath, { withFileTypes: true })
             const shaDirs = shas.filter((d) => d.isDirectory())
             if (shaDirs.length === 0) continue
@@ -239,7 +239,7 @@ function parseInstalledPluginsV1(json: Record<string, unknown>, seen: Set<string
         console.warn(`[parseInstalledPluginsV1] installPath is not absolute, skipping: ${installPath}`)
         continue
       }
-      // installPath points directly to the plugin root — .mcp.json lives there
+      // installPath points directly to the plugin root - .mcp.json lives there
       seen.add(join(installPath, '.mcp.json'))
     }
   }
@@ -295,7 +295,7 @@ function parseInstalledPluginsLegacy(
   }
 }
 
-// VS Code workspace storage paths — used to discover per-project workspace roots
+// VS Code workspace storage paths - used to discover per-project workspace roots
 export function getVsCodeWorkspaceStoragePath(): string {
   switch (platform()) {
     case 'darwin':

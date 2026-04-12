@@ -130,7 +130,7 @@ describe("hookHealthMonitor", () => {
 
       await stopHookHealthMonitor();
 
-      // The mock has cursor installed but missing hook — callback should fire
+      // The mock has cursor installed but missing hook - callback should fire
       if (cb.mock.calls.length > 0) {
         const entries = cb.mock.calls[0][0];
         expect(Array.isArray(entries)).toBe(true);

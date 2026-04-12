@@ -53,7 +53,7 @@ export default function FeedbackForm({
           Send Feedback
         </h1>
         <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
-          Tell us what&apos;s on your mind — bugs, suggestions, or anything else.
+          Tell us what&apos;s on your mind - bugs, suggestions, or anything else.
         </p>
       </div>
 

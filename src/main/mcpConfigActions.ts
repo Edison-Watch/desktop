@@ -116,7 +116,7 @@ export function getServersFromConfig(
  * - Standard top-level (mcpServers / servers)
  *
  * Returns the mutable servers record and whether it was found in a nested scope.
- * When nested, the returned record is a direct reference into `config` — mutations apply in-place.
+ * When nested, the returned record is a direct reference into `config` - mutations apply in-place.
  */
 export function resolveServersMap(
   config: ConfigFileFormat,
@@ -280,12 +280,12 @@ function commentOutServerInJsonc(content: string, serversKey: string, serverName
  * Remove a server from its original config file (deletes the entry).
  * Creates a backup of the original file.
  *
- * Cursor plugin cache files must NOT be edited — those are disabled via
+ * Cursor plugin cache files must NOT be edited - those are disabled via
  * project dir renames in quarantineCursorPlugin(). Guard against accidental calls.
  */
 export async function removeServerFromConfig(server: DiscoveredMcpServer): Promise<void> {
   if (server.source === 'plugin') {
-    console.warn(`[MCP Config] Refusing to edit plugin cache file — use quarantineCursorPlugin instead: ${server.path}`)
+    console.warn(`[MCP Config] Refusing to edit plugin cache file - use quarantineCursorPlugin instead: ${server.path}`)
     return
   }
   const config = await readConfigFile(server.path, server.client)
@@ -454,7 +454,7 @@ export async function quarantineServer(server: DiscoveredMcpServer): Promise<Qua
   if (server.source === 'marketplace') {
     return quarantineMarketplaceServer(server)
   }
-  // Cursor plugin servers — quarantine by renaming plugin dirs in projects/
+  // Cursor plugin servers - quarantine by renaming plugin dirs in projects/
   if (server.source === 'plugin' && server.client === 'cursor') {
     return quarantineCursorPlugin(server)
   }
@@ -540,12 +540,12 @@ export async function quarantineServer(server: DiscoveredMcpServer): Promise<Qua
       console.log(`[MCP Quarantine] Removed server "${configKey}" from ${originalPath}`)
     } else {
       // Server already absent from config (likely removed between discovery and quarantine).
-      // Roll back the disabled-file entry so state stays consistent, but don't throw —
+      // Roll back the disabled-file entry so state stays consistent, but don't throw -
       // this is a benign race, not a quarantine failure.
       const rollbackFile = await readQuarantinedServersFile(disabledPath)
       delete rollbackFile.servers[configKey]
       await fs.writeFile(disabledPath, JSON.stringify(rollbackFile, null, 2), 'utf-8')
-      console.log(`[MCP Quarantine] Server "${configKey}" already absent from ${originalPath} — skipped`)
+      console.log(`[MCP Quarantine] Server "${configKey}" already absent from ${originalPath} - skipped`)
       return null
     }
   } catch (err) {
@@ -633,7 +633,7 @@ export async function restoreAllQuarantinedServers(): Promise<{
       const entry = entryMap.get(originalPath)
       const clientId = entry?.client ?? inferClientFromPath(originalPath)
 
-      // Skip Codex configs — readConfigFile/writeConfigFile only handle JSON/JSONC,
+      // Skip Codex configs - readConfigFile/writeConfigFile only handle JSON/JSONC,
       // not TOML. Restoring Codex quarantined servers requires TOML-aware read/write.
       if (clientId === 'codex') {
         const msg = `Codex config restore not yet supported (TOML format): ${originalPath}`

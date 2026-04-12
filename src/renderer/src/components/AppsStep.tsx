@@ -281,7 +281,7 @@ export default function AppsStep({
                 boxShadow: client.enabled ? "0 0 12px 0 rgba(125, 255, 246, 0.08)" : "none",
               }}
             >
-              {/* Clickable row — toggles selection */}
+              {/* Clickable row - toggles selection */}
               <button
                 type="button"
                 className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--bg-input)]/40 transition-colors"
@@ -427,7 +427,7 @@ export default function AppsStep({
                       <div key={s.name} className="flex items-center gap-2">
                         <span className="text-[var(--text-primary)] font-medium truncate">{s.name}</span>
                         {"conflict" in s && s.conflict && (
-                          <span className="text-yellow-400 text-xs" title="Name conflict — see Duplicate resolution">*</span>
+                          <span className="text-yellow-400 text-xs" title="Name conflict - see Duplicate resolution">*</span>
                         )}
                         <span className="text-[var(--text-muted)] shrink-0">
                           {("clients" in s && s.clients && s.clients.length > 0 ? s.clients : [("client" in s ? s.client : "")]).join(", ")}
@@ -497,8 +497,8 @@ export default function AppsStep({
                 {group.kind === "same-config"
                   ? "Same server config under different names:"
                   : group.kind === "profile-conflict"
-                    ? `Same name "${group.servers[0]?.originalName ?? ""}" in different profiles — auto-renamed:`
-                    : `Same name "${group.servers[0]?.originalName ?? ""}" with different configs — auto-renamed:`}
+                    ? `Same name "${group.servers[0]?.originalName ?? ""}" in different profiles - auto-renamed:`
+                    : `Same name "${group.servers[0]?.originalName ?? ""}" with different configs - auto-renamed:`}
               </p>
               {group.servers.map((s) => {
                 const expandKey = `${group.fingerprint}:${s.name}`;

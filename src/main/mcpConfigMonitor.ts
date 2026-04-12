@@ -29,12 +29,12 @@ import {
   type McpClientId
 } from './mcpDiscovery'
 import { SeenServersStore } from './seenServersStore'
-// quarantineServer import removed — quarantine now happens in quarantineManager after dialog
+// quarantineServer import removed - quarantine now happens in quarantineManager after dialog
 
 // Cache static paths that only depend on homedir() (which doesn't change at runtime)
 const CLAUDE_HOME_JSON_PATH = getClaudeCodeHomeJsonPath()
 
-// quarantine retry constants removed — quarantine now happens in quarantineManager
+// quarantine retry constants removed - quarantine now happens in quarantineManager
 const DEFAULT_RESCAN_INTERVAL_MS = 60_000 // Safety-net rescan every 60s
 
 export interface DetectedServerChange {
@@ -65,7 +65,7 @@ export interface McpConfigMonitorEvents {
   serversChanged: (changes: DetectedServerChange[]) => void
   /** Event when servers are auto-quarantined (already removed from config) */
   serversQuarantined: (events: QuarantinedServerEvent[]) => void
-  /** Event when new servers are detected pending quarantine (NOT yet removed — quarantine after user action) */
+  /** Event when new servers are detected pending quarantine (NOT yet removed - quarantine after user action) */
   serversPendingQuarantine: (events: PendingQuarantineEvent[]) => void
   error: (error: Error) => void
 }
@@ -110,7 +110,7 @@ export class McpConfigMonitor extends EventEmitter {
     // Get all config paths from the unified registry (static + dynamically-scanned)
     const entries = await getAllConfigEntries()
     this.configEntryByPath = buildEntryMap(entries)
-    // Exclude sqlite-state paths (marketplace DBs) from chokidar — they change frequently
+    // Exclude sqlite-state paths (marketplace DBs) from chokidar - they change frequently
     // for unrelated reasons. The periodic rescan via discoverMcpServers() reads them.
     this.configFiles = new Set(getWatchablePaths(entries))
 
@@ -172,7 +172,7 @@ export class McpConfigMonitor extends EventEmitter {
     // (e.g., Cursor's Extension API or deeplink installs).
     this.startRescanTimer()
 
-    mlog(`[Monitor] Started — watching ${existingPaths.length} paths, ${this.configFiles.size} config files, ${this.lastKnownServers.size} known servers`)
+    mlog(`[Monitor] Started - watching ${existingPaths.length} paths, ${this.configFiles.size} config files, ${this.lastKnownServers.size} known servers`)
   }
 
   /**
@@ -368,7 +368,7 @@ export class McpConfigMonitor extends EventEmitter {
 
     const handleWorkspaceJsonEvent = async (changedPath: string): Promise<void> => {
       if (!changedPath.endsWith('workspace.json')) return
-      // New or updated project in Cursor — rescan and add any new .cursor/mcp.json paths
+      // New or updated project in Cursor - rescan and add any new .cursor/mcp.json paths
       try {
         const latestProjectPaths = await getCursorProjectMcpPaths()
         const newPaths = latestProjectPaths.filter((p) => !this.configFiles.has(p))
@@ -493,7 +493,7 @@ export class McpConfigMonitor extends EventEmitter {
    */
   private async quarantineExistingServers(): Promise<void> {
     mlog('[Monitor] quarantineExistingServers() starting...')
-    // Use raw (non-deduped) servers — quarantine handles each server individually,
+    // Use raw (non-deduped) servers - quarantine handles each server individually,
     // dedup renaming is only for the onboarding UI.
     const { raw: servers } = await discoverMcpServers({ includeRaw: true })
     mlog(`[Monitor] quarantineExistingServers: discovered ${servers.length} servers: ${servers.map(s => `${s.name}@${s.client}`).join(', ')}`)
@@ -521,7 +521,7 @@ export class McpConfigMonitor extends EventEmitter {
         continue
       }
 
-      // Don't quarantine yet — let user submit first, quarantine on success/dismiss
+      // Don't quarantine yet - let user submit first, quarantine on success/dismiss
       console.log(`[McpConfigMonitor] Server pending quarantine on startup: ${server.name}`)
       pendingEvents.push({ server, fingerprint })
     }
@@ -537,7 +537,7 @@ export class McpConfigMonitor extends EventEmitter {
 
   private async checkForChanges(): Promise<DetectedServerChange[]> {
     if (this.isCheckingForChanges) {
-      // A scan is already in progress — mark that another pass is needed so
+      // A scan is already in progress - mark that another pass is needed so
       // file-change-triggered rescans aren't silently dropped.
       this.pendingRescan = true
       return []
@@ -559,7 +559,7 @@ export class McpConfigMonitor extends EventEmitter {
   }
 
   private async _checkForChangesImpl(): Promise<DetectedServerChange[]> {
-    // Use raw (non-deduped) servers — quarantine handles each server individually.
+    // Use raw (non-deduped) servers - quarantine handles each server individually.
     const { raw: currentServers } = await discoverMcpServers({ includeRaw: true })
     const currentMap = new Map<string, DiscoveredMcpServer>()
 
@@ -618,7 +618,7 @@ export class McpConfigMonitor extends EventEmitter {
         continue
       }
 
-      // Skip opaque servers (IDE-managed MCPs with no accessible config — e.g. Cursor marketplace).
+      // Skip opaque servers (IDE-managed MCPs with no accessible config - e.g. Cursor marketplace).
       if (isOpaqueConfig(server.config)) {
         console.log(`[McpConfigMonitor] Skipping opaque server (IDE-managed): ${server.name}`)
         continue
@@ -636,7 +636,7 @@ export class McpConfigMonitor extends EventEmitter {
         continue
       }
 
-      // Don't quarantine yet — let user submit first, quarantine on success/dismiss
+      // Don't quarantine yet - let user submit first, quarantine on success/dismiss
       mlog(`[Monitor] Server pending quarantine: ${server.name} from ${server.path}`)
       pendingEvents.push({ server, fingerprint })
     }

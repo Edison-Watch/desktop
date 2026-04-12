@@ -154,7 +154,7 @@ const api = {
     getMcpUrl: (): Promise<string | null> => ipcRenderer.invoke("menu:getMcpUrl"),
   },
 
-  /** OS keychain (safeStorage) — store/load the personal encryption key */
+  /** OS keychain (safeStorage) - store/load the personal encryption key */
   keychain: {
     save: (plaintext: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("keychain:save", plaintext),

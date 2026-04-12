@@ -80,7 +80,7 @@ export default function App(): React.ReactNode {
     );
   }
 
-  // Setup already complete — show the main menu
+  // Setup already complete - show the main menu
   if (setupDone === true) {
     return <MainMenu />;
   }

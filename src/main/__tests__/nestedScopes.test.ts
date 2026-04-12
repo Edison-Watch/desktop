@@ -560,7 +560,7 @@ describe("nested scopes (project + profile)", () => {
   });
 
   // --------------------------------------------------------------------------
-  // buildRemovalMap — double-removal prevention
+  // buildRemovalMap - double-removal prevention
   // --------------------------------------------------------------------------
   describe("buildRemovalMap", () => {
     it("maps all raw entries when configs are identical (no rename)", () => {

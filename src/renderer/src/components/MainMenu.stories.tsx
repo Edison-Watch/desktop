@@ -59,7 +59,7 @@ export const Disconnected: Story = {
   render: () => <MainMenu />,
 };
 
-/** Initial load — setup data not yet available. */
+/** Initial load - setup data not yet available. */
 export const Loading: Story = {
   decorators: [
     (Story) => {

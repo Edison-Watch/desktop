@@ -20,7 +20,7 @@ interface AnalyzedServer {
   };
 }
 
-/** A template marking on a specific line — can be a partial substring */
+/** A template marking on a specific line - can be a partial substring */
 interface TemplateMarking {
   varName: string;
   /** The substring that is templatized */
@@ -443,7 +443,7 @@ export default function CredentialReviewCard({
           )}
         </button>
 
-        {/* Selection popup — rendered outside collapsed block so it persists */}
+        {/* Selection popup - rendered outside collapsed block so it persists */}
         {popup && (
           <div
             className="fixed z-50 flex items-center gap-1 px-2 py-1 rounded-md shadow-lg bg-[var(--bg-overlay)] border border-[var(--border)]"
@@ -489,7 +489,7 @@ export default function CredentialReviewCard({
           <p className="text-xs text-[var(--text-muted)]">
             {secretCount > 0
               ? `${secretCount} credential${secretCount === 1 ? "" : "s"} detected across ${servers.length} server${servers.length === 1 ? "" : "s"}. Review and adjust before submitting. These credentials will be encrypted.`
-              : `${servers.length} server${servers.length === 1 ? "" : "s"} found. No credentials detected — select text in any value to mark it as a secret.`}
+              : `${servers.length} server${servers.length === 1 ? "" : "s"} found. No credentials detected - select text in any value to mark it as a secret.`}
           </p>
           <p className="text-[10px] text-[var(--text-muted)] mt-1 italic">
             Select any part of a value to mark it as a credential. Only one credential per line.
@@ -560,7 +560,7 @@ export default function CredentialReviewCard({
                                 }}
                               >
                                 {hasMarking ? (
-                                  /* Marking exists — clickable button, grey when disabled with X to remove */
+                                  /* Marking exists - clickable button, grey when disabled with X to remove */
                                   <>
                                     {marking.start > 0 && (
                                       <span className="text-[var(--text-secondary)]">
@@ -612,7 +612,7 @@ export default function CredentialReviewCard({
                                     )}
                                   </>
                                 ) : (
-                                  /* No marking — plain selectable text */
+                                  /* No marking - plain selectable text */
                                   <span className="text-[var(--text-secondary)]">
                                     {entry.rawValue}
                                   </span>

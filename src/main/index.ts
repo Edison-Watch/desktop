@@ -149,7 +149,7 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
           if (Notification.isSupported()) {
             const n = new Notification({
               title: "Edison Watch",
-              body: "MCP config copied — paste into VSCode, Cursor, or your MCP client",
+              body: "MCP config copied - paste into VSCode, Cursor, or your MCP client",
               ...(process.platform !== "darwin" && { icon: trayIconPath }),
             });
             n.show();
@@ -354,7 +354,7 @@ function buildAppMenu(): Electron.Menu {
           slog(`[env:switch] Failed to update MCP integrations: ${err}`);
         }
       } else if (mcpBaseUrl && !creds?.apiKey) {
-        slog(`[env:switch] No API key stored for env "${name}" — MCP integrations not updated`);
+        slog(`[env:switch] No API key stored for env "${name}" - MCP integrations not updated`);
       }
 
       // Immediately re-check server liveness against the new env URL

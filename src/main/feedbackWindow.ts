@@ -111,7 +111,7 @@ function buildFeedbackHtml(): string {
     <body>
       <div id="form-view">
         <h1>Send Feedback</h1>
-        <p class="subtitle">Tell us what's on your mind — bugs, suggestions, or anything else.</p>
+        <p class="subtitle">Tell us what's on your mind - bugs, suggestions, or anything else.</p>
         <label for="message">Message</label>
         <textarea id="message" placeholder="Describe the issue or share your thoughts..."></textarea>
         <div class="actions">

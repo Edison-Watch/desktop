@@ -68,21 +68,21 @@ export default function EncryptionStep({
             // Try to restore from local keychain
             const stored = await window.api.keychain.load();
             if (stored) {
-              // Key is in keychain — restore and mark registered
+              // Key is in keychain - restore and mark registered
               const key = buildCompositeKey(stored, null);
               cacheSecretKey(key);
               setCompositeKey(key);
               setKeyRegistered(true);
               setKeychainSaved(true);
             } else {
-              // Backend has a key but it's not in keychain — ask user to paste
+              // Backend has a key but it's not in keychain - ask user to paste
               setGeneratedKey("");
               setUserKeyMode("existing");
             }
           }
         }
       } catch {
-        // Non-fatal — user can still proceed with the generated key
+        // Non-fatal - user can still proceed with the generated key
       }
     };
     void init();
@@ -197,7 +197,7 @@ export default function EncryptionStep({
       setCompositeKey(key);
       setKeyRegistered(true);
       if (trimmedOrgKey && !usedOrgKey) {
-        setKeyError("Key registered, but the organisation key was not accepted — no domain key is configured for your organisation yet.");
+        setKeyError("Key registered, but the organisation key was not accepted - no domain key is configured for your organisation yet.");
       }
     } catch (err) {
       setKeyError(err instanceof Error ? err.message : "Failed to register key");
@@ -383,7 +383,7 @@ export default function EncryptionStep({
                 </div>
               </div>
               <p className="text-xs text-[var(--text-muted)]">
-                Keep a backup in your password manager — this key cannot be recovered if lost.
+                Keep a backup in your password manager - this key cannot be recovered if lost.
               </p>
               {keyError && (
                 <p className="text-xs text-[var(--danger)]">{keyError}</p>

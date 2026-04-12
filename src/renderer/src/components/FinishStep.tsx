@@ -74,7 +74,7 @@ export default function FinishStep({
       });
       onComplete();
     } catch {
-      // Completion failed — window close is handled by main process
+      // Completion failed - window close is handled by main process
     } finally {
       setCompleting(false);
     }

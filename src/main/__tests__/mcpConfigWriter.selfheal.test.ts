@@ -263,7 +263,7 @@ describe("isEdisonWatchRegistered", () => {
     ["intellij" as const],
     ["pycharm" as const],
     ["webstorm" as const],
-  ])("jetbrains — %s", (client) => {
+  ])("jetbrains - %s", (client) => {
     it("returns false when no config path matched", async () => {
       vi.mocked(getJetBrainsMcpConfigPaths).mockResolvedValue([]);
       expect(await isEdisonWatchRegistered(client)).toBe(false);

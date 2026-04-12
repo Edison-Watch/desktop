@@ -2,7 +2,7 @@
   "name": "edison-watch-client-2",
   "version": "0.2.4",
   "private": true,
-  "description": "Edison Watch Desktop Client v2 — Electron + React 19",
+  "description": "Edison Watch Desktop Client v2 - Electron + React 19",
   "main": "./out/main/index.js",
   "author": "Edison Watch Team <hello@edison.watch>",
   "scripts": {

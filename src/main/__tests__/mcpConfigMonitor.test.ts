@@ -188,7 +188,7 @@ describe("mcpConfigMonitor", () => {
       const store = new SeenServersStore(storePath);
       const monitor = new McpConfigMonitor(store);
 
-      // Force a rescan — discoverMcpServers() scans system paths
+      // Force a rescan - discoverMcpServers() scans system paths
       const changes = await monitor.forceRescan();
       expect(Array.isArray(changes)).toBe(true);
     });
@@ -202,7 +202,7 @@ describe("mcpConfigMonitor", () => {
       await monitor.forceRescan();
       const before = monitor.getCurrentServers().length;
 
-      // Second scan — no changes expected on empty system
+      // Second scan - no changes expected on empty system
       const changes = await monitor.forceRescan();
       const after = monitor.getCurrentServers().length;
 
@@ -234,7 +234,7 @@ describe("mcpConfigMonitor", () => {
       const p1 = join(testDir, "a.json");
       await fs.writeFile(p1, "{}", "utf-8");
 
-      // Monitor not started — addConfigPaths returns empty
+      // Monitor not started - addConfigPaths returns empty
       const added = await monitor.addConfigPaths([p1]);
       expect(added).toEqual([]);
       expect(monitor.getMonitoredPaths()).not.toContain(p1);

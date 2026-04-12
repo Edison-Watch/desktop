@@ -68,7 +68,7 @@ export type McpServerConfig =
       headers?: Record<string, string>
     }
   | {
-      // http server (bare url, no type — used by Cursor and others)
+      // http server (bare url, no type - used by Cursor and others)
       type?: undefined
       command?: undefined
       url: string
@@ -399,7 +399,7 @@ async function discoverCursor(): Promise<DiscoveredMcpServer[]> {
     }
   }
 
-  // Marketplace MCP apps (OAuth + plugin- prefixed) — read-only from Cursor's internal state
+  // Marketplace MCP apps (OAuth + plugin- prefixed) - read-only from Cursor's internal state
   const marketplaceMcps = await discoverCursorMarketplaceMcps()
   // Deduplicate: marketplace servers already in mcp.json should not appear twice
   const existingNames = new Set(results.map((s) => s.name.toLowerCase()))
@@ -524,7 +524,7 @@ export async function discoverMcpServers(opts?: { includeRaw?: boolean }): Promi
   // VS Code - user-level mcp.json file
   try { await fs.access(getVscodeUserMcpPath()); results.push(...await parseVscodeMcpJson(getVscodeUserMcpPath(), 'vscode')) } catch { /* */ }
 
-  // VS Code state.vscdb — extension-provided MCP servers (marketplace)
+  // VS Code state.vscdb - extension-provided MCP servers (marketplace)
   {
     const stateMcps = await discoverVscodeStateMcps('vscode')
     const known = new Set(results.map((s) => s.name.toLowerCase()))

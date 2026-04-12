@@ -9,7 +9,7 @@ const __dirname = dirname(__filename);
 /**
  * Storybook config for client_2 (Electron renderer).
  *
- * Runs as a plain Vite + React Storybook — no Electron binaries involved.
+ * Runs as a plain Vite + React Storybook - no Electron binaries involved.
  * Components that use window.api (Electron IPC) receive a mock in preview.tsx.
  */
 const config: StorybookConfig = {

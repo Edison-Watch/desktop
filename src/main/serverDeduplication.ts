@@ -83,7 +83,7 @@ export function findDuplicateGroups(servers: DiscoveredMcpServer[]): DuplicateGr
  * that should be removed when this deduped entry is submitted.
  *
  * When all raw entries with the same name have identical configs, dedup merges
- * them into a single entry — the removal map points to all of them (remove from
+ * them into a single entry - the removal map points to all of them (remove from
  * every agent config).
  *
  * When configs differ, dedup renames each one (adds originalName). In that case
@@ -121,7 +121,7 @@ export function buildRemovalMap(
     const rawEntries = rawByName.get(origName) ?? [];
 
     if (server.originalName) {
-      // Dedup renamed this server — configs differ across raw entries.
+      // Dedup renamed this server - configs differ across raw entries.
       // Match only the raw entries that correspond to this specific deduped server.
       const matched = rawEntries.filter((r) =>
         configsEqual(r.config, server.config)
@@ -131,7 +131,7 @@ export function buildRemovalMap(
       );
       map.set(server.name, matched.length > 0 ? matched : [server]);
     } else {
-      // No rename — all raw entries have identical configs, remove from all.
+      // No rename - all raw entries have identical configs, remove from all.
       map.set(server.name, rawEntries);
     }
   }
@@ -190,7 +190,7 @@ export function deduplicateServers(servers: DiscoveredMcpServer[]): DiscoveredMc
       const clients = [...new Set(group.flatMap((s) => s.clients ?? [s.client]))];
       result.push({ ...group[0], clients });
     } else {
-      // Configs differ — suffix each to disambiguate.
+      // Configs differ - suffix each to disambiguate.
       // If all from different clients, use name_clientAlias.
       // If some share a client (e.g. same server in multiple Claude Code profiles),
       // use numeric suffixes: name_ccode_1, name_ccode_2, etc.

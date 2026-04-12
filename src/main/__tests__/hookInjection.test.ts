@@ -286,7 +286,7 @@ describe("hookInjection", () => {
         "edison-session-hook",
       );
       expect(result.hooks.beforeMCPExecution[0].type).toBe("command");
-      // No matcher needed — beforeMCPExecution is already MCP-specific
+      // No matcher needed - beforeMCPExecution is already MCP-specific
       expect(result.hooks.beforeMCPExecution[0].matcher).toBeUndefined();
       // sessionEnd hook for explicit session completion
       expect(result.hooks.sessionEnd).toHaveLength(1);

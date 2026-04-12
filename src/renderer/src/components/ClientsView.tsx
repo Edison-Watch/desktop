@@ -184,7 +184,7 @@ export default function ClientsView(): React.ReactNode {
     if (refreshing) return; // debounce
     setRefreshing(true);
     try {
-      // Re-inject any missing hooks (non-destructive — skips if already present)
+      // Re-inject any missing hooks (non-destructive - skips if already present)
       await window.api.mcp.injectHooks();
     } catch (err) {
       console.error("[ClientsView] Failed to refresh hooks:", err);

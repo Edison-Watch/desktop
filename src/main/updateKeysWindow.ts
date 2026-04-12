@@ -408,7 +408,7 @@ function buildUpdateKeysHtml(currentSecretKey: string, canRoll: boolean): string
             return
           }
 
-          // Setting a personal key for the first time — warn that server data may be cleared
+          // Setting a personal key for the first time - warn that server data may be cleared
           if (personalKeyInput && !existing.userPart) {
             actionsRow.style.display = 'none'
             freshKeyWarning.style.display = 'block'
@@ -470,7 +470,7 @@ export function showUpdateKeysWindow(
     const setup = getSetupData()
     const oldCompositeKey = setup.edisonSecretKey
 
-    // Save locally and apply configs immediately — never blocked by backend
+    // Save locally and apply configs immediately - never blocked by backend
     saveEdisonSecretKey(compositeKey)
     await runApplyAppIntegrations(compositeKey)
 
@@ -493,7 +493,7 @@ export function showUpdateKeysWindow(
           }),
         })
         if (!rollRes.ok) {
-          // Roll failed (e.g. old key hash mismatch) — wipe encrypted values instead
+          // Roll failed (e.g. old key hash mismatch) - wipe encrypted values instead
           await fetch(`${setup.apiBaseUrl}/api/v1/user/secret-key/reset`, {
             method: 'POST',
             headers,
@@ -501,7 +501,7 @@ export function showUpdateKeysWindow(
           }).catch(() => {})
         }
       } catch {
-        // Backend unreachable — encrypted values will be orphaned until next roll
+        // Backend unreachable - encrypted values will be orphaned until next roll
       }
     }
   }

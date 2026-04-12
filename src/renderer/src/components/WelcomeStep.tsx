@@ -49,7 +49,7 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
 
   // Track whether the user was already signed in when this step mounted.
   // If they navigate back to this step while already signed in, we don't
-  // want to auto-advance — they should have to click Continue explicitly.
+  // want to auto-advance - they should have to click Continue explicitly.
   const wasSignedInOnMount = useRef(auth.signedIn);
 
   // Auto-advance to next step shortly after sign-in succeeds.
@@ -198,7 +198,7 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
           )}
         </form>
 
-        {/* Google OAuth + mode toggle — hidden when SSO-only */}
+        {/* Google OAuth + mode toggle - hidden when SSO-only */}
         {!auth.ssoOnly && (
           <div className="px-5 pb-5">
             {/* Divider */}
@@ -211,7 +211,7 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
               </div>
             </div>
 
-            {/* Google Sign In — becomes Cancel while a Google flow is pending */}
+            {/* Google Sign In - becomes Cancel while a Google flow is pending */}
             {auth.awaitingBrowserCallback && auth.pendingAuthMethod === "google" ? (
               <button
                 type="button"

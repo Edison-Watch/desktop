@@ -9,7 +9,7 @@ const projectRoot = resolve(__dirname, "..");
 const frontendDir = resolve(projectRoot, "frontend-v2");
 
 export default defineConfig(({ mode }) => {
-  // Load VITE_ vars from frontend-v2/.env.<mode> — single source of truth for all bundles.
+  // Load VITE_ vars from frontend-v2/.env.<mode> - single source of truth for all bundles.
   const env = loadEnv(mode, frontendDir, "VITE_");
 
   return {

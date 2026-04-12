@@ -54,7 +54,7 @@ export async function quarantineCursorPlugin(
   const quarantinedAt = new Date().toISOString()
   let disabledCount = 0
 
-  console.log(`[MCP Quarantine] Quarantining Cursor plugin "${server.name}" — dirs: ${prefixes.join(', ')}`)
+  console.log(`[MCP Quarantine] Quarantining Cursor plugin "${server.name}" - dirs: ${prefixes.join(', ')}`)
 
   try {
     const projectEntries = await fs.readdir(projectsDir, { withFileTypes: true })
@@ -113,7 +113,7 @@ export async function quarantineCursorPlugin(
   if (disabledCount === 0) {
     console.log(`[MCP Quarantine] No project directories found for plugin "${server.name}"`)
   }
-  // Return success even with disabledCount=0 — the cache dir rename is the primary mechanism
+  // Return success even with disabledCount=0 - the cache dir rename is the primary mechanism
   return { server, originalPath: server.path, disabledPath: projectsDir, quarantinedAt }
 }
 

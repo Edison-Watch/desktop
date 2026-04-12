@@ -111,8 +111,8 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   ipcMain.handle("config:getEffectiveBaseUrls", () => {
     const apiBaseUrl = getApiBaseUrl();
     const mcpBaseUrl = getMcpBaseUrl();
-    if (!apiBaseUrl) console.warn("[config:getEffectiveBaseUrls] apiBaseUrl is null — renderer will have no API URL.");
-    if (!mcpBaseUrl) console.warn("[config:getEffectiveBaseUrls] mcpBaseUrl is null — server health checks will fail.");
+    if (!apiBaseUrl) console.warn("[config:getEffectiveBaseUrls] apiBaseUrl is null - renderer will have no API URL.");
+    if (!mcpBaseUrl) console.warn("[config:getEffectiveBaseUrls] mcpBaseUrl is null - server health checks will fail.");
     return {
       mcpBaseUrl,
       apiBaseUrl,
@@ -298,7 +298,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
         id: "codex",
         name: "Codex CLI",
         getPath: () => Promise.resolve(getCodexConfigPath()),
-        // Codex is a CLI tool — detected by ~/.codex/ dir (macAppExists returns true for CLI-only clients)
+        // Codex is a CLI tool - detected by ~/.codex/ dir (macAppExists returns true for CLI-only clients)
       },
     ];
 
@@ -379,7 +379,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     try {
       await fs.unlink(keychainFile);
     } catch {
-      // Not present — ignore
+      // Not present - ignore
     }
     return { ok: true };
   });

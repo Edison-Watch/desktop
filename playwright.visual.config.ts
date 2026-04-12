@@ -20,7 +20,7 @@ export default defineConfig({
     viewport: { width: 460, height: 680 },
     trace: "off",
     screenshot: "off",
-    // Record video for every story — enables animation regression detection
+    // Record video for every story - enables animation regression detection
     video: "on",
   },
 

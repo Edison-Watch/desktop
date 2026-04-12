@@ -68,7 +68,7 @@ function buildEdisonEntry(
   headers?: Record<string, string>,
 ): Record<string, unknown> {
   // Clients that need explicit type: "http" for reliable Streamable HTTP detection.
-  // Cursor v2.5+ has known MCP detection bugs — explicit type avoids silent failures.
+  // Cursor v2.5+ has known MCP detection bugs - explicit type avoids silent failures.
   const needsExplicitType: McpClientId[] = [
     'vscode',
     'claude-desktop',
@@ -85,7 +85,7 @@ function buildEdisonEntry(
 async function getPathForApp(
   appId: string,
 ): Promise<{ configPath: string; clientId: McpClientId } | null> {
-  // claude-code is handled separately via applyToClaudeCode() — not in this map
+  // claude-code is handled separately via applyToClaudeCode() - not in this map
   const STATIC_MAP: Record<string, () => string> = {
     vscode: getVscodeUserMcpPath,
     cursor: getCursorConfigPath,
@@ -141,7 +141,7 @@ async function cleanupHomeMcpJson(): Promise<void> {
       console.log('[mcpConfigWriter] Removed edison-watch from ~/.mcp.json')
     }
   } catch {
-    // Ignore — file may be malformed or inaccessible
+    // Ignore - file may be malformed or inaccessible
   }
 }
 
@@ -165,7 +165,7 @@ async function cleanupCursorProjectMcpJson(): Promise<void> {
     if (!existsSync(mcpPath)) continue
     try {
       const raw = await fs.readFile(mcpPath, 'utf-8')
-      // Cursor configs commonly contain trailing commas — use JSONC parser
+      // Cursor configs commonly contain trailing commas - use JSONC parser
       const json = jsonc.parse(raw) as Record<string, unknown>
       const servers = json.mcpServers as Record<string, unknown> | undefined
       if (!servers || !('edison-watch' in servers)) continue
@@ -179,7 +179,7 @@ async function cleanupCursorProjectMcpJson(): Promise<void> {
       await fs.writeFile(mcpPath, updated, 'utf-8')
       console.log(`[mcpConfigWriter] Removed stale edison-watch from Cursor project config: ${mcpPath}`)
     } catch {
-      // Ignore — file may be malformed or inaccessible
+      // Ignore - file may be malformed or inaccessible
     }
   }
 }
@@ -212,12 +212,12 @@ async function applyToClaudeCode(
   try {
     await execFileAsync('claude', ['mcp', 'remove', 'edison-watch', '--scope', 'user'], { timeout: 10_000 })
   } catch {
-    // Ignore — entry may not exist
+    // Ignore - entry may not exist
   }
   try {
     await execFileAsync('claude', ['mcp', 'remove', 'edison-watch', '--scope', 'project'], { timeout: 10_000 })
   } catch {
-    // Ignore — entry may not exist
+    // Ignore - entry may not exist
   }
 
   // Try `claude mcp add` CLI, forwarding any auth headers via --header flags
@@ -231,7 +231,7 @@ async function applyToClaudeCode(
     console.log('[mcpConfigWriter] Added edison-watch to Claude Code via CLI')
     return { appId: 'claude-code', configPath: getClaudeCodeHomeJsonPath(), backupPath: '' }
   } catch (err) {
-    // CLI failed — fall back to direct ~/.claude.json write
+    // CLI failed - fall back to direct ~/.claude.json write
     console.warn(
       `[mcpConfigWriter] claude mcp add failed, falling back to direct write: ${err instanceof Error ? err.message : String(err)}`
     )
@@ -259,7 +259,7 @@ async function applyToClaudeCodeFallback(
     const raw = await fs.readFile(configPath, 'utf-8')
     json = JSON.parse(raw) as Record<string, unknown>
   } catch {
-    // File doesn't exist or is invalid — start fresh
+    // File doesn't exist or is invalid - start fresh
   }
 
   const mcpServers = (json.mcpServers ?? {}) as Record<string, unknown>
@@ -286,7 +286,7 @@ async function mergeEdisonEntry(
   try {
     config = await readConfigFile(configPath, clientId)
   } catch {
-    // File does not exist or is invalid — start fresh
+    // File does not exist or is invalid - start fresh
   }
 
   const servers = { ...(getServersFromConfig(config, clientId) ?? {}) }
@@ -429,7 +429,7 @@ export async function isEdisonWatchRegistered(
 ): Promise<boolean> {
   // Claude Code: use CLI check (already exists in setupConfig.ts)
   if (appId === 'claude-code') {
-    // Defer to the caller — claude-code has its own check via checkClaudeCodeMcpConnection()
+    // Defer to the caller - claude-code has its own check via checkClaudeCodeMcpConnection()
     return true
   }
 

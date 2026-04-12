@@ -33,7 +33,7 @@ test.describe("Setup Wizard", () => {
     // This bypasses real auth and injects mock state
     await firstWindow.evaluate(() => {
       // Dispatch a mock auth state to advance to step 2
-      // The app checks window.api.setup.getData() — we mock it
+      // The app checks window.api.setup.getData() - we mock it
       window.dispatchEvent(new CustomEvent("test:advance-step"));
     });
 

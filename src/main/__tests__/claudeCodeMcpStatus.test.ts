@@ -13,7 +13,7 @@ vi.mock("@edison/shared/config", () => ({
   getEnvByName: () => ({}),
 }));
 
-// Mock child_process — vi.hoisted ensures the variable is available at hoist time
+// Mock child_process - vi.hoisted ensures the variable is available at hoist time
 const mockExecFile = vi.hoisted(() => vi.fn());
 vi.mock("child_process", () => ({
   execFile: mockExecFile,

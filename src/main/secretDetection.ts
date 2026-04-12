@@ -68,13 +68,13 @@ function isConnectionString(value: string): boolean {
   return CONNECTION_STRING_PREFIXES.some((p) => value.startsWith(p))
 }
 
-/** Values that look like package names, file paths, or URLs — not secrets */
+/** Values that look like package names, file paths, or URLs - not secrets */
 function looksLikeNonSecret(value: string): boolean {
   // URLs (http/https without embedded credentials)
   if (/^https?:\/\//.test(value)) return true
   // npm package names: @scope/package or bare package names
   if (/^@[\w-]+\/[\w.-]+/.test(value)) return true
-  // Bare npm package names (lowercase, hyphens, dots — e.g. "typescript", "ts-node")
+  // Bare npm package names (lowercase, hyphens, dots - e.g. "typescript", "ts-node")
   if (/^[a-z][\w.-]*$/.test(value) && !hasKnownSecretPrefix(value)) return true
   // File paths
   if (value.startsWith('/') || value.startsWith('./') || value.startsWith('~')) return true
@@ -422,7 +422,7 @@ export function detectSecrets(server: DiscoveredMcpServer): TemplatizedConfig {
         }
       }
     } catch {
-      // Not a valid URL — skip URL credential extraction
+      // Not a valid URL - skip URL credential extraction
     }
 
     // 2. Scan headers

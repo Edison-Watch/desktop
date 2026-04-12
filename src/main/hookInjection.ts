@@ -105,7 +105,7 @@ export async function injectAllHooks(): Promise<HookInjectionResult[]> {
     }
   }
 
-  // VS Code — inject workspace task into each known workspace
+  // VS Code - inject workspace task into each known workspace
   try {
     const workspacePaths = await getVsCodeWorkspacePaths()
     let anyInjected = false
@@ -283,7 +283,7 @@ export async function removeAllHooks(): Promise<HookInjectionResult[]> {
     }
   }
 
-  // VS Code — remove workspace task + Copilot agent hooks
+  // VS Code - remove workspace task + Copilot agent hooks
   try {
     const workspacePaths = await getVsCodeWorkspacePaths()
     for (const wsPath of workspacePaths) {
@@ -425,7 +425,7 @@ async function checkZedMcpEntry(
 export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAlive = false, claudeCodeMcpStatus?: import('../main/setupConfig').ClaudeCodeMcpStatus): Promise<HookStatusEntry[]> {
   const results: HookStatusEntry[] = []
 
-  // Claude Code — expects 4 hooks
+  // Claude Code - expects 4 hooks
   const claudeInstalled = isClaudeCodeInstalled()
   let claudeHookCount = 0
   const claudeTotalHooks = 4
@@ -458,13 +458,13 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
     ? await checkMcpEntry(getClaudeCodeHomeJsonPath(), 'mcpServers', expectedMcpUrl ?? null)
     : false
   // Use runtime status from `claude mcp get` when available; fall back to config+health heuristic
-  // "unknown" means the CLI was unavailable or produced unrecognised output — use the fallback
+  // "unknown" means the CLI was unavailable or produced unrecognised output - use the fallback
   const claudeMcpConnected = claudeCodeMcpStatus && claudeCodeMcpStatus !== 'unknown'
     ? claudeCodeMcpStatus === 'connected'
     : claudeMcpConfigured && mcpServerAlive
   results.push({ client: 'claude-code', installed: claudeInstalled, hasHook: claudeHookCount === claudeTotalHooks, hookCount: claudeHookCount, totalHooks: claudeTotalHooks, mcpConnected: claudeMcpConnected, mcpConfigured: claudeMcpConfigured, mcpApplicable: true, hooksApplicable: true, mcpRuntimeStatus: claudeCodeMcpStatus })
 
-  // Cursor — expects 3 hooks
+  // Cursor - expects 3 hooks
   const cursorInstalled = isCursorInstalled()
   let cursorHookCount = 0
   const cursorTotalHooks = 3
@@ -504,14 +504,14 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
       }
     } catch { /* ignore */ }
   }
-  // Windsurf — expects 1 hook
+  // Windsurf - expects 1 hook
   const windsurfTotal = 1
   const windsurfMcpConfigured = windsurfInstalled
     ? await checkMcpEntry(getWindsurfConfigPath(), 'mcpServers', expectedMcpUrl ?? null)
     : false
   results.push({ client: 'windsurf', installed: windsurfInstalled, hasHook: windsurfHasHook, hookCount: windsurfHasHook ? 1 : 0, totalHooks: windsurfTotal, mcpConnected: windsurfMcpConfigured && mcpServerAlive, mcpConfigured: windsurfMcpConfigured, mcpApplicable: true, hooksApplicable: true })
 
-  // VS Code — report true if any known workspace has the hook OR Copilot hooks exist
+  // VS Code - report true if any known workspace has the hook OR Copilot hooks exist
   if (!appBundleExists(['Visual Studio Code.app'])) {
     results.push({ client: 'vscode', installed: false, hasHook: false, hookCount: 0, totalHooks: 1, mcpConnected: false, mcpConfigured: false, mcpApplicable: true, hooksApplicable: true })
   } else {
@@ -560,7 +560,7 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
     }
   }
 
-  // Codex CLI — expects 2 hooks: SessionStart + Stop (experimental, no PreToolUse available)
+  // Codex CLI - expects 2 hooks: SessionStart + Stop (experimental, no PreToolUse available)
   const codexInstalled = isCodexInstalled()
   let codexHookCount = 0
   const codexTotalHooks = 2
@@ -608,7 +608,7 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
     : false
   results.push({ client: 'zed', installed: zedInstalled, hasHook: true, hookCount: 0, totalHooks: 0, mcpConnected: zedMcpConfigured && mcpServerAlive, mcpConfigured: zedMcpConfigured, mcpApplicable: true, hooksApplicable: false })
 
-  // JetBrains IDEs (IntelliJ, PyCharm, WebStorm) — scan for version-specific config dirs
+  // JetBrains IDEs (IntelliJ, PyCharm, WebStorm) - scan for version-specific config dirs
   // Installation is detected by IDE preferences folder existence + app bundle check;
   // MCP config is detected separately by servers.json content.
   const installedJetBrains = await getInstalledJetBrainsIdes()

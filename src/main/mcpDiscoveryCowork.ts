@@ -8,7 +8,7 @@ import { dirname, join } from 'path'
 import type { DiscoveredMcpServer, McpServerConfig } from './mcpDiscovery'
 import { clientAlias } from './serverDeduplication'
 
-// Claude Cowork config path — same file as Claude Desktop; Cowork is detected
+// Claude Cowork config path - same file as Claude Desktop; Cowork is detected
 // via the presence of the vm_bundles/ subdirectory (downloaded on first Cowork launch).
 // https://support.claude.com/en/articles/13345190-get-started-with-cowork
 export function getClaudeCoworkConfigPath(): string {
@@ -32,7 +32,7 @@ export function getClaudeCoworkConfigPath(): string {
   }
 }
 
-// Parse Claude Cowork config — same shape as Claude Desktop (mcpServers key)
+// Parse Claude Cowork config - same shape as Claude Desktop (mcpServers key)
 // Exported for testing
 export async function parseClaudeCoworkConfig(filePath: string): Promise<DiscoveredMcpServer[]> {
   const raw = await fs.readFile(filePath, 'utf-8')
@@ -112,19 +112,19 @@ export function deduplicateByNameAndConfig(servers: DiscoveredMcpServer[]): Disc
     if (unique.length === 1) {
       result.push(unique[0])
     } else {
-      // Different configs under the same name — rename to disambiguate.
+      // Different configs under the same name - rename to disambiguate.
       // If all from different clients, use name_clientAlias.
       // If some share a client (e.g. same server in multiple Claude Code profiles),
       // use numeric suffixes: name_ccode_1, name_ccode_2, etc.
       const clientSet = new Set(unique.map((e) => e.client))
       if (clientSet.size === unique.length) {
-        // Each entry from a different client — simple alias suffix
+        // Each entry from a different client - simple alias suffix
         for (const entry of unique) {
           const alias = clientAlias(entry.client)
           result.push({ ...entry, name: `${entry.name}_${alias}`, originalName: entry.name })
         }
       } else {
-        // Some entries share a client — use numeric suffixes per client
+        // Some entries share a client - use numeric suffixes per client
         const clientCounter = new Map<string, number>()
         for (const entry of unique) {
           const alias = clientAlias(entry.client)

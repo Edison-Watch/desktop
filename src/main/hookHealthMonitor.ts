@@ -40,7 +40,7 @@ export function getHookStatusLabel(): string {
   if (installed.length === 0) return '0 MCP clients have Edison installed'
   // Hook-based clients: hooks present. Hookless clients: MCP entry configured.
   // Uses mcpConfigured (not mcpConnected) because the label reflects "installed" state
-  // (config on disk), not live connection — matching hasHook semantics for hook clients.
+  // (config on disk), not live connection - matching hasHook semantics for hook clients.
   const withEdison = installed.filter((e) => e.hooksApplicable ? e.hasHook : e.mcpConfigured).length
   const total = installed.length
   if (withEdison === total) return 'All MCP clients have Edison installed'

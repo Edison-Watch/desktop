@@ -52,13 +52,13 @@ export async function injectCodexHook(): Promise<boolean> {
 
   // Handle partial states: only one of the two hooks may already exist
   if (existing.includes('edison-hook') && !existing.includes('edison-session-end')) {
-    // Has SessionStart but not Stop — append just the Stop hook
+    // Has SessionStart but not Stop - append just the Stop hook
     await fs.writeFile(configPath, existing + `\n[[hooks.Stop]]\ncommand = "${sessionEndScriptPath}"\n`, 'utf-8')
   } else if (!existing.includes('edison-hook') && existing.includes('edison-session-end')) {
-    // Has Stop but not SessionStart — append just the SessionStart hook
+    // Has Stop but not SessionStart - append just the SessionStart hook
     await fs.writeFile(configPath, existing + `\n[[hooks.SessionStart]]\ncommand = "${scriptPath} codex"\n`, 'utf-8')
   } else {
-    // Neither hook exists — append both
+    // Neither hook exists - append both
     await fs.writeFile(configPath, existing + buildCodexHookToml(scriptPath, sessionEndScriptPath), 'utf-8')
   }
 
@@ -126,7 +126,7 @@ export async function injectVsCodeCopilotHook(): Promise<boolean> {
   const sessionStartScriptPath = await ensureSessionStartHookScript()
   const sessionEndScriptPath = await ensureSessionEndHookScript()
 
-  // If the file already exists, it's ours — check if it's current
+  // If the file already exists, it's ours - check if it's current
   if (existsSync(hooksPath)) {
     try {
       const content = await fs.readFile(hooksPath, 'utf-8')

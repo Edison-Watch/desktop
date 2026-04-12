@@ -9,7 +9,7 @@ import {
 } from "../mcpConfigActions";
 
 // ---------------------------------------------------------------------------
-// Helpers — build a fake Cursor plugin + projects layout in a temp dir
+// Helpers - build a fake Cursor plugin + projects layout in a temp dir
 // ---------------------------------------------------------------------------
 
 let testDir: string;

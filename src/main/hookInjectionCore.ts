@@ -247,7 +247,7 @@ try:
         os.rename(tmp, final)
 except Exception:
     pass
-# Clean up PID-scoped active session file — runs regardless of pending-write outcome
+# Clean up PID-scoped active session file - runs regardless of pending-write outcome
 # Skip on Windows: .cmd wrapper means PPID is ephemeral cmd.exe, not Claude Code
 try:
     if sys.platform != "win32":

@@ -1,5 +1,5 @@
 /**
- * Claude Code MCP server discovery — path helpers, parsers, and the main
+ * Claude Code MCP server discovery - path helpers, parsers, and the main
  * discoverClaudeCode() aggregator.
  *
  * Extracted from mcpDiscovery.ts to stay under the 800-line CI limit.
@@ -212,7 +212,7 @@ export async function discoverClaudeCode(): Promise<DiscoveredMcpServer[]> {
     // ignore
   }
 
-  // Main ~/.claude.json — top-level user-scoped mcpServers and per-project mcpServers
+  // Main ~/.claude.json - top-level user-scoped mcpServers and per-project mcpServers
   try {
     const homeJsonPath = join(homedir(), '.claude.json')
     await fs.access(homeJsonPath)
@@ -233,7 +233,7 @@ export async function discoverClaudeCode(): Promise<DiscoveredMcpServer[]> {
   }
 
   // Project-scoped .mcp.json in each known project directory
-  // (project scope: checked into repo, shared with team — distinct from per-project mcpServers in ~/.claude.json)
+  // (project scope: checked into repo, shared with team - distinct from per-project mcpServers in ~/.claude.json)
   const projectMcpPaths = await getClaudeCodeProjectMcpPaths()
   for (const mcpPath of projectMcpPaths) {
     try {

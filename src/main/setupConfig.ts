@@ -17,7 +17,7 @@ const execFileAsync = promisify(execFile);
 
 /** When true, onboarding runs normally but config files are not written. */
 export const DRY_RUN = process.env.EDISON_DRY_RUN === "1";
-if (DRY_RUN) console.log("[dry-run] Dry-run mode enabled — config files will not be modified");
+if (DRY_RUN) console.log("[dry-run] Dry-run mode enabled - config files will not be modified");
 
 // ── Debug environment switcher ───────────────────────────────────────
 
@@ -38,7 +38,7 @@ export const DEV_MCP_BASE_URL = "http://localhost:3000";
 export const DEV_API_BASE_URL = "http://localhost:3001";
 
 // Per-env default API/MCP URLs for self-serve users (backend_base_url is null).
-// Values are injected at build time from frontend-v2/.env.<mode> — do not hardcode here.
+// Values are injected at build time from frontend-v2/.env.<mode> - do not hardcode here.
 export const ENV_API_URL: string = import.meta.env.VITE_API_BASE_URL ?? "";
 export const ENV_MCP_URL: string = import.meta.env.VITE_MCP_BASE_URL ?? "";
 export const ENV_DOCS_URL: string = import.meta.env.VITE_DOCS_BASE_URL ?? "https://docs.edison.watch";
@@ -155,7 +155,7 @@ export function markSetupComplete(data?: Partial<SetupData>): void {
   try {
     saveAccount(merged);
   } catch {
-    // non-fatal — account switcher entry will be missing but setup succeeds
+    // non-fatal - account switcher entry will be missing but setup succeeds
   }
 }
 
@@ -268,7 +268,7 @@ export function getCredentialsForEnv(env?: string): EnvCredentials | null {
   if (perEnv) return perEnv;
   // Fallback: use the top-level key only for entirely unmigrated setups
   // (no envCredentials map at all). Once the map exists, a missing env
-  // entry means the user hasn't registered for that env yet — return null
+  // entry means the user hasn't registered for that env yet - return null
   // so callers can warn instead of silently using the wrong key.
   if (!setupData.envCredentials && setupData.apiKey) {
     return { apiKey: setupData.apiKey, edisonSecretKey: setupData.edisonSecretKey };
@@ -286,7 +286,7 @@ export function getApiBaseUrl(): string | null {
   const activeEnv = getActiveEnv();
   // When a debug env override is active, always use the per-env URL map
   // so that switching environments actually changes the API endpoint.
-  // This must come before the is.dev check — in dev mode app.isPackaged is
+  // This must come before the is.dev check - in dev mode app.isPackaged is
   // false, which would otherwise always short-circuit to localhost.
   const debugOverride = getDebugEnvOverride();
   const overrideUrls = debugOverride ? getEnvUrls(debugOverride) : null;
@@ -306,7 +306,7 @@ export function getMcpBaseUrl(): string | null {
   const activeEnv = getActiveEnv();
   // When a debug env override is active, always use the per-env URL map
   // so that switching environments actually changes the MCP endpoint.
-  // This must come before the is.dev check — in dev mode app.isPackaged is
+  // This must come before the is.dev check - in dev mode app.isPackaged is
   // false, which would otherwise always short-circuit to localhost.
   const debugOverride = getDebugEnvOverride();
   const overrideUrls = debugOverride ? getEnvUrls(debugOverride) : null;

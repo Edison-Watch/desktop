@@ -21,10 +21,10 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
 let desktopLoginRegistered = false;
 const RECONNECT_DELAY_MS = 1000;
-const APPROVAL_EXPIRY_MS = 2 * 60 * 1000; // 2 minutes — matches backend pending cutoff
+const APPROVAL_EXPIRY_MS = 2 * 60 * 1000; // 2 minutes - matches backend pending cutoff
 let expiryTimer: ReturnType<typeof setInterval> | null = null;
 
-// SSE connection status — exposed for tray menu
+// SSE connection status - exposed for tray menu
 let sseConnected = false;
 let _onSseStatusChanged: (() => void) | null = null;
 
@@ -59,7 +59,7 @@ export interface TrifectaEventData {
   user_id?: string;
 }
 
-// References to windows managed by the caller (index.ts) — populated via initApprovalsHandler.
+// References to windows managed by the caller (index.ts) - populated via initApprovalsHandler.
 let _getMainWindow: () => BrowserWindow | null = () => null;
 let _getApprovalWindow: () => BrowserWindow | null = () => null;
 let _setApprovalWindow: (w: BrowserWindow | null) => void = () => {};
@@ -148,7 +148,7 @@ export function startEventSubscription(
       reconnectAttempts = 0;
       updateSseStatus(true);
 
-      // Sync quarantine state on reconnect — we may have missed events while disconnected
+      // Sync quarantine state on reconnect - we may have missed events while disconnected
       if (wasReconnect) {
         onReconnected?.();
       }
@@ -289,7 +289,7 @@ function handleTrifectaEvent(data: TrifectaEventData): void {
     console.error("Failed to show notification:", err);
   }
 
-  // Always pop the approval dialog as a reliable fallback — macOS can silently suppress notifications
+  // Always pop the approval dialog as a reliable fallback - macOS can silently suppress notifications
   showPendingApprovalsDialog(_getMainWindow());
 }
 
@@ -375,7 +375,7 @@ export async function handleApproval(
   }
 
   if (inFlightApprovals.has(approvalId)) {
-    console.log(`[approval] Skipping ${command} for ${approvalId} — already in-flight`);
+    console.log(`[approval] Skipping ${command} for ${approvalId} - already in-flight`);
     return;
   }
 
@@ -434,7 +434,7 @@ export async function handleApproval(
   } catch (err) {
     console.error(`[approval] Failed to ${command} ${pending.kind} '${pending.name}':`, err);
   } finally {
-    // Always remove from local state and UI, even if the POST failed —
+    // Always remove from local state and UI, even if the POST failed -
     // a stale item the user can't dismiss is worse than a missed approval
     inFlightApprovals.delete(approvalId);
     pendingApprovals.delete(approvalId);
@@ -642,7 +642,7 @@ document.getElementById('deny-all')?.addEventListener('click',()=>{document.quer
     _onPendingChanged?.();
     _setApprovalWindow(null);
 
-    // Send deny requests directly — we already cleared the map so
+    // Send deny requests directly - we already cleared the map so
     // handleApproval would early-return.
     const apiKey = getCredentialsForEnv()?.apiKey;
     const approvalUrl = getApprovalUrl();

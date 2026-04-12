@@ -3,7 +3,7 @@
  *
  * Extracted from mcpServerActionDialog.ts to keep both files under the
  * 800-line CI limit. Unlike the quarantine dialog, this does NOT quarantine
- * or disable any servers — it simply lets users submit approval requests for
+ * or disable any servers - it simply lets users submit approval requests for
  * their installed servers.
  */
 

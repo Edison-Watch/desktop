@@ -232,7 +232,7 @@ interface VscodeToolCache {
  * Quarantine a VS Code extension MCP server by removing it from the mcpToolCache.
  * Returns the removed entry data for storage in the disabled file.
  *
- * Note: This is a "soft" quarantine — the extension may re-register the server
+ * Note: This is a "soft" quarantine - the extension may re-register the server
  * on next VS Code startup. The periodic rescan will re-detect and re-quarantine.
  */
 export async function quarantineVscodeExtensionMcp(

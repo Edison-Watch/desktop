@@ -371,7 +371,7 @@ export function showQuarantinedServersDialog(
                 if (result && result.alreadyPending) { showConflictRename(fp, sn, sa, act, 'A server with this name already has a pending approval request'); return }
                 if (result && result.alreadyExists) { showConflictRename(fp, sn, sa, act, result.errorMessage); return }
                 results.push({ fingerprint: fp, serverName: sn, sourceApp: sa, action: act })
-                if (result && result.approveError) { showStatusBadge(fp, 'Request submitted — auto-approval failed', true); return }
+                if (result && result.approveError) { showStatusBadge(fp, 'Request submitted - auto-approval failed', true); return }
                 removeServerItem(fp)
               }
             })
@@ -415,7 +415,7 @@ export function showQuarantinedServersDialog(
             if (result && result.alreadyPending) { showConflictRename(fingerprint, serverName, sourceApp, action, 'A server with this name already has a pending approval request'); return }
             if (result && result.alreadyExists) { showConflictRename(fingerprint, serverName, sourceApp, action, result.errorMessage); return }
             results.push({ fingerprint, serverName, sourceApp, action })
-            if (result && result.approveError) { showStatusBadge(fingerprint, 'Request submitted — auto-approval failed', true); return }
+            if (result && result.approveError) { showStatusBadge(fingerprint, 'Request submitted - auto-approval failed', true); return }
             removeServerItem(fingerprint)
           }
 
@@ -536,4 +536,4 @@ export function closeServerActionDialog(): void {
 // Re-export for backwards compatibility
 export { showServerRegistrationDialog } from './mcpServerRegistrationDialog'
 
-// END — registration dialog is in mcpServerRegistrationDialog.ts
+// END - registration dialog is in mcpServerRegistrationDialog.ts

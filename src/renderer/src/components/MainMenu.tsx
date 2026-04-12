@@ -52,7 +52,7 @@ export default function MainMenu(): React.ReactNode {
       setSetupData(mergedData);
       const saved = await window.api.accounts.list();
       setAccounts(saved);
-      // Resize window to fit the compact menu — taller when MCP buttons are shown
+      // Resize window to fit the compact menu - taller when MCP buttons are shown
       const hasMcp = Boolean(mergedData.mcpBaseUrl && mergedData.apiKey);
       await window.api.menu.resizeWindow(400, hasMcp ? 420 : 380);
     })();
@@ -131,7 +131,7 @@ export default function MainMenu(): React.ReactNode {
       }
       await supabase.auth.signOut();
     } catch {
-      // fall through to reload regardless — main process may already
+      // fall through to reload regardless - main process may already
       // be operating as the new account after a successful switch
     }
     clearCachedSecretKey();
@@ -299,7 +299,7 @@ export default function MainMenu(): React.ReactNode {
             );
           })()}
 
-          {/* Server info — click to copy MCP URL */}
+          {/* Server info - click to copy MCP URL */}
           {setupData.mcpBaseUrl && (
             <button
               type="button"

@@ -41,7 +41,7 @@ function makeHttpServer(
 
 describe("detectSecrets", () => {
   // --------------------------------------------------------------------------
-  // Stdio servers — args
+  // Stdio servers - args
   // --------------------------------------------------------------------------
 
   describe("stdio server args", () => {
@@ -137,7 +137,7 @@ describe("detectSecrets", () => {
   });
 
   // --------------------------------------------------------------------------
-  // Stdio servers — env
+  // Stdio servers - env
   // --------------------------------------------------------------------------
 
   describe("stdio server env vars", () => {
@@ -183,7 +183,7 @@ describe("detectSecrets", () => {
   });
 
   // --------------------------------------------------------------------------
-  // HTTP/SSE servers — URL credentials
+  // HTTP/SSE servers - URL credentials
   // --------------------------------------------------------------------------
 
   describe("HTTP server URL credentials", () => {
@@ -208,7 +208,7 @@ describe("detectSecrets", () => {
   });
 
   // --------------------------------------------------------------------------
-  // HTTP/SSE servers — URL query parameters
+  // HTTP/SSE servers - URL query parameters
   // --------------------------------------------------------------------------
 
   describe("HTTP server URL query parameters", () => {
@@ -292,7 +292,7 @@ describe("detectSecrets", () => {
   });
 
   // --------------------------------------------------------------------------
-  // HTTP/SSE servers — headers
+  // HTTP/SSE servers - headers
   // --------------------------------------------------------------------------
 
   describe("HTTP server headers", () => {

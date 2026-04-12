@@ -2,12 +2,12 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase, fetchApiKey } from "@edison/shared/auth";
 import { getEnv, STORAGE_KEY } from "@edison/shared/config";
 
-// Sync active env from main process on startup — reload if it differs from localStorage
+// Sync active env from main process on startup - reload if it differs from localStorage
 // so Supabase is initialised with the correct credentials.
 (async () => {
   try {
     const activeEnv = await window.api.config.getActiveEnv();
-    // "dev" uses demo Supabase — clear any localStorage override so we fall back to build default.
+    // "dev" uses demo Supabase - clear any localStorage override so we fall back to build default.
     const normalized = activeEnv === "dev" ? null : activeEnv;
     const current = localStorage.getItem(STORAGE_KEY) ?? null;
     if (current !== normalized) {
@@ -16,7 +16,7 @@ import { getEnv, STORAGE_KEY } from "@edison/shared/config";
       window.location.reload();
     }
   } catch {
-    // Not running in Electron — ignore.
+    // Not running in Electron - ignore.
   }
 })();
 
@@ -29,7 +29,7 @@ try {
     window.location.reload();
   });
 } catch {
-  // Not running in Electron — ignore.
+  // Not running in Electron - ignore.
 }
 
 const DOMAIN_INFO_URL_FALLBACK: string = getEnv().API_BASE_URL;
@@ -39,7 +39,7 @@ async function getDomainInfoBaseUrl(): Promise<string> {
     const effective = await window.api.config.getEffectiveBaseUrls();
     if (effective.apiBaseUrl) return effective.apiBaseUrl;
   } catch {
-    // Not available — use fallback
+    // Not available - use fallback
   }
   return DOMAIN_INFO_URL_FALLBACK;
 }
@@ -148,7 +148,7 @@ export default function useAuth() {
     // Get effective URLs from main process (respects debug env override for dev mode)
     const normalizeUrl = (url: string) =>
       url && !/^https?:\/\//i.test(url) ? `https://${url}` : url;
-    // backend_base_url is null for self-serve users — main process provides the env default.
+    // backend_base_url is null for self-serve users - main process provides the env default.
     let mcpBaseUrl = normalizeUrl(result.backend_base_url || "");
     let apiBaseUrl = normalizeUrl(result.backend_base_url || "");
     try {
@@ -156,10 +156,10 @@ export default function useAuth() {
       if (effective.mcpBaseUrl) mcpBaseUrl = normalizeUrl(effective.mcpBaseUrl);
       if (effective.apiBaseUrl) apiBaseUrl = normalizeUrl(effective.apiBaseUrl);
     } catch {
-      // Not available — use URLs from fetchApiKey
+      // Not available - use URLs from fetchApiKey
     }
-    if (!apiBaseUrl) console.warn("[useAuth] apiBaseUrl is empty after auth — API calls will fail. Check VITE_API_BASE_URL.");
-    if (!mcpBaseUrl) console.warn("[useAuth] mcpBaseUrl is empty after auth — MCP health checks will fail. Check VITE_MCP_BASE_URL.");
+    if (!apiBaseUrl) console.warn("[useAuth] apiBaseUrl is empty after auth - API calls will fail. Check VITE_API_BASE_URL.");
+    if (!mcpBaseUrl) console.warn("[useAuth] mcpBaseUrl is empty after auth - MCP health checks will fail. Check VITE_MCP_BASE_URL.");
 
     update({
       apiKey: result.api_key,
@@ -210,7 +210,7 @@ export default function useAuth() {
       const devUrl = await window.api.auth.getDevCallbackUrl();
       if (devUrl) return devUrl;
     } catch {
-      // Not available (production build) — fall through
+      // Not available (production build) - fall through
     }
     return "edison-watch://auth/callback";
   }, []);

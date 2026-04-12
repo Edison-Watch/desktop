@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-// Mock electron — vi.mock factory must not reference outer variables
+// Mock electron - vi.mock factory must not reference outer variables
 vi.mock("electron", () => {
   const NotificationMock = vi.fn().mockImplementation(() => ({
     show: vi.fn(),

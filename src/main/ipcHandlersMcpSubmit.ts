@@ -136,7 +136,7 @@ export function registerMcpSubmitHandlers(): void {
 
   /** Remove specific servers from their agent config files.
    *  Accepts either plain names (removes from ALL agents) or {name, client} pairs (targeted removal).
-   *  Names can be dedup-renamed (e.g. "same_cursor") — resolved back to raw names via the deduped cache. */
+   *  Names can be dedup-renamed (e.g. "same_cursor") - resolved back to raw names via the deduped cache. */
   ipcMain.handle("mcp:removeServers", async (_event, targets: Array<string | { name: string; client: string }>): Promise<{
     removed: string[];
     errors: string[];
@@ -365,7 +365,7 @@ export function registerMcpSubmitHandlers(): void {
             wasAutoApproved = true;
           } catch (approveErr) {
             const msg = approveErr instanceof Error ? approveErr.message : String(approveErr);
-            errors.push(`${server.name}: auto-approval failed — ${msg}`);
+            errors.push(`${server.name}: auto-approval failed - ${msg}`);
           }
         }
 
@@ -461,7 +461,7 @@ export function registerMcpSubmitHandlers(): void {
             wasAutoApproved = true;
           } catch (approveErr) {
             const msg = approveErr instanceof Error ? approveErr.message : String(approveErr);
-            errors.push(`${server.name}: auto-approval failed — ${msg}`);
+            errors.push(`${server.name}: auto-approval failed - ${msg}`);
             console.error(`[mcp:submitAllDiscovered] Auto-approval failed for "${server.name}":`, approveErr);
           }
         }
@@ -512,7 +512,7 @@ export function registerMcpSubmitHandlers(): void {
       end: number;
     }>;
   }) => {
-    // Only submit for registration/request actions — skip dismissed/skipped servers
+    // Only submit for registration/request actions - skip dismissed/skipped servers
     if (params.action !== "registered" && params.action !== "requested") {
       return { action: params.action };
     }
@@ -568,7 +568,7 @@ export function registerMcpSubmitHandlers(): void {
     try { await getSharedSeenStore().markSeen(server, seenAction as "registered" | "requested"); } catch { /* non-fatal */ }
 
     // Remove server from config after successful submission
-    try { await removeOrDisableServer(server); } catch { /* non-fatal — quarantine manager handles fallback */ }
+    try { await removeOrDisableServer(server); } catch { /* non-fatal - quarantine manager handles fallback */ }
 
     return { request_id, action: params.action, autoApproved, approveError };
   });

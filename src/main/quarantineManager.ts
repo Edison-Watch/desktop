@@ -39,7 +39,7 @@ export async function startQuarantineMonitorIfEnabled(): Promise<void> {
   const creds = getCredentialsForEnv();
   slog(`[Quarantine] startQuarantineMonitorIfEnabled: apiBaseUrl=${apiBaseUrl}, hasApiKey=${!!creds?.apiKey}`);
   if (!apiBaseUrl || !creds?.apiKey) {
-    slog("[Quarantine] Skipping — missing apiBaseUrl or apiKey");
+    slog("[Quarantine] Skipping - missing apiBaseUrl or apiKey");
     return;
   }
 
@@ -59,11 +59,11 @@ async function startQuarantineMonitor(): Promise<void> {
   configMonitor = new McpConfigMonitor(seenStore);
 
   configMonitor.on("serversPendingQuarantine", async (pendingEvents: PendingQuarantineEvent[]) => {
-    slog(`[Quarantine] serversPendingQuarantine event: ${pendingEvents.length} servers — ${pendingEvents.map((e) => e.server.name).join(", ")}`);
+    slog(`[Quarantine] serversPendingQuarantine event: ${pendingEvents.length} servers - ${pendingEvents.map((e) => e.server.name).join(", ")}`);
     if (pendingEvents.length === 0) return;
 
     // Separate already-known servers (previously submitted/registered) from truly new ones.
-    // Known servers are silently quarantined without a prompt — handles re-installs like Cursor plugins.
+    // Known servers are silently quarantined without a prompt - handles re-installs like Cursor plugins.
     const newEvents: PendingQuarantineEvent[] = [];
     for (const event of pendingEvents) {
       const seen = await getSharedSeenStore().get(event.fingerprint);
@@ -80,7 +80,7 @@ async function startQuarantineMonitor(): Promise<void> {
     }
 
     if (newEvents.length === 0) {
-      slog("[Quarantine] All servers were known — no dialog needed");
+      slog("[Quarantine] All servers were known - no dialog needed");
       return;
     }
 
@@ -117,7 +117,7 @@ async function startQuarantineMonitor(): Promise<void> {
     } catch (err) {
       slog(`[Quarantine] Failed to show quarantine dialog: ${err}`);
       console.error("[McpConfigMonitor] Failed to show quarantine dialog:", err);
-      // Dialog failed — quarantine all pending servers as safety fallback
+      // Dialog failed - quarantine all pending servers as safety fallback
       for (const { server } of newEvents) {
         try { await quarantineServer(server); } catch { /* best effort */ }
       }
@@ -158,7 +158,7 @@ export function stopQuarantineMonitor(): void {
   autoQuarantineEnabled = false;
 }
 
-const QUARANTINE_POLL_INTERVAL_MS = 5 * 60_000; // 5 min — safety-net only; SSE push is primary
+const QUARANTINE_POLL_INTERVAL_MS = 5 * 60_000; // 5 min - safety-net only; SSE push is primary
 let quarantinePollTimer: ReturnType<typeof setInterval> | null = null;
 
 async function fetchQuarantineFlag(): Promise<boolean | null> {
@@ -222,12 +222,12 @@ export async function runDebugQuarantine(): Promise<{ success: boolean; error?: 
     }
 
     if (configMonitor) {
-      // Monitor already running — its persistent "serversPendingQuarantine" listener
+      // Monitor already running - its persistent "serversPendingQuarantine" listener
       // (from startQuarantineMonitor) already shows the dialog, so just trigger
       // the workflow directly without adding a second listener.
       await configMonitor.runQuarantineWorkflow();
     } else {
-      // No monitor running — spin up a temporary one for this single run
+      // No monitor running - spin up a temporary one for this single run
       const tempMonitor = new McpConfigMonitor(getSharedSeenStore());
       tempMonitor.on("error", (err) => {
         slog(`[Quarantine] tempMonitor error (debug run): ${err}`);
