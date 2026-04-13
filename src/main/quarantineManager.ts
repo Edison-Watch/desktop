@@ -1,6 +1,7 @@
 import { BrowserWindow } from "electron";
 import { McpConfigMonitor, type PendingQuarantineEvent } from "./mcpConfigMonitor";
 import { getSharedSeenStore } from "./seenServersStore";
+import { syncRegisteredServersFromBackend } from "./seenServersBackendSync";
 import { showQuarantinedServersDialog } from "./mcpServerActionDialog";
 import { quarantineServer } from "./mcpConfigActions";
 import { fetchUserRole } from "./mcpServerSubmit";
@@ -61,6 +62,14 @@ async function startQuarantineMonitor(): Promise<void> {
   configMonitor.on("serversPendingQuarantine", async (pendingEvents: PendingQuarantineEvent[]) => {
     slog(`[Quarantine] serversPendingQuarantine event: ${pendingEvents.length} servers - ${pendingEvents.map((e) => e.server.name).join(", ")}`);
     if (pendingEvents.length === 0) return;
+
+    // Refresh the local seen-store from the backend BEFORE deciding what to
+    // silently re-quarantine. This keeps the "registered" classification coherent
+    // with the org's actual server list (admin/owner approvals from the dashboard,
+    // registrations from other clients, etc.) instead of trusting whatever this
+    // particular client happened to write to disk in the past. Silently falls
+    // back to the existing local state on network/HTTP error.
+    await syncRegisteredServersFromBackend();
 
     // Separate already-known servers (previously submitted/registered) from truly new ones.
     // Known servers are silently quarantined without a prompt - handles re-installs like Cursor plugins.

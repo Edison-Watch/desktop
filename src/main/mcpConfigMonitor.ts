@@ -531,6 +531,13 @@ export class McpConfigMonitor extends EventEmitter {
         '[McpConfigMonitor] Servers pending quarantine on startup:',
         pendingEvents.map((e) => e.server.name)
       )
+      // Remove pending-quarantine servers from lastKnownServers so that when
+      // Cursor reinstalls them (restoring the cache dir), the next scan sees
+      // them as NEW and re-quarantines. Without this, they match the stale
+      // entry set above and are never re-detected.
+      for (const { fingerprint } of pendingEvents) {
+        this.lastKnownServers.delete(fingerprint)
+      }
       this.emit('serversPendingQuarantine', pendingEvents)
     }
   }
@@ -643,8 +650,20 @@ export class McpConfigMonitor extends EventEmitter {
 
     mlog(`[Monitor] ${pendingEvents.length} servers pending quarantine`)
 
+    // Update lastKnownServers to reflect current state so the next scan can
+    // correctly detect additions/removals.
+    this.lastKnownServers = currentMap
+
     if (pendingEvents.length > 0) {
       console.log('[McpConfigMonitor] Servers pending quarantine:', pendingEvents.map(e => e.server.name))
+      // Remove pending-quarantine servers from lastKnownServers so that when
+      // Cursor reinstalls them (restoring the cache dir), the next scan sees
+      // them as NEW and re-quarantines. Quarantine happens asynchronously in
+      // the listener - if we leave them in the map, the next scan (triggered
+      // by Cursor restoring the dir) sees matching fingerprints and does nothing.
+      for (const { fingerprint } of pendingEvents) {
+        this.lastKnownServers.delete(fingerprint)
+      }
       this.emit('serversPendingQuarantine', pendingEvents)
     }
 

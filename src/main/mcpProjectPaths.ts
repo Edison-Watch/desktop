@@ -46,6 +46,11 @@ export async function getCursorProjectMcpPaths(): Promise<string[]> {
           // Use fileURLToPath for correct cross-platform handling (avoids leading slash
           // before drive letter on Windows, e.g. file:///C:/... → C:\...)
           const projectPath = fileURLToPath(folder)
+          // Skip workspaces rooted at $HOME: their synthesized .cursor/mcp.json would
+          // alias the global ~/.cursor/mcp.json, which is the user-scope config - not
+          // a project-scope one. Letting it through tags the same file as both 'user'
+          // and 'project' and causes its servers to get wrongly skipped from quarantine.
+          if (projectPath === homedir()) continue
           seen.add(join(projectPath, '.cursor', 'mcp.json'))
         }
       } catch {

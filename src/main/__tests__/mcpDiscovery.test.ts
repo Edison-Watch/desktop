@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { tmpdir, platform } from "os";
 import { join } from "path";
+import { pathToFileURL } from "url";
 import { promises as fs } from "fs";
 import {
   getVscodeUserMcpPath,
@@ -26,6 +27,8 @@ import {
   getJetBrainsMcpConfigPaths,
   discoverMcpServers,
   getServerFingerprint,
+  getCursorProjectMcpPaths,
+  getCursorWorkspaceStoragePath,
 } from "../mcpDiscovery";
 import type { DiscoveredMcpServer } from "../mcpDiscovery";
 import { getAllConfigPaths } from "../mcpConfigPaths";
@@ -480,6 +483,70 @@ describe("Config Parsing Functions", () => {
       expect(servers).toHaveLength(1);
       expect(servers[0].client).toBe("cursor");
     });
+  });
+
+  // Regression test for the home-dir-as-workspace bug: if a Cursor workspace.json's
+  // `folder` field points at $HOME, the synthesized `<folder>/.cursor/mcp.json` aliases
+  // the global ~/.cursor/mcp.json (which is the user-scope config, not project-scope).
+  // The synthesized entry must be dropped so the same file isn't tagged 'project' and
+  // wrongly skipped from quarantine downstream.
+  describe("getCursorProjectMcpPaths", () => {
+    // Skipped on Windows because the workspaceStorage path resolution there reads
+    // APPDATA rather than HOME and would need a different env-var override.
+    const itPosix = platform() === "win32" ? it.skip : it;
+
+    itPosix(
+      "skips workspaces rooted at $HOME (would alias global ~/.cursor/mcp.json)",
+      async () => {
+        const fakeHome = await createTempDir();
+        const originalHome = process.env.HOME;
+        process.env.HOME = fakeHome;
+        try {
+          const storageDir = getCursorWorkspaceStoragePath();
+          await fs.mkdir(storageDir, { recursive: true });
+
+          // Workspace #1: rooted at $HOME - synthesized path would equal the global
+          // ~/.cursor/mcp.json. This entry must be dropped.
+          const homeWsDir = join(storageDir, "ws-home-hash");
+          await fs.mkdir(homeWsDir, { recursive: true });
+          await fs.writeFile(
+            join(homeWsDir, "workspace.json"),
+            JSON.stringify({ folder: pathToFileURL(fakeHome).href }),
+            "utf-8",
+          );
+
+          // Workspace #2: rooted at a real subdirectory - must still be discovered.
+          const realProjectDir = join(fakeHome, "work", "real-project");
+          await fs.mkdir(realProjectDir, { recursive: true });
+          const realWsDir = join(storageDir, "ws-real-hash");
+          await fs.mkdir(realWsDir, { recursive: true });
+          await fs.writeFile(
+            join(realWsDir, "workspace.json"),
+            JSON.stringify({ folder: pathToFileURL(realProjectDir).href }),
+            "utf-8",
+          );
+
+          const paths = await getCursorProjectMcpPaths();
+
+          const aliasedGlobal = join(fakeHome, ".cursor", "mcp.json");
+          const realProjectMcp = join(
+            realProjectDir,
+            ".cursor",
+            "mcp.json",
+          );
+
+          expect(paths).not.toContain(aliasedGlobal);
+          expect(paths).toContain(realProjectMcp);
+        } finally {
+          if (originalHome === undefined) {
+            delete process.env.HOME;
+          } else {
+            process.env.HOME = originalHome;
+          }
+          await cleanupDir(fakeHome);
+        }
+      },
+    );
   });
 
   describe("parseWindsurfMcpJson", () => {

@@ -84,6 +84,71 @@ describe("seenServersStore", () => {
     });
   });
 
+  // ----------------------------------------------------------------------
+  // Cross-language fingerprint parity
+  // ----------------------------------------------------------------------
+  // The desktop client and the backend MUST produce identical fingerprints
+  // for identical inputs, otherwise the silent-quarantine sync via
+  // GET /api/v1/servers/fingerprints classifies known servers as unknown
+  // (or vice-versa) and the user gets spurious dialogs.
+  //
+  // The pinned hex values below are duplicated verbatim in
+  // tests/api_v1/test_servers_fingerprints.py::TestComputeServerFingerprint
+  // - touching either side without updating the other should fail BOTH suites.
+  // ----------------------------------------------------------------------
+  describe("getServerFingerprint cross-language parity", () => {
+    function makeStdio(name: string, command: string, args: string[]): DiscoveredMcpServer {
+      return {
+        name,
+        client: "cursor",
+        source: "user",
+        path: `/tmp/${name}-mcp.json`,
+        config: { command, args },
+      };
+    }
+    function makeHttp(name: string, url: string): DiscoveredMcpServer {
+      return {
+        name,
+        client: "cursor",
+        source: "user",
+        path: `/tmp/${name}-mcp.json`,
+        config: { type: "http", url } as never,
+      };
+    }
+
+    it("stdio: pinned fingerprint matches Python backend", () => {
+      // Identifier under hash: "reddit:npx:-y reddit-mcp"
+      // Verified in tests/api_v1/test_servers_fingerprints.py and via:
+      //   node -e "const c=require('crypto');console.log(
+      //     c.createHash('sha256').update('reddit:npx:-y reddit-mcp')
+      //      .digest('hex').slice(0,16))"
+      const fp = getServerFingerprint(makeStdio("reddit", "npx", ["-y", "reddit-mcp"]));
+      expect(fp).toBe("b626e6c0e3dc647d");
+    });
+
+    it("http: pinned fingerprint matches Python backend", () => {
+      // Identifier under hash: "api:https://api.example.com/mcp"
+      const fp = getServerFingerprint(makeHttp("api", "https://api.example.com/mcp"));
+      const expected = require("crypto")
+        .createHash("sha256")
+        .update("api:https://api.example.com/mcp")
+        .digest("hex")
+        .slice(0, 16);
+      expect(fp).toBe(expected);
+    });
+
+    it("stdio with empty args: identifier ends in trailing colon", () => {
+      // Identifier under hash: "solo:cli:"  (args.join(' ') === '')
+      const fp = getServerFingerprint(makeStdio("solo", "cli", []));
+      const expected = require("crypto")
+        .createHash("sha256")
+        .update("solo:cli:")
+        .digest("hex")
+        .slice(0, 16);
+      expect(fp).toBe(expected);
+    });
+  });
+
   describe("SeenServersStore", () => {
     it("creates new store with empty state", async () => {
       const storePath = join(testDir, "seen.json");
@@ -208,6 +273,75 @@ describe("seenServersStore", () => {
       const entry = await store.get(fp);
       expect(entry!.disabledPath).toBe("/tmp/disabled/mcp.json");
       expect(entry!.quarantinedAt).toBe("2025-01-01T00:00:00Z");
+    });
+  });
+
+  describe("markRegisteredFromBackend", () => {
+    it("creates a new registered entry when none exists locally", async () => {
+      const storePath = join(testDir, "seen-backend-new.json");
+      const store = new SeenServersStore(storePath);
+
+      await store.markRegisteredFromBackend("abcd1234abcd1234", "reddit");
+
+      const entry = await store.get("abcd1234abcd1234");
+      expect(entry).not.toBeNull();
+      expect(entry!.fingerprint).toBe("abcd1234abcd1234");
+      expect(entry!.name).toBe("reddit");
+      expect(entry!.action).toBe("registered");
+      expect(entry!.actionAt).not.toBeNull();
+    });
+
+    it("backend wins: overwrites a local 'dismissed' action with 'registered'", async () => {
+      const storePath = join(testDir, "seen-backend-overwrite.json");
+      const store = new SeenServersStore(storePath);
+      const server = makeServer("dismissed-server");
+      const fp = getServerFingerprint(server);
+
+      // User dismissed it locally first
+      await store.markSeen(server, "dismissed");
+      expect((await store.get(fp))!.action).toBe("dismissed");
+
+      // Backend says it's registered - backend wins
+      await store.markRegisteredFromBackend(fp, server.name);
+      expect((await store.get(fp))!.action).toBe("registered");
+    });
+
+    it("preserves firstSeenAt and disabledPath from existing entry", async () => {
+      const storePath = join(testDir, "seen-backend-preserve.json");
+      const store = new SeenServersStore(storePath);
+      const server = makeServer("preserved-server");
+      const fp = getServerFingerprint(server);
+
+      await store.markSeen(server, "quarantined", {
+        disabledPath: "/tmp/disabled/foo.json",
+        quarantinedAt: "2025-01-01T00:00:00Z",
+      });
+      const before = (await store.get(fp))!;
+
+      // Wait a tick so actionAt would differ
+      await new Promise((r) => setTimeout(r, 5));
+      await store.markRegisteredFromBackend(fp, server.name);
+
+      const after = (await store.get(fp))!;
+      expect(after.firstSeenAt).toBe(before.firstSeenAt);
+      expect(after.disabledPath).toBe("/tmp/disabled/foo.json");
+      expect(after.quarantinedAt).toBe("2025-01-01T00:00:00Z");
+      expect(after.action).toBe("registered");
+      expect(after.actionAt).toBeGreaterThanOrEqual(before.actionAt!);
+    });
+
+    it("uses backend-supplied name only when there is no existing entry", async () => {
+      const storePath = join(testDir, "seen-backend-name.json");
+      const store = new SeenServersStore(storePath);
+      const server = makeServer("local-name");
+      const fp = getServerFingerprint(server);
+
+      await store.markSeen(server, "quarantined");
+      // Backend reports a different name (e.g. an org-renamed server) - keep
+      // the local name since the existing entry has the more accurate context.
+      await store.markRegisteredFromBackend(fp, "backend-name");
+
+      expect((await store.get(fp))!.name).toBe("local-name");
     });
   });
 });

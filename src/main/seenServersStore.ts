@@ -154,6 +154,45 @@ export class SeenServersStore {
   }
 
   /**
+   * Upsert an entry from the backend's authoritative list of registered servers.
+   *
+   * Called by the pre-quarantine sync (seenServersBackendSync.ts) so the local
+   * "is this server known?" decision is coherent with the org's actual state on
+   * the backend, instead of relying on whatever this particular client happened
+   * to write to disk in the past.
+   *
+   * Backend wins: any existing local action ('quarantined', 'requested',
+   * 'dismissed') is overwritten with 'registered' because admin/owner approval
+   * server-side is the strongest authority. The user's previous dismissal in
+   * this client should not override an org-level approval.
+   *
+   * The store still owns sourceApp/configPath; if we don't yet have an entry,
+   * we synthesize a placeholder using the backend-provided name. The next
+   * discovery pass will overwrite those placeholder fields with the real
+   * client/path the next time markSeen() runs.
+   */
+  async markRegisteredFromBackend(fingerprint: string, name: string): Promise<void> {
+    await this.ensureLoaded()
+    const now = Date.now()
+    const existing = this.data.servers[fingerprint]
+
+    this.data.servers[fingerprint] = {
+      fingerprint,
+      name: existing?.name ?? name,
+      sourceApp: existing?.sourceApp ?? '',
+      configPath: existing?.configPath ?? '',
+      firstSeenAt: existing?.firstSeenAt ?? now,
+      lastSeenAt: existing?.lastSeenAt ?? now,
+      action: 'registered',
+      actionAt: now,
+      disabledPath: existing?.disabledPath,
+      quarantinedAt: existing?.quarantinedAt
+    }
+
+    await this.save()
+  }
+
+  /**
    * Get a seen server by fingerprint.
    */
   async get(fingerprint: string): Promise<SeenServer | null> {
