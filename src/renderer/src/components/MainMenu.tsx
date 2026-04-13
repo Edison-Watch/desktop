@@ -54,7 +54,7 @@ export default function MainMenu(): React.ReactNode {
       setAccounts(saved);
       // Resize window to fit the compact menu - taller when MCP buttons are shown
       const hasMcp = Boolean(mergedData.mcpBaseUrl && mergedData.apiKey);
-      await window.api.menu.resizeWindow(400, hasMcp ? 420 : 380);
+      await window.api.menu.resizeWindow(461, hasMcp ? 605 : 547);
     })();
     const interval = setInterval(async () => {
       const status = await window.api.health.check();
@@ -218,8 +218,8 @@ export default function MainMenu(): React.ReactNode {
                 onClick={() => {
                   setActiveTab(tab.key);
                   // Resize window for clients tab (taller to fit list)
-                  const height = tab.key === "clients" ? 520 : (setupData.mcpBaseUrl && setupData.apiKey ? 420 : 380);
-                  window.api.menu.resizeWindow(400, height);
+                  const height = tab.key === "clients" ? 749 : (setupData.mcpBaseUrl && setupData.apiKey ? 605 : 547);
+                  window.api.menu.resizeWindow(461, height);
                 }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium border-b-2 -mb-px transition-colors ${
                   activeTab === tab.key

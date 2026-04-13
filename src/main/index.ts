@@ -447,7 +447,7 @@ async function rerunWizard(): Promise<void> {
   isRestarting = false;
   createWindow();
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setMinimumSize(480, 600);
+    mainWindow.setMinimumSize(400, 500);
     mainWindow.setSize(540, 760, true);
     mainWindow.center();
   }
@@ -494,8 +494,8 @@ async function handleClearDataAndRestart(): Promise<void> {
 function createWindow(): void {
   slog("createWindow: start");
   const mainWindowState = windowStateKeeper({
-    defaultWidth: 540,
-    defaultHeight: 760,
+    defaultWidth: 461,
+    defaultHeight: 605,
   });
 
   mainWindow = new BrowserWindow({
@@ -503,8 +503,8 @@ function createWindow(): void {
     y: mainWindowState.y,
     width: mainWindowState.width,
     height: mainWindowState.height,
-    minWidth: 480,
-    minHeight: 600,
+    minWidth: 400,
+    minHeight: 500,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === "linux"
