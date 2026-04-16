@@ -149,6 +149,9 @@ describe("seenServersStore", () => {
     });
   });
 
+  const ORG_A = "00000000-0000-0000-0000-00000000000a";
+  const ORG_B = "00000000-0000-0000-0000-00000000000b";
+
   describe("SeenServersStore", () => {
     it("creates new store with empty state", async () => {
       const storePath = join(testDir, "seen.json");
@@ -158,21 +161,31 @@ describe("seenServersStore", () => {
       expect(all).toEqual([]);
     });
 
-    it("marks server as seen", async () => {
+    it("marks server as seen under a given org", async () => {
       const storePath = join(testDir, "seen-mark.json");
       const store = new SeenServersStore(storePath);
       const server = makeServer("my-server");
 
-      await store.markSeen(server);
-      expect(await store.hasSeen(server)).toBe(true);
+      await store.markSeen(ORG_A, server);
+      expect(await store.hasSeen(ORG_A, server)).toBe(true);
     });
 
-    it("hasSeen returns false for unknown server", async () => {
+    it("hasSeen returns false for unknown server in this org", async () => {
       const storePath = join(testDir, "seen-unknown.json");
       const store = new SeenServersStore(storePath);
       const server = makeServer("unknown-server");
 
-      expect(await store.hasSeen(server)).toBe(false);
+      expect(await store.hasSeen(ORG_A, server)).toBe(false);
+    });
+
+    it("hasSeen is scoped per org - same server, different org is unknown", async () => {
+      const storePath = join(testDir, "seen-org-scope.json");
+      const store = new SeenServersStore(storePath);
+      const server = makeServer("shared-name");
+
+      await store.markSeen(ORG_A, server, "registered");
+      expect(await store.hasSeen(ORG_A, server)).toBe(true);
+      expect(await store.hasSeen(ORG_B, server)).toBe(false);
     });
 
     it("marks and queries server action", async () => {
@@ -180,12 +193,13 @@ describe("seenServersStore", () => {
       const store = new SeenServersStore(storePath);
       const server = makeServer("action-server");
 
-      await store.markSeen(server, "quarantined");
-      expect(await store.hasAction(server)).toBe(true);
+      await store.markSeen(ORG_A, server, "quarantined");
+      expect(await store.hasAction(ORG_A, server)).toBe(true);
 
       const fp = getServerFingerprint(server);
-      const entry = await store.get(fp);
+      const entry = await store.get(ORG_A, fp);
       expect(entry).not.toBeNull();
+      expect(entry!.org_id).toBe(ORG_A);
       expect(entry!.action).toBe("quarantined");
     });
 
@@ -195,10 +209,10 @@ describe("seenServersStore", () => {
       const server = makeServer("update-server");
       const fp = getServerFingerprint(server);
 
-      await store.markSeen(server, "quarantined");
-      await store.markAction(fp, "requested");
+      await store.markSeen(ORG_A, server, "quarantined");
+      await store.markAction(ORG_A, fp, "requested");
 
-      const entry = await store.get(fp);
+      const entry = await store.get(ORG_A, fp);
       expect(entry!.action).toBe("requested");
     });
 
@@ -208,20 +222,20 @@ describe("seenServersStore", () => {
       const server = makeServer("remove-server");
       const fp = getServerFingerprint(server);
 
-      await store.markSeen(server);
-      expect(await store.hasSeen(server)).toBe(true);
+      await store.markSeen(ORG_A, server);
+      expect(await store.hasSeen(ORG_A, server)).toBe(true);
 
-      await store.remove(fp);
-      expect(await store.hasSeen(server)).toBe(false);
+      await store.remove(ORG_A, fp);
+      expect(await store.hasSeen(ORG_A, server)).toBe(false);
     });
 
     it("clears all servers", async () => {
       const storePath = join(testDir, "seen-clear.json");
       const store = new SeenServersStore(storePath);
 
-      await store.markSeen(makeServer("a"));
-      await store.markSeen(makeServer("b"));
-      await store.markSeen(makeServer("c"));
+      await store.markSeen(ORG_A, makeServer("a"));
+      await store.markSeen(ORG_A, makeServer("b"));
+      await store.markSeen(ORG_B, makeServer("c"));
 
       expect((await store.getAll()).length).toBe(3);
 
@@ -233,30 +247,40 @@ describe("seenServersStore", () => {
       const storePath = join(testDir, "seen-persist.json");
       const server = makeServer("persist-server");
 
-      // First instance writes
       const store1 = new SeenServersStore(storePath);
-      await store1.markSeen(server, "dismissed");
+      await store1.markSeen(ORG_A, server, "dismissed");
 
-      // Second instance reads the same file
       const store2 = new SeenServersStore(storePath);
-      expect(await store2.hasSeen(server)).toBe(true);
+      expect(await store2.hasSeen(ORG_A, server)).toBe(true);
 
       const fp = getServerFingerprint(server);
-      const entry = await store2.get(fp);
+      const entry = await store2.get(ORG_A, fp);
       expect(entry!.action).toBe("dismissed");
     });
 
-    it("getAll returns all stored servers", async () => {
-      const storePath = join(testDir, "seen-getall.json");
+    it("drops legacy (un-scoped) entries on load", async () => {
+      // Write a pre-org-scoping file by hand - keys are bare fingerprints and
+      // entries have no org_id. The store should silently drop these.
+      const storePath = join(testDir, "seen-legacy.json");
+      const legacy = {
+        version: 1,
+        servers: {
+          "deadbeefcafef00d": {
+            fingerprint: "deadbeefcafef00d",
+            name: "legacy",
+            sourceApp: "cursor",
+            configPath: "/tmp/x",
+            firstSeenAt: 1,
+            lastSeenAt: 1,
+            action: "registered",
+            actionAt: 1,
+          },
+        },
+      };
+      await fs.writeFile(storePath, JSON.stringify(legacy), "utf-8");
+
       const store = new SeenServersStore(storePath);
-
-      await store.markSeen(makeServer("s1"));
-      await store.markSeen(makeServer("s2"));
-
-      const all = await store.getAll();
-      expect(all).toHaveLength(2);
-      const names = all.map((s) => s.name).sort();
-      expect(names).toEqual(["s1", "s2"]);
+      expect(await store.getAll()).toEqual([]);
     });
 
     it("stores quarantine info", async () => {
@@ -265,45 +289,55 @@ describe("seenServersStore", () => {
       const server = makeServer("q-server");
       const fp = getServerFingerprint(server);
 
-      await store.markSeen(server, "quarantined", {
+      await store.markSeen(ORG_A, server, "quarantined", {
         disabledPath: "/tmp/disabled/mcp.json",
         quarantinedAt: "2025-01-01T00:00:00Z",
       });
 
-      const entry = await store.get(fp);
+      const entry = await store.get(ORG_A, fp);
       expect(entry!.disabledPath).toBe("/tmp/disabled/mcp.json");
       expect(entry!.quarantinedAt).toBe("2025-01-01T00:00:00Z");
     });
   });
 
-  describe("markRegisteredFromBackend", () => {
+  describe("markFromBackend", () => {
     it("creates a new registered entry when none exists locally", async () => {
       const storePath = join(testDir, "seen-backend-new.json");
       const store = new SeenServersStore(storePath);
 
-      await store.markRegisteredFromBackend("abcd1234abcd1234", "reddit");
+      await store.markFromBackend(ORG_A, "abcd1234abcd1234", "reddit", "registered");
 
-      const entry = await store.get("abcd1234abcd1234");
+      const entry = await store.get(ORG_A, "abcd1234abcd1234");
       expect(entry).not.toBeNull();
       expect(entry!.fingerprint).toBe("abcd1234abcd1234");
+      expect(entry!.org_id).toBe(ORG_A);
       expect(entry!.name).toBe("reddit");
       expect(entry!.action).toBe("registered");
       expect(entry!.actionAt).not.toBeNull();
     });
 
-    it("backend wins: overwrites a local 'dismissed' action with 'registered'", async () => {
+    it("creates a 'requested' entry when backend reports a pending admin review", async () => {
+      const storePath = join(testDir, "seen-backend-requested.json");
+      const store = new SeenServersStore(storePath);
+
+      await store.markFromBackend(ORG_A, "ffff0000ffff0000", "slack", "requested");
+
+      const entry = await store.get(ORG_A, "ffff0000ffff0000");
+      expect(entry).not.toBeNull();
+      expect(entry!.action).toBe("requested");
+    });
+
+    it("backend wins: overwrites a local 'dismissed' action with the backend action", async () => {
       const storePath = join(testDir, "seen-backend-overwrite.json");
       const store = new SeenServersStore(storePath);
       const server = makeServer("dismissed-server");
       const fp = getServerFingerprint(server);
 
-      // User dismissed it locally first
-      await store.markSeen(server, "dismissed");
-      expect((await store.get(fp))!.action).toBe("dismissed");
+      await store.markSeen(ORG_A, server, "dismissed");
+      expect((await store.get(ORG_A, fp))!.action).toBe("dismissed");
 
-      // Backend says it's registered - backend wins
-      await store.markRegisteredFromBackend(fp, server.name);
-      expect((await store.get(fp))!.action).toBe("registered");
+      await store.markFromBackend(ORG_A, fp, server.name, "registered");
+      expect((await store.get(ORG_A, fp))!.action).toBe("registered");
     });
 
     it("preserves firstSeenAt and disabledPath from existing entry", async () => {
@@ -312,17 +346,16 @@ describe("seenServersStore", () => {
       const server = makeServer("preserved-server");
       const fp = getServerFingerprint(server);
 
-      await store.markSeen(server, "quarantined", {
+      await store.markSeen(ORG_A, server, "quarantined", {
         disabledPath: "/tmp/disabled/foo.json",
         quarantinedAt: "2025-01-01T00:00:00Z",
       });
-      const before = (await store.get(fp))!;
+      const before = (await store.get(ORG_A, fp))!;
 
-      // Wait a tick so actionAt would differ
       await new Promise((r) => setTimeout(r, 5));
-      await store.markRegisteredFromBackend(fp, server.name);
+      await store.markFromBackend(ORG_A, fp, server.name, "registered");
 
-      const after = (await store.get(fp))!;
+      const after = (await store.get(ORG_A, fp))!;
       expect(after.firstSeenAt).toBe(before.firstSeenAt);
       expect(after.disabledPath).toBe("/tmp/disabled/foo.json");
       expect(after.quarantinedAt).toBe("2025-01-01T00:00:00Z");
@@ -336,12 +369,41 @@ describe("seenServersStore", () => {
       const server = makeServer("local-name");
       const fp = getServerFingerprint(server);
 
-      await store.markSeen(server, "quarantined");
-      // Backend reports a different name (e.g. an org-renamed server) - keep
-      // the local name since the existing entry has the more accurate context.
-      await store.markRegisteredFromBackend(fp, "backend-name");
+      await store.markSeen(ORG_A, server, "quarantined");
+      await store.markFromBackend(ORG_A, fp, "backend-name", "registered");
 
-      expect((await store.get(fp))!.name).toBe("local-name");
+      expect((await store.get(ORG_A, fp))!.name).toBe("local-name");
+    });
+  });
+
+  describe("pruneForOrg", () => {
+    it("removes entries for the target org not in keep-set", async () => {
+      const storePath = join(testDir, "seen-prune.json");
+      const store = new SeenServersStore(storePath);
+      const keep = makeServer("keep");
+      const drop = makeServer("drop");
+
+      await store.markSeen(ORG_A, keep, "registered");
+      await store.markSeen(ORG_A, drop, "requested");
+
+      await store.pruneForOrg(
+        ORG_A,
+        new Set([getServerFingerprint(keep)]),
+      );
+
+      expect(await store.hasSeen(ORG_A, keep)).toBe(true);
+      expect(await store.hasSeen(ORG_A, drop)).toBe(false);
+    });
+
+    it("leaves entries for other orgs untouched", async () => {
+      const storePath = join(testDir, "seen-prune-other-org.json");
+      const store = new SeenServersStore(storePath);
+      const server = makeServer("other-org-server");
+
+      await store.markSeen(ORG_B, server, "registered");
+      await store.pruneForOrg(ORG_A, new Set());
+
+      expect(await store.hasSeen(ORG_B, server)).toBe(true);
     });
   });
 });

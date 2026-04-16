@@ -9,12 +9,11 @@ import {
   getCursorPluginsInstalledPaths,
   getCursorPluginMcpPaths,
   getCursorPluginCachePath,
-  isCursorPluginActive,
   getClaudeCodeProjectMcpPaths
 } from './mcpProjectPaths'
 
 // Re-export so callers don't need to know about the split
-export { getCursorWorkspaceStoragePath, getCursorProjectMcpPaths, getCursorPluginsInstalledPath, getCursorPluginsInstalledPaths, getCursorPluginMcpPaths, getCursorPluginCachePath, isCursorPluginActive, getClaudeCodeProjectMcpPaths }
+export { getCursorWorkspaceStoragePath, getCursorProjectMcpPaths, getCursorPluginsInstalledPath, getCursorPluginsInstalledPaths, getCursorPluginMcpPaths, getCursorPluginCachePath, getClaudeCodeProjectMcpPaths }
 export { getServerFingerprint } from './seenServersStore'
 export { getClaudeCoworkConfigPath, parseClaudeCoworkConfig } from './mcpDiscoveryCowork'
 export { getCursorStateDbPath, getCursorProjectsDir, discoverCursorMarketplaceMcps } from './mcpDiscoveryCursorMarketplace'
@@ -97,6 +96,28 @@ export interface DiscoveredMcpServer {
 /** Check whether a server config is opaque (IDE-managed, no accessible launch config). */
 export function isOpaqueConfig(config: McpServerConfig): boolean {
   return 'type' in config && config.type === 'opaque'
+}
+
+/**
+ * Human-readable explanation of why a server was classified as unsupported.
+ * Returns null for supported servers.
+ *
+ * All opaque configs today come from IDE state databases or per-project metadata
+ * files that don't expose a launch command - so the text is keyed on source/client
+ * rather than requiring callers to thread a reason string through synthesis.
+ */
+export function describeUnsupportedReason(server: DiscoveredMcpServer): string | null {
+  if (!isOpaqueConfig(server.config)) return null
+  if (server.client === 'cursor' && server.source === 'marketplace') {
+    return 'Cursor marketplace plugin: only SERVER_METADATA.json is exposed (no launch config)'
+  }
+  if ((server.client === 'vscode' || server.client === 'claude-desktop') && server.source === 'marketplace') {
+    return 'VS Code-style extension-managed server: state DB exposes no launch URL or command'
+  }
+  if (server.source === 'marketplace') {
+    return `${server.client} marketplace install exposes no launch config`
+  }
+  return 'Opaque config (no launch command or URL surfaced by the host)'
 }
 
 // VS Code specific file locations (macOS first pass). We keep this in a function so
@@ -386,12 +407,18 @@ async function discoverCursor(): Promise<DiscoveredMcpServer[]> {
   }
 
   // Plugin-bundled MCP servers: ~/.cursor/plugins/cache/<marketplace>/<plugin>/<sha>/mcp.json
-  // Only include plugins that have at least one active (non-disabled) project installation.
+  // Include every plugin whose cache mcp.json exists, even if Cursor hasn't
+  // finished writing the project-side entry yet. We deliberately do NOT wait
+  // for a matching projects/<proj>/mcps/plugin-<name>/ dir: Cursor's install is
+  // a two-phase write (cache first, projects second), so gating on both would
+  // hide a freshly-installed plugin from quarantine until the next rescan tick
+  // that happens to fall after phase 2. Quarantine is already best-effort on
+  // both sides (mcpQuarantineCursorPlugins.quarantineCursorPlugin moves
+  // whichever dirs happen to exist at the time, ignoring missing ones).
   const pluginMcpPaths = await getCursorPluginMcpPaths()
   for (const mcpPath of pluginMcpPaths) {
     try {
       await fs.access(mcpPath)
-      if (!(await isCursorPluginActive(mcpPath))) continue
       const servers = await parseCursorMcpJson(mcpPath, 'plugin')
       results.push(...servers)
     } catch {

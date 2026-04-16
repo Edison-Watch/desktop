@@ -592,13 +592,17 @@ export default function EncryptionStep({
                   )}
 
                   {scanResult.submitted > scanResult.autoApproved && (
-                    <button
-                      type="button"
-                      className="mt-1 text-[var(--accent)] hover:underline text-left"
-                      onClick={() => window.api.shell.openExternal(apiBaseUrl)}
-                    >
-                      Open Dashboard to approve
-                    </button>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">
+                      Your submitted servers are pending administrator approval before they can be used.{" "}
+                      <button
+                        type="button"
+                        className="text-[var(--accent)] hover:underline"
+                        onClick={() => window.api.shell.openExternal(apiBaseUrl)}
+                      >
+                        Open the dashboard
+                      </button>
+                      {" "}to check the status of your submissions.
+                    </p>
                   )}
                 </div>
               )}

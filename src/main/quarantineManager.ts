@@ -7,6 +7,7 @@ import { quarantineServer } from "./mcpConfigActions";
 import { fetchUserRole } from "./mcpServerSubmit";
 import { fetchAutoQuarantineEnabled } from "./domainConfig";
 import { getApiBaseUrl, getCredentialsForEnv } from "./setupConfig";
+import { getCachedOrgId, refreshOrgIdFromBackend } from "./orgIdCache";
 
 const LOG_FILE = "/tmp/ew-startup.log";
 import { appendFileSync } from "fs";
@@ -73,17 +74,48 @@ async function startQuarantineMonitor(): Promise<void> {
 
     // Separate already-known servers (previously submitted/registered) from truly new ones.
     // Known servers are silently quarantined without a prompt - handles re-installs like Cursor plugins.
+    //
+    // Silent quarantine requires BOTH (a) the seen entry is scoped to the current
+    // org (so a 'requested' entry from a previous login can't silently quarantine
+    // here) AND (b) the action is registered/requested. When the org_id cache
+    // isn't warm yet we try to refresh it inline before falling back to prompting.
+    let currentOrgId = getCachedOrgId();
+    if (!currentOrgId) {
+      const apiBaseUrl = getApiBaseUrl();
+      const creds = getCredentialsForEnv();
+      if (apiBaseUrl && creds?.apiKey) {
+        currentOrgId = await refreshOrgIdFromBackend(apiBaseUrl, creds.apiKey);
+      }
+    }
     const newEvents: PendingQuarantineEvent[] = [];
     for (const event of pendingEvents) {
-      const seen = await getSharedSeenStore().get(event.fingerprint);
-      if (seen && (seen.action === "registered" || seen.action === "requested")) {
-        slog(`[Quarantine] Silently quarantining known server: ${event.server.name} (action=${seen.action})`);
+      const seen = currentOrgId
+        ? await getSharedSeenStore().get(currentOrgId, event.fingerprint)
+        : null;
+      slog(
+        `[Quarantine] decision for ${event.server.name} fp=${event.fingerprint}: ` +
+          `orgId=${currentOrgId ?? 'null'}, seen=${seen ? `{org=${seen.org_id}, action=${seen.action}}` : 'null'}`,
+      );
+      if (
+        currentOrgId &&
+        seen &&
+        seen.org_id === currentOrgId &&
+        (seen.action === "registered" || seen.action === "requested")
+      ) {
+        slog(`[Quarantine] → silently quarantining known server: ${event.server.name} (action=${seen.action})`);
         try {
           await quarantineServer(event.server);
         } catch (err) {
           slog(`[Quarantine] Failed to silently quarantine "${event.server.name}": ${err}`);
         }
       } else {
+        if (!currentOrgId) {
+          slog(`[Quarantine] → prompting (no cached org_id): "${event.server.name}"`);
+        } else if (!seen) {
+          slog(`[Quarantine] → prompting (no seen-store entry for this org+fp): "${event.server.name}"`);
+        } else {
+          slog(`[Quarantine] → prompting (seen action=${seen.action} isn't registered/requested): "${event.server.name}"`);
+        }
         newEvents.push(event);
       }
     }

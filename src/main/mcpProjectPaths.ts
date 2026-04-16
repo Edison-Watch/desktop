@@ -90,53 +90,6 @@ export function getCursorPluginCachePath(): string {
   return join(homedir(), '.cursor', 'plugins', 'cache')
 }
 
-/** Cursor projects directory (stores per-project MCP tool caches and plugin install state). */
-function getCursorProjectsDirLocal(): string {
-  return join(homedir(), '.cursor', 'projects')
-}
-
-/**
- * Check if a Cursor plugin (by cache mcp.json path) has at least one active
- * (non-disabled) project installation.
- *
- * A plugin at `cache/<marketplace>/<name>/<sha>/mcp.json` is considered active
- * if any `projects/<project>/mcps/plugin-<name>-<name>/` directory exists that
- * is NOT prefixed with `ew-disabled-`.
- */
-export async function isCursorPluginActive(cacheMcpPath: string): Promise<boolean> {
-  // Extract plugin name from cache path: .../cache/<marketplace>/<name>/<sha>/mcp.json
-  // Split on both / and \ so this works on Windows where path.join() uses backslashes
-  const parts = cacheMcpPath.split(/[/\\]/)
-  const cacheIdx = parts.indexOf('cache')
-  if (cacheIdx === -1 || cacheIdx + 2 >= parts.length) return true // can't determine - assume active
-
-  const pluginName = parts[cacheIdx + 2]
-  const prefixes = [
-    `plugin-${pluginName}-${pluginName}`,
-    `plugin-${parts[cacheIdx + 1]}-${pluginName}`,
-    `plugin-${pluginName}`,
-  ]
-
-  const projectsDir = getCursorProjectsDirLocal()
-  try {
-    const projectEntries = await fs.readdir(projectsDir, { withFileTypes: true })
-    for (const projDir of projectEntries) {
-      if (!projDir.isDirectory()) continue
-      const mcpsDir = join(projectsDir, projDir.name, 'mcps')
-      try {
-        const mcpEntries = await fs.readdir(mcpsDir, { withFileTypes: true })
-        for (const mcpDir of mcpEntries) {
-          if (!mcpDir.isDirectory()) continue
-          if (mcpDir.name.startsWith('ew-disabled-')) continue
-          if (prefixes.includes(mcpDir.name)) return true
-        }
-      } catch { /* mcps/ doesn't exist */ }
-    }
-  } catch { /* projects dir doesn't exist */ }
-
-  return false
-}
-
 /**
  * Scan installed Cursor plugins for bundled mcp.json files.
  *
@@ -181,6 +134,10 @@ export async function getCursorPluginMcpPaths(): Promise<string[]> {
 /**
  * Scan ~/.cursor/plugins/cache for mcp.json files.
  * Layout: cache/<marketplace>/<plugin_name>/<sha>/mcp.json
+ *
+ * Plugin directories prefixed with `ew-disabled-` are skipped: they're plugins
+ * we've already quarantined, and re-discovering them would feed a rename loop
+ * (each pass would prepend another `ew-disabled-` until ENAMETOOLONG).
  */
 async function scanCursorPluginCache(seen: Set<string>): Promise<void> {
   const cacheDir = getCursorPluginCachePath()
@@ -189,12 +146,14 @@ async function scanCursorPluginCache(seen: Set<string>): Promise<void> {
     const marketplaces = await fs.readdir(cacheDir, { withFileTypes: true })
     for (const mkt of marketplaces) {
       if (!mkt.isDirectory()) continue
+      if (mkt.name.startsWith('ew-disabled-')) continue
       const mktPath = join(cacheDir, mkt.name)
       try {
         // Level 2: plugin name directories (e.g. "datadog", "slack")
         const plugins = await fs.readdir(mktPath, { withFileTypes: true })
         for (const plugin of plugins) {
           if (!plugin.isDirectory()) continue
+          if (plugin.name.startsWith('ew-disabled-')) continue
           const pluginPath = join(mktPath, plugin.name)
           try {
             // Level 3: sha directories - pick the most recent one

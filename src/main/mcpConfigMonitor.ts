@@ -35,7 +35,7 @@ import { SeenServersStore } from './seenServersStore'
 const CLAUDE_HOME_JSON_PATH = getClaudeCodeHomeJsonPath()
 
 // quarantine retry constants removed - quarantine now happens in quarantineManager
-const DEFAULT_RESCAN_INTERVAL_MS = 60_000 // Safety-net rescan every 60s
+const DEFAULT_RESCAN_INTERVAL_MS = 20_000 // Safety-net rescan every 20s
 
 export interface DetectedServerChange {
   type: 'added' | 'removed' | 'modified'
@@ -214,7 +214,7 @@ export class McpConfigMonitor extends EventEmitter {
    * changes are still propagated via the 'serversQuarantined'/'serversChanged' events.
    */
   async forceRescan(): Promise<DetectedServerChange[]> {
-    return this.checkForChanges()
+    return this.checkForChanges('forceRescan')
   }
 
   /**
@@ -288,7 +288,7 @@ export class McpConfigMonitor extends EventEmitter {
 
     // Trigger a rescan to check the new paths
     if (addedPaths.length > 0) {
-      await this.checkForChanges()
+      await this.checkForChanges('addConfigPaths')
     }
 
     return addedPaths
@@ -330,7 +330,7 @@ export class McpConfigMonitor extends EventEmitter {
     this.rescanTimer = setInterval(async () => {
       if (!this.isRunning) return // guard against in-flight calls after stop()
       try {
-        await this.checkForChanges()
+        await this.checkForChanges('periodicRescan')
       } catch (err) {
         console.error('[McpConfigMonitor] Periodic rescan error:', err)
         this.emit('error', err instanceof Error ? err : new Error(String(err)))
@@ -479,7 +479,7 @@ export class McpConfigMonitor extends EventEmitter {
         if (entry?.triggersDynamicRescan === 'cursor-plugins') {
           await this.handleCursorPluginsInstalledChange()
         }
-        await this.checkForChanges()
+        await this.checkForChanges(`fileChange:${path}`)
       } catch (err) {
         console.error('[McpConfigMonitor] Error checking for changes:', err)
         this.emit('error', err)
@@ -542,10 +542,11 @@ export class McpConfigMonitor extends EventEmitter {
     }
   }
 
-  private async checkForChanges(): Promise<DetectedServerChange[]> {
+  private async checkForChanges(source: string = 'unknown'): Promise<DetectedServerChange[]> {
     if (this.isCheckingForChanges) {
       // A scan is already in progress - mark that another pass is needed so
       // file-change-triggered rescans aren't silently dropped.
+      mlog(`[Monitor] checkForChanges(${source}) - already in progress, marking pendingRescan`)
       this.pendingRescan = true
       return []
     }
@@ -557,7 +558,7 @@ export class McpConfigMonitor extends EventEmitter {
       // _checkForChangesImpl completes the loop continues until stop() clears the timer.
       do {
         this.pendingRescan = false
-        result = await this._checkForChangesImpl()
+        result = await this._checkForChangesImpl(source)
       } while (this.pendingRescan)
       return result
     } finally {
@@ -565,7 +566,7 @@ export class McpConfigMonitor extends EventEmitter {
     }
   }
 
-  private async _checkForChangesImpl(): Promise<DetectedServerChange[]> {
+  private async _checkForChangesImpl(source: string = 'unknown'): Promise<DetectedServerChange[]> {
     // Use raw (non-deduped) servers - quarantine handles each server individually.
     const { raw: currentServers } = await discoverMcpServers({ includeRaw: true })
     const currentMap = new Map<string, DiscoveredMcpServer>()
@@ -575,7 +576,7 @@ export class McpConfigMonitor extends EventEmitter {
       currentMap.set(fingerprint, server)
     }
 
-    mlog(`[Monitor] _checkForChangesImpl: discovered ${currentServers.length} servers, lastKnown=${this.lastKnownServers.size}`)
+    mlog(`[Monitor] _checkForChangesImpl(${source}): discovered ${currentServers.length} servers, lastKnown=${this.lastKnownServers.size}`)
     mlog(`[Monitor]   current: ${currentServers.map(s => `${s.name}@${s.client}`).join(', ')}`)
     mlog(`[Monitor]   lastKnown fingerprints: ${[...this.lastKnownServers.keys()].join(', ')}`)
     mlog(`[Monitor]   current fingerprints: ${[...currentMap.keys()].join(', ')}`)

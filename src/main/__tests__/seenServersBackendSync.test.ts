@@ -22,8 +22,16 @@ vi.mock("../setupConfig", () => ({
   getCredentialsForEnv: () => credentialsMock(),
 }));
 
+// Mock orgIdCache so the test controls what "the client thinks its org is"
+const cachedOrgIdMock = vi.fn<() => string | null>();
+const refreshOrgIdMock = vi.fn<() => Promise<string | null>>();
+vi.mock("../orgIdCache", () => ({
+  getCachedOrgId: () => cachedOrgIdMock(),
+  refreshOrgIdFromBackend: () => refreshOrgIdMock(),
+}));
+
 // Inject a real SeenServersStore pointed at a temp file by mocking
-// getSharedSeenStore - the helper just calls .markRegisteredFromBackend on it.
+// getSharedSeenStore - the helper just calls .markFromBackend / .pruneForOrg on it.
 import { SeenServersStore } from "../seenServersStore";
 let injectedStore: SeenServersStore;
 vi.mock("../seenServersStore", async () => {
@@ -41,6 +49,9 @@ import { syncRegisteredServersFromBackend } from "../seenServersBackendSync";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const ORG_A = "00000000-0000-0000-0000-00000000000a";
+const ORG_B = "00000000-0000-0000-0000-00000000000b";
 
 let testDir: string;
 
@@ -72,11 +83,15 @@ describe("syncRegisteredServersFromBackend", () => {
 
     apiBaseUrlMock.mockReset();
     credentialsMock.mockReset();
+    cachedOrgIdMock.mockReset();
+    refreshOrgIdMock.mockReset();
     apiBaseUrlMock.mockReturnValue("https://api.example.com");
     credentialsMock.mockReturnValue({
       apiKey: "edison_test_key",
       edisonSecretKey: "user:abc.admin:def",
     });
+    cachedOrgIdMock.mockReturnValue(ORG_A);
+    refreshOrgIdMock.mockResolvedValue(null);
   });
 
   afterEach(async () => {
@@ -84,14 +99,15 @@ describe("syncRegisteredServersFromBackend", () => {
     await cleanupDir(testDir);
   });
 
-  it("upserts each backend fingerprint as 'registered' in the local store", async () => {
+  it("upserts each backend fingerprint with the backend-supplied status", async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
+        org_id: ORG_A,
         fingerprints: [
-          { name: "reddit", fingerprint: "1111aaaa1111aaaa" },
-          { name: "datadog", fingerprint: "2222bbbb2222bbbb" },
+          { name: "reddit", fingerprint: "1111aaaa1111aaaa", status: "registered" },
+          { name: "datadog", fingerprint: "2222bbbb2222bbbb", status: "requested" },
         ],
       }),
     });
@@ -99,22 +115,56 @@ describe("syncRegisteredServersFromBackend", () => {
 
     await syncRegisteredServersFromBackend();
 
-    // Both entries should now be in the store as registered
-    const reddit = await injectedStore.get("1111aaaa1111aaaa");
-    const datadog = await injectedStore.get("2222bbbb2222bbbb");
+    const reddit = await injectedStore.get(ORG_A, "1111aaaa1111aaaa");
+    const datadog = await injectedStore.get(ORG_A, "2222bbbb2222bbbb");
     expect(reddit).not.toBeNull();
     expect(datadog).not.toBeNull();
     expect(reddit!.action).toBe("registered");
-    expect(datadog!.action).toBe("registered");
-    expect(reddit!.name).toBe("reddit");
-    expect(datadog!.name).toBe("datadog");
+    // Pending admin-review: the entry is still silent-quarantine-eligible,
+    // but classified as 'requested' to preserve the lifecycle distinction.
+    expect(datadog!.action).toBe("requested");
+    expect(reddit!.org_id).toBe(ORG_A);
+  });
+
+  it("does NOT prune a locally-requested server that is still pending in the backend", async () => {
+    // Real-world scenario: user submits datadog → admin leaves it pending →
+    // Cursor reinstalls the plugin → quarantine triggers sync. The backend
+    // returns datadog with status='requested'; the prune must NOT remove it.
+    await injectedStore.markSeen(ORG_A, {
+      name: "datadog",
+      client: "cursor",
+      source: "plugin",
+      path: "/tmp/datadog-mcp.json",
+      config: { command: "node", args: ["datadog.js"] },
+    }, "requested");
+    const fpDatadog = (await injectedStore.getAllForOrg(ORG_A))[0].fingerprint;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          org_id: ORG_A,
+          fingerprints: [
+            { name: "datadog", fingerprint: fpDatadog, status: "requested" },
+          ],
+        }),
+      }),
+    );
+
+    await syncRegisteredServersFromBackend();
+
+    const entry = await injectedStore.get(ORG_A, fpDatadog);
+    expect(entry).not.toBeNull();
+    expect(entry!.action).toBe("requested");
   });
 
   it("forwards Authorization and X-Edison-Secret-Key headers", async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ fingerprints: [] }),
+      json: async () => ({ org_id: ORG_A, fingerprints: [] }),
     });
     vi.stubGlobal("fetch", mockFetch);
 
@@ -134,7 +184,7 @@ describe("syncRegisteredServersFromBackend", () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ fingerprints: [] }),
+      json: async () => ({ org_id: ORG_A, fingerprints: [] }),
     });
     vi.stubGlobal("fetch", mockFetch);
 
@@ -149,8 +199,7 @@ describe("syncRegisteredServersFromBackend", () => {
   });
 
   it("silently no-ops on network error (preserves existing local state)", async () => {
-    // Pre-seed the store so we can prove the sync doesn't wipe anything on failure
-    await injectedStore.markRegisteredFromBackend("preserved-fp-1234", "preserved");
+    await injectedStore.markFromBackend(ORG_A, "preserved-fp-1234", "preserved", "registered");
 
     vi.stubGlobal(
       "fetch",
@@ -159,14 +208,13 @@ describe("syncRegisteredServersFromBackend", () => {
 
     await expect(syncRegisteredServersFromBackend()).resolves.toBeUndefined();
 
-    // Existing entry must still be there
-    const entry = await injectedStore.get("preserved-fp-1234");
+    const entry = await injectedStore.get(ORG_A, "preserved-fp-1234");
     expect(entry).not.toBeNull();
     expect(entry!.action).toBe("registered");
   });
 
   it("silently no-ops on non-2xx HTTP response", async () => {
-    await injectedStore.markRegisteredFromBackend("preserved-fp-5678", "preserved-2");
+    await injectedStore.markFromBackend(ORG_A, "preserved-fp-5678", "preserved-2", "registered");
 
     vi.stubGlobal(
       "fetch",
@@ -179,7 +227,7 @@ describe("syncRegisteredServersFromBackend", () => {
 
     await expect(syncRegisteredServersFromBackend()).resolves.toBeUndefined();
 
-    const entry = await injectedStore.get("preserved-fp-5678");
+    const entry = await injectedStore.get(ORG_A, "preserved-fp-5678");
     expect(entry).not.toBeNull();
     expect(entry!.action).toBe("registered");
   });
@@ -194,6 +242,40 @@ describe("syncRegisteredServersFromBackend", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  it("silently no-ops when no cached org_id", async () => {
+    cachedOrgIdMock.mockReturnValue(null);
+    const mockFetch = vi.fn();
+    vi.stubGlobal("fetch", mockFetch);
+
+    await syncRegisteredServersFromBackend();
+
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("refuses to apply when response org_id does not match cached org_id", async () => {
+    // Pre-seed an entry in ORG_A so we can prove it is NOT mutated
+    await injectedStore.markFromBackend(ORG_A, "existing-fp", "existing", "registered");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          org_id: ORG_B, // ← mismatch
+          fingerprints: [{ name: "evil", fingerprint: "evilevilevilevi" }],
+        }),
+      }),
+    );
+
+    await syncRegisteredServersFromBackend();
+
+    // ORG_A entry untouched, ORG_B entry NOT created
+    expect(await injectedStore.get(ORG_A, "existing-fp")).not.toBeNull();
+    expect(await injectedStore.get(ORG_A, "evilevilevilevi")).toBeNull();
+    expect(await injectedStore.get(ORG_B, "evilevilevilevi")).toBeNull();
+  });
+
   it("ignores malformed entries in the response", async () => {
     vi.stubGlobal(
       "fetch",
@@ -201,6 +283,7 @@ describe("syncRegisteredServersFromBackend", () => {
         ok: true,
         status: 200,
         json: async () => ({
+          org_id: ORG_A,
           fingerprints: [
             { name: "valid", fingerprint: "validfingerprint" },
             { name: "bad-no-fp" },
@@ -214,12 +297,39 @@ describe("syncRegisteredServersFromBackend", () => {
 
     await syncRegisteredServersFromBackend();
 
-    // Only the well-formed entry should land in the store
-    const valid = await injectedStore.get("validfingerprint");
+    const valid = await injectedStore.get(ORG_A, "validfingerprint");
     expect(valid).not.toBeNull();
     expect(valid!.action).toBe("registered");
 
     const all = await injectedStore.getAll();
     expect(all).toHaveLength(1);
+  });
+
+  it("prunes stale entries for the current org that are not in the response", async () => {
+    // Pre-seed two entries in ORG_A
+    await injectedStore.markFromBackend(ORG_A, "keepfp1234567890", "keep", "registered");
+    await injectedStore.markFromBackend(ORG_A, "dropfp1234567890", "drop", "requested");
+    // And one in ORG_B that must NOT be touched
+    await injectedStore.markFromBackend(ORG_B, "otherorgfp123456", "other", "registered");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          org_id: ORG_A,
+          // Only "keep" is still registered server-side
+          fingerprints: [{ name: "keep", fingerprint: "keepfp1234567890" }],
+        }),
+      }),
+    );
+
+    await syncRegisteredServersFromBackend();
+
+    expect(await injectedStore.get(ORG_A, "keepfp1234567890")).not.toBeNull();
+    expect(await injectedStore.get(ORG_A, "dropfp1234567890")).toBeNull();
+    // ORG_B entry MUST survive the ORG_A prune
+    expect(await injectedStore.get(ORG_B, "otherorgfp123456")).not.toBeNull();
   });
 });

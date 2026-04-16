@@ -24,19 +24,33 @@ import {
 
 const CURSOR_PLUGIN_DISABLED_PREFIX = 'ew-disabled-'
 
+/**
+ * Strip any number of leading `ew-disabled-` prefixes from a segment. Defense
+ * against a feedback loop where a quarantined path leaks into rediscovery and
+ * the next quarantine round would double-prefix (`ew-disabled-ew-disabled-X`).
+ */
+function stripDisabledPrefix(segment: string): string {
+  let s = segment
+  while (s.startsWith(CURSOR_PLUGIN_DISABLED_PREFIX)) {
+    s = s.slice(CURSOR_PLUGIN_DISABLED_PREFIX.length)
+  }
+  return s
+}
+
 function deriveCursorPluginDirPrefixes(server: DiscoveredMcpServer): string[] {
   const parts = splitPath(server.path)
   const cacheIdx = parts.indexOf('cache')
   if (cacheIdx !== -1 && cacheIdx + 2 < parts.length) {
-    const marketplace = parts[cacheIdx + 1]
-    const pluginName = parts[cacheIdx + 2]
+    const marketplace = stripDisabledPrefix(parts[cacheIdx + 1])
+    const pluginName = stripDisabledPrefix(parts[cacheIdx + 2])
     return [
       `plugin-${pluginName}-${pluginName}`,
       `plugin-${marketplace}-${pluginName}`,
       `plugin-${pluginName}`,
     ]
   }
-  return [`plugin-${server.name}-${server.name}`, `plugin-${server.name}`]
+  const name = stripDisabledPrefix(server.name)
+  return [`plugin-${name}-${name}`, `plugin-${name}`]
 }
 
 /**
@@ -49,6 +63,15 @@ function deriveCursorPluginDirPrefixes(server: DiscoveredMcpServer): string[] {
 export async function quarantineCursorPlugin(
   server: DiscoveredMcpServer
 ): Promise<QuarantineResult | null> {
+  // Already-quarantined short-circuit: if the path contains an ew-disabled-
+  // segment, this plugin is already in quarantine state and re-running would
+  // either no-op or (worse) double-prefix and eventually hit ENAMETOOLONG.
+  const pathParts = splitPath(server.path)
+  if (pathParts.some((p) => p.startsWith(CURSOR_PLUGIN_DISABLED_PREFIX))) {
+    console.log(`[MCP Quarantine] Skipping "${server.name}" - path already contains ew-disabled-: ${server.path}`)
+    return null
+  }
+
   const projectsDir = getCursorProjectsDir()
   const prefixes = deriveCursorPluginDirPrefixes(server)
   const quarantinedAt = new Date().toISOString()

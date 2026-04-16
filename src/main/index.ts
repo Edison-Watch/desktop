@@ -38,6 +38,7 @@ import { showFeedbackWindow } from "./feedbackWindow";
 import { showServerRegistrationDialog } from "./mcpServerActionDialog";
 import { showUpdateKeysWindow } from "./updateKeysWindow";
 import { fetchUserRole } from "./mcpServerSubmit";
+import { warmOrgIdCacheOnStartup } from "./orgIdCache";
 import { applyAppIntegrations, findAppsMissingClientTag, findAppsNeedingReRegistration } from "./mcpConfigWriter";
 import {
   initQuarantineManager,
@@ -717,6 +718,8 @@ app.whenReady().then(async () => {
     // Await hook injection before quarantine monitor to avoid config file races
     await injectAllHooks().catch((err) => console.error("[HookInjection] Failed:", err));
     startUpdateChecker();
+
+    await warmOrgIdCacheOnStartup();
     startQuarantineMonitorIfEnabled().catch((err) => console.error("[Quarantine] Failed:", err));
     startQuarantinePolling();
 

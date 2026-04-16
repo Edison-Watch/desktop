@@ -9,7 +9,7 @@ import { promises as fs } from "fs";
 import { homedir } from "os";
 import { resolve, sep } from "path";
 
-import { discoverMcpServers } from "./mcpDiscovery";
+import { discoverMcpServers, describeUnsupportedReason } from "./mcpDiscovery";
 import type { DiscoveredMcpServer, McpClientId, McpServerConfig } from "./mcpDiscovery";
 import { removeServerFromConfig, quarantineCursorPlugin } from "./mcpConfigActions";
 import { fetchUserRole, submitServerRequest, submitServerWithOverrides, approveServerRequest } from "./mcpServerSubmit";
@@ -20,6 +20,35 @@ import { applyAppIntegrations } from "./mcpConfigWriter";
 import { deduplicateServers, findDuplicateGroups, buildRemovalMap } from "./serverDeduplication";
 import { DRY_RUN, getApiBaseUrl, getSetupData, getCredentialsForEnv } from "./setupConfig";
 import { getSharedSeenStore } from "./seenServersStore";
+import { getCachedOrgId, refreshOrgIdFromBackend } from "./orgIdCache";
+
+/**
+ * Get the caller's org_id for seen-store writes. Uses the cache if populated;
+ * otherwise forces an inline refresh from the backend.
+ *
+ * Accepts explicit apiBaseUrl/apiKey so the ONBOARDING flow works - during
+ * onboarding getCredentialsForEnv() still returns null (keychain not written
+ * yet) but the caller already has the apiKey from IPC params or setup data.
+ * After onboarding both cached-creds and explicit-creds paths converge.
+ */
+async function getOrRefreshOrgId(
+  apiBaseUrl: string | null | undefined,
+  apiKey: string | null | undefined,
+): Promise<string | null> {
+  const cached = getCachedOrgId();
+  if (cached) {
+    console.log(`[mcp:submit] org_id cache hit: ${cached}`);
+    return cached;
+  }
+  if (!apiBaseUrl || !apiKey) {
+    console.warn(`[mcp:submit] org_id cache miss and no apiBaseUrl/apiKey available to refresh`);
+    return null;
+  }
+  console.log(`[mcp:submit] org_id cache miss - refreshing from ${apiBaseUrl}`);
+  const orgId = await refreshOrgIdFromBackend(apiBaseUrl, apiKey);
+  if (!orgId) console.warn(`[mcp:submit] org_id refresh returned null - /user/profile is missing org_id`);
+  return orgId;
+}
 
 /** Remove or disable a server from its config. Cursor plugins are disabled via project dir renames. */
 async function removeOrDisableServer(server: DiscoveredMcpServer): Promise<void> {
@@ -51,7 +80,14 @@ function getCachedDiscovery() {
 export function registerMcpSubmitHandlers(): void {
   ipcMain.handle("mcp:discover", async () => {
     const { servers, unsupported } = await runDiscovery();
-    console.log("[mcp:discover] Found", servers.length, "servers,", unsupported.length, "unsupported");
+    console.log(`[mcp:discover] Found ${servers.length} servers, ${unsupported.length} unsupported`);
+    for (const s of servers) {
+      console.log(`[mcp:discover]   supported: ${s.name}@${s.client} source=${s.source} path=${s.path}`);
+    }
+    for (const s of unsupported) {
+      const reason = describeUnsupportedReason(s) ?? 'unknown';
+      console.log(`[mcp:discover]   unsupported: ${s.name}@${s.client} source=${s.source} path=${s.path} reason=${reason}`);
+    }
     return { servers, unsupported };
   });
 
@@ -118,8 +154,17 @@ export function registerMcpSubmitHandlers(): void {
         try { await approveServerRequest(result.request_id, apiBaseUrl, apiKey); wasAutoApproved = true; } catch { /* non-fatal */ }
       }
 
-      // Mark in seen store so quarantine recognises it as known
-      try { await getSharedSeenStore().markSeen(server, wasAutoApproved ? "registered" : "requested"); } catch { /* non-fatal */ }
+      // Mark in seen store so quarantine recognises it as known.
+      // Skipped silently if we don't yet know the caller's org_id - the next
+      // sync/rescan will reach the user via the dialog path instead of silent quarantine.
+      {
+        const orgId = await getOrRefreshOrgId(apiBaseUrl, apiKey);
+        if (orgId) {
+          try { await getSharedSeenStore().markSeen(orgId, server, wasAutoApproved ? "registered" : "requested"); } catch { /* non-fatal */ }
+        } else {
+          console.warn(`[mcp:submit] No org_id available - "${server.name}" won't be marked as seen; next detection will prompt.`);
+        }
+      }
 
       // Remove from all agent configs if still present (using original name, not renamed)
       const entriesToRemove = rawEntries.length > 0 ? rawEntries : [server];
@@ -370,7 +415,14 @@ export function registerMcpSubmitHandlers(): void {
         }
 
         // Mark in seen store so quarantine recognises it as known
-        try { await getSharedSeenStore().markSeen(server, wasAutoApproved ? "registered" : "requested"); } catch { /* non-fatal */ }
+        {
+          const orgId = await getOrRefreshOrgId(apiBaseUrl, apiKey);
+          if (orgId) {
+            try { await getSharedSeenStore().markSeen(orgId, server, wasAutoApproved ? "registered" : "requested"); } catch { /* non-fatal */ }
+          } else {
+            console.warn(`[mcp:submit] No org_id available - "${server.name}" won't be marked as seen; next detection will prompt.`);
+          }
+        }
 
         // Remove from ALL agent configs, not just the first
         const rawEntries = removalMap.get(server.name) ?? [server];
@@ -467,7 +519,14 @@ export function registerMcpSubmitHandlers(): void {
         }
 
         // Mark in seen store so quarantine recognises it as known
-        try { await getSharedSeenStore().markSeen(server, wasAutoApproved ? "registered" : "requested"); } catch { /* non-fatal */ }
+        {
+          const orgId = await getOrRefreshOrgId(apiBaseUrl, apiKey);
+          if (orgId) {
+            try { await getSharedSeenStore().markSeen(orgId, server, wasAutoApproved ? "registered" : "requested"); } catch { /* non-fatal */ }
+          } else {
+            console.warn(`[mcp:submit] No org_id available - "${server.name}" won't be marked as seen; next detection will prompt.`);
+          }
+        }
 
         // Remove from ALL agent configs, not just the first
         const rawEntries = removalMap.get(server.name) ?? [server];
@@ -565,7 +624,14 @@ export function registerMcpSubmitHandlers(): void {
 
     // Mark in seen store so quarantine recognises it as known
     const seenAction = autoApproved ? "registered" : "requested";
-    try { await getSharedSeenStore().markSeen(server, seenAction as "registered" | "requested"); } catch { /* non-fatal */ }
+    {
+      const orgId = await getOrRefreshOrgId(apiBaseUrl, apiKey);
+      if (orgId) {
+        try { await getSharedSeenStore().markSeen(orgId, server, seenAction as "registered" | "requested"); } catch { /* non-fatal */ }
+      } else {
+        console.warn(`[mcp:submit] No org_id available - "${server.name}" won't be marked as seen; next detection will prompt.`);
+      }
+    }
 
     // Remove server from config after successful submission
     try { await removeOrDisableServer(server); } catch { /* non-fatal - quarantine manager handles fallback */ }
