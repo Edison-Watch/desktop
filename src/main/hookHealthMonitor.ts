@@ -170,6 +170,7 @@ async function runStatusCheck(): Promise<void> {
   const missing: HookStatusEntry[] = []
 
   for (const last of lastKnownStatus) {
+    if (!last.hooksApplicable) continue
     if (!last.installed || !last.hasHook) continue
     const cur = prevMap.get(last.client)
     if (cur?.installed && !cur.hasHook) {

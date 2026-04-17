@@ -589,7 +589,7 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
   const claudeDesktopMcpConfigured = claudeDesktopInstalled
     ? await checkMcpEntry(claudeDesktopConfigPath, 'mcpServers', expectedMcpUrl ?? null)
     : false
-  results.push({ client: 'claude-desktop', installed: claudeDesktopInstalled, hasHook: true, hookCount: 0, totalHooks: 0, mcpConnected: claudeDesktopMcpConfigured && mcpServerAlive, mcpConfigured: claudeDesktopMcpConfigured, mcpApplicable: true, hooksApplicable: false })
+  results.push({ client: 'claude-desktop', installed: claudeDesktopInstalled, hasHook: false, hookCount: 0, totalHooks: 0, mcpConnected: claudeDesktopMcpConfigured && mcpServerAlive, mcpConfigured: claudeDesktopMcpConfigured, mcpApplicable: true, hooksApplicable: false })
 
   // Claude Cowork (shares config file with Desktop; detected by vm_bundles/ dir)
   const claudeCoworkConfigPath = getClaudeCoworkConfigPath()
@@ -598,7 +598,7 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
   const claudeCoworkMcpConfigured = claudeCoworkInstalled
     ? await checkMcpEntry(claudeCoworkConfigPath, 'mcpServers', expectedMcpUrl ?? null)
     : false
-  results.push({ client: 'claude-cowork', installed: claudeCoworkInstalled, hasHook: true, hookCount: 0, totalHooks: 0, mcpConnected: claudeCoworkMcpConfigured && mcpServerAlive, mcpConfigured: claudeCoworkMcpConfigured, mcpApplicable: true, hooksApplicable: false })
+  results.push({ client: 'claude-cowork', installed: claudeCoworkInstalled, hasHook: false, hookCount: 0, totalHooks: 0, mcpConnected: claudeCoworkMcpConfigured && mcpServerAlive, mcpConfigured: claudeCoworkMcpConfigured, mcpApplicable: true, hooksApplicable: false })
 
   // Zed (MCP servers live under assistant.mcp_servers in settings.json)
   const zedConfigPath = getZedConfigPath()
@@ -606,7 +606,7 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
   const zedMcpConfigured = zedInstalled
     ? await checkZedMcpEntry(zedConfigPath, expectedMcpUrl ?? null)
     : false
-  results.push({ client: 'zed', installed: zedInstalled, hasHook: true, hookCount: 0, totalHooks: 0, mcpConnected: zedMcpConfigured && mcpServerAlive, mcpConfigured: zedMcpConfigured, mcpApplicable: true, hooksApplicable: false })
+  results.push({ client: 'zed', installed: zedInstalled, hasHook: false, hookCount: 0, totalHooks: 0, mcpConnected: zedMcpConfigured && mcpServerAlive, mcpConfigured: zedMcpConfigured, mcpApplicable: true, hooksApplicable: false })
 
   // JetBrains IDEs (IntelliJ, PyCharm, WebStorm) - scan for version-specific config dirs
   // Installation is detected by IDE preferences folder existence + app bundle check;
@@ -625,7 +625,7 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
         }
       }
     }
-    results.push({ client: jbClient, installed: jbInstalled, hasHook: true, hookCount: 0, totalHooks: 0, mcpConnected: jbMcpConfigured && mcpServerAlive, mcpConfigured: jbMcpConfigured, mcpApplicable: true, hooksApplicable: false })
+    results.push({ client: jbClient, installed: jbInstalled, hasHook: false, hookCount: 0, totalHooks: 0, mcpConnected: jbMcpConfigured && mcpServerAlive, mcpConfigured: jbMcpConfigured, mcpApplicable: true, hooksApplicable: false })
   }
 
   return results
