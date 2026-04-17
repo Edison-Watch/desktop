@@ -1,8 +1,12 @@
 import { promises as fs } from 'fs'
 import { existsSync } from 'fs'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import { dirname, basename, join } from 'path'
 import * as jsonc from 'jsonc-parser'
 import type { DiscoveredMcpServer, McpServerConfig, McpClientId } from './mcpDiscovery'
+
+const execFileAsync = promisify(execFile)
 import { getAllConfigEntries, buildEntryMap } from './mcpConfigPaths'
 import {
   quarantineMarketplaceServer,
@@ -457,6 +461,25 @@ export async function quarantineServer(server: DiscoveredMcpServer): Promise<Qua
   // Cursor plugin servers - quarantine by renaming plugin dirs in projects/
   if (server.source === 'plugin' && server.client === 'cursor') {
     return quarantineCursorPlugin(server)
+  }
+  // Claude Code project-scoped servers live in ~/.claude.json's nested
+  // projects[path].mcpServers block. Use `claude mcp remove` CLI to remove
+  // them instead of editing the file directly - Claude Code owns that file
+  // and the CLI handles the nested lookup correctly.
+  if (server.client === 'claude-code' && server.source === 'project' && server.projectName) {
+    const configKey = server.originalName ?? server.name
+    const quarantinedAt = new Date().toISOString()
+    console.log(`[MCP Quarantine] Removing Claude Code project-scoped server "${configKey}" via CLI (project=${server.projectName})`)
+    try {
+      await execFileAsync('claude', ['mcp', 'remove', configKey], {
+        timeout: 10_000,
+        cwd: server.projectName,
+      })
+      console.log(`[MCP Quarantine] Removed "${configKey}" via claude mcp remove`)
+    } catch (err) {
+      console.warn(`[MCP Quarantine] claude mcp remove failed for "${configKey}": ${err}`)
+    }
+    return { server, originalPath: server.path, disabledPath: '', quarantinedAt }
   }
   const originalPath = server.path
   const disabledPath = getDisabledConfigPath(originalPath)

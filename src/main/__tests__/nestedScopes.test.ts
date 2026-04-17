@@ -32,6 +32,14 @@ vi.mock("../mcpQuarantineSqlite", () => ({
   restoreAllMarketplaceServers: vi.fn().mockResolvedValue({ restored: 0, errors: [] }),
 }));
 
+// Mock child_process so `claude mcp remove` doesn't actually run
+const execFileMock = vi.fn((_cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null, stdout: string, stderr: string) => void) => {
+  cb(null, "", "");
+});
+vi.mock("child_process", () => ({
+  execFile: (...args: unknown[]) => execFileMock(...args as Parameters<typeof execFileMock>),
+}));
+
 import {
   resolveServersMap,
   removeServerFromConfig,
@@ -485,12 +493,14 @@ describe("nested scopes (project + profile)", () => {
   // quarantineServer
   // --------------------------------------------------------------------------
   describe("quarantineServer", () => {
-    it("quarantines a project-scoped server from .claude.json", async () => {
+    it("quarantines a project-scoped server from .claude.json via CLI", async () => {
+      execFileMock.mockClear();
       const filePath = await writeJson(testDir, "claude.json", makeClaudeHomeJson());
       const server = makeServer({
         name: "proj-a-server",
         path: filePath,
         source: "project",
+        client: "claude-code",
         projectName: "/Users/me/work/project-a",
         config: { type: "sse", url: "http://localhost:4000/a/sse" } as McpServerConfig,
       });
@@ -500,18 +510,17 @@ describe("nested scopes (project + profile)", () => {
       expect(result).not.toBeNull();
       expect(result!.originalPath).toBe(filePath);
 
-      // Verify server was removed from original config
+      // Verify CLI was called instead of direct file edit
+      expect(execFileMock).toHaveBeenCalledOnce();
+      const [cmd, args, opts] = execFileMock.mock.calls[0];
+      expect(cmd).toBe("claude");
+      expect(args).toEqual(["mcp", "remove", "proj-a-server"]);
+      expect(opts).toMatchObject({ cwd: "/Users/me/work/project-a" });
+
+      // Original config should NOT have been modified (CLI handles removal)
       const config = await readJson(filePath);
       const projA = (config.projects as any)["/Users/me/work/project-a"];
-      expect(projA.mcpServers["proj-a-server"]).toBeUndefined();
-      // Other entries should remain
-      expect(projA.mcpServers["shared"]).toBeDefined();
-
-      // Verify server was added to disabled file
-      const disabledPath = result!.disabledPath;
-      const disabled = await readJson(disabledPath);
-      expect((disabled.servers as any)["proj-a-server"]).toBeDefined();
-      expect((disabled.servers as any)["proj-a-server"].originalFile).toBe(filePath);
+      expect(projA.mcpServers["proj-a-server"]).toBeDefined();
     });
 
     it("quarantines a profile-scoped server from settings.json", async () => {

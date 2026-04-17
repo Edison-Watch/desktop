@@ -23,16 +23,12 @@ import {
   getCursorProjectMcpPaths,
   getCursorPluginMcpPaths,
   getClaudeCodeProjectMcpPaths,
-  getClaudeCodeHomeJsonPath,
   getServerFingerprint,
   type DiscoveredMcpServer,
   type McpClientId
 } from './mcpDiscovery'
 import { SeenServersStore } from './seenServersStore'
 // quarantineServer import removed - quarantine now happens in quarantineManager after dialog
-
-// Cache static paths that only depend on homedir() (which doesn't change at runtime)
-const CLAUDE_HOME_JSON_PATH = getClaudeCodeHomeJsonPath()
 
 // quarantine retry constants removed - quarantine now happens in quarantineManager
 const DEFAULT_RESCAN_INTERVAL_MS = 20_000 // Safety-net rescan every 20s
@@ -509,18 +505,6 @@ export class McpConfigMonitor extends EventEmitter {
         continue
       }
 
-      // Skip project-scoped MCPs from ~/.claude.json
-      if (server.source === 'project' && server.path === CLAUDE_HOME_JSON_PATH) {
-        console.log(`[McpConfigMonitor] Skipping ~/.claude.json project-scoped server on startup: ${server.name}`)
-        continue
-      }
-
-      // Skip Cursor project-scope MCPs
-      if (server.source === 'project' && server.client === 'cursor') {
-        console.log(`[McpConfigMonitor] Skipping Cursor project-scoped server on startup: ${server.name} (${server.path})`)
-        continue
-      }
-
       // Don't quarantine yet - let user submit first, quarantine on success/dismiss
       console.log(`[McpConfigMonitor] Server pending quarantine on startup: ${server.name}`)
       pendingEvents.push({ server, fingerprint })
@@ -629,18 +613,6 @@ export class McpConfigMonitor extends EventEmitter {
       // Skip opaque servers (IDE-managed MCPs with no accessible config - e.g. Cursor marketplace).
       if (isOpaqueConfig(server.config)) {
         console.log(`[McpConfigMonitor] Skipping opaque server (IDE-managed): ${server.name}`)
-        continue
-      }
-
-      // Skip project-scoped MCPs from ~/.claude.json
-      if (server.source === 'project' && server.path === CLAUDE_HOME_JSON_PATH) {
-        mlog(`[Monitor] Skipping ~/.claude.json project-scoped server: ${server.name}`)
-        continue
-      }
-
-      // Skip Cursor project-scope MCPs
-      if (server.source === 'project' && server.client === 'cursor') {
-        mlog(`[Monitor] Skipping Cursor project-scoped server: ${server.name} (${server.path})`)
         continue
       }
 

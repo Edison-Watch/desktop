@@ -5,9 +5,13 @@
  */
 
 import { app, ipcMain } from "electron";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { promises as fs } from "fs";
 import { homedir } from "os";
 import { resolve, sep } from "path";
+
+const execFileAsync = promisify(execFile);
 
 import { discoverMcpServers, describeUnsupportedReason } from "./mcpDiscovery";
 import type { DiscoveredMcpServer, McpClientId, McpServerConfig } from "./mcpDiscovery";
@@ -50,10 +54,19 @@ async function getOrRefreshOrgId(
   return orgId;
 }
 
-/** Remove or disable a server from its config. Cursor plugins are disabled via project dir renames. */
+/** Remove or disable a server from its config. Cursor plugins are disabled via project dir renames.
+ *  Claude Code project-scoped servers are removed via `claude mcp remove` CLI. */
 async function removeOrDisableServer(server: DiscoveredMcpServer): Promise<void> {
   if (server.source === 'plugin' && server.client === 'cursor') {
     await quarantineCursorPlugin(server);
+  } else if (server.client === 'claude-code' && server.source === 'project' && server.projectName) {
+    const name = server.originalName ?? server.name;
+    console.log(`[MCP Config] Removing Claude Code project-scoped server "${name}" via CLI (project=${server.projectName})`);
+    await execFileAsync('claude', ['mcp', 'remove', name], {
+      timeout: 10_000,
+      cwd: server.projectName,
+    });
+    console.log(`[MCP Config] Removed "${name}" via claude mcp remove`);
   } else {
     await removeServerFromConfig(server);
   }
