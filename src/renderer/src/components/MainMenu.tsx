@@ -4,8 +4,9 @@ import { supabase } from "@edison/shared/auth";
 import { clearCachedSecretKey } from "@edison/shared/crypto";
 import edisonIcon from "../assets/edison-icon.png";
 import ClientsView from "./ClientsView";
+import MyMcpsView from "./MyMcpsView";
 
-type MenuTab = "home" | "clients";
+type MenuTab = "home" | "clients" | "my-mcps";
 
 interface SetupData {
   completed?: boolean;
@@ -210,6 +211,7 @@ export default function MainMenu(): React.ReactNode {
           <div className="flex gap-1 border-b border-[var(--border)] -mx-1">
             {([
               { key: "home" as const, label: "Home", icon: "M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" },
+              { key: "my-mcps" as const, label: "My MCPs", icon: "M4 5a1 1 0 011-1h14a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM8 6.5h.01M8 16.5h.01" },
               { key: "clients" as const, label: "Clients", icon: "M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" },
             ]).map((tab) => (
               <button
@@ -217,8 +219,9 @@ export default function MainMenu(): React.ReactNode {
                 type="button"
                 onClick={() => {
                   setActiveTab(tab.key);
-                  // Resize window for clients tab (taller to fit list)
-                  const height = tab.key === "clients" ? 749 : (setupData.mcpBaseUrl && setupData.apiKey ? 605 : 547);
+                  // Resize window for list-heavy tabs (taller to fit list)
+                  const needsTallWindow = tab.key === "clients" || tab.key === "my-mcps";
+                  const height = needsTallWindow ? 749 : (setupData.mcpBaseUrl && setupData.apiKey ? 605 : 547);
                   window.api.menu.resizeWindow(461, height);
                 }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium border-b-2 -mb-px transition-colors ${
@@ -236,6 +239,8 @@ export default function MainMenu(): React.ReactNode {
           </div>
 
           {activeTab === "clients" && <ClientsView />}
+
+          {activeTab === "my-mcps" && <MyMcpsView />}
 
           {activeTab === "home" && (<>
           {/* Account switcher */}
