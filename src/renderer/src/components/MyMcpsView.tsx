@@ -16,22 +16,29 @@ interface ServerSummary {
   config_warnings: string[]
 }
 
-type ServerStatus = 'active' | 'needs-config' | 'user-disabled' | 'disabled'
+type ServerStatus = 'active' | 'unverified' | 'needs-config' | 'user-disabled' | 'disabled'
+
+function isUnverified(s: ServerSummary): boolean {
+  return s.enabled && s.user_enabled !== false && !s.needs_config && !s.is_builtin && s.tool_count === 0
+}
 
 function getServerStatus(s: ServerSummary): ServerStatus {
   if (!s.enabled) return 'disabled'
   if (s.user_enabled === false) return 'user-disabled'
   if (s.needs_config) return 'needs-config'
+  if (isUnverified(s)) return 'unverified'
   return 'active'
 }
 
 // Sort priority: active first (the green, working servers the user cares
-// about), then needs-config, then user-disabled, then admin-disabled last.
+// about), then unverified and needs-config amber states, then user-disabled,
+// then admin-disabled last.
 const STATUS_ORDER: Record<ServerStatus, number> = {
   active: 0,
-  'needs-config': 1,
-  'user-disabled': 2,
-  disabled: 3
+  unverified: 1,
+  'needs-config': 2,
+  'user-disabled': 3,
+  disabled: 4
 }
 
 const MONOGRAM_COLORS = [
@@ -80,6 +87,7 @@ function ServerMonogram({
 function StatusDot({ status }: { status: ServerStatus }): React.ReactNode {
   const colors: Record<ServerStatus, string> = {
     active: 'bg-emerald-400',
+    unverified: 'bg-amber-400',
     'needs-config': 'bg-amber-400',
     'user-disabled': 'bg-gray-500',
     disabled: 'bg-gray-500'
@@ -96,6 +104,7 @@ function StatusDot({ status }: { status: ServerStatus }): React.ReactNode {
 
 const STATUS_LABEL: Record<ServerStatus, string> = {
   active: 'Active',
+  unverified: 'Unverified',
   'needs-config': 'Needs Config',
   'user-disabled': 'Disabled by You',
   disabled: 'Disabled'
@@ -103,6 +112,7 @@ const STATUS_LABEL: Record<ServerStatus, string> = {
 
 const STATUS_VARIANT: Record<ServerStatus, 'success' | 'warning' | 'neutral'> = {
   active: 'success',
+  unverified: 'warning',
   'needs-config': 'warning',
   'user-disabled': 'neutral',
   disabled: 'neutral'
@@ -110,6 +120,7 @@ const STATUS_VARIANT: Record<ServerStatus, 'success' | 'warning' | 'neutral'> = 
 
 const STATUS_BORDER: Record<ServerStatus, string> = {
   active: 'border-emerald-500/20 bg-emerald-500/5',
+  unverified: 'border-amber-500/15 bg-amber-500/5',
   'needs-config': 'border-amber-500/15 bg-amber-500/5',
   'user-disabled': 'border-[var(--border)] bg-[var(--bg-raised)] opacity-70',
   disabled: 'border-[var(--border)] bg-[var(--bg-raised)] opacity-60'
