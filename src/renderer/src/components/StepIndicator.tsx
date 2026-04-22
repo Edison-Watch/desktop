@@ -1,4 +1,4 @@
-const steps = ["Welcome", "Apps", "Encrypt & Submit", "Finish"];
+const steps = ["Welcome", "Apps", "Security", "Finish"];
 
 function CheckIcon() {
   return (
