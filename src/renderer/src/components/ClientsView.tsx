@@ -37,13 +37,13 @@ interface ClientInfo {
 const CLIENT_NAMES: Record<string, string> = {
   "claude-code": "Claude Code",
   cursor: "Cursor",
-  windsurf: "Windsurf",
+  windsurf: "Windsurf (early alpha)",
   codex: "Codex CLI",
   vscode: "VS Code",
-  "claude-desktop": "Claude Desktop",
-  "claude-cowork": "Claude Cowork",
-  zed: "Zed",
-  intellij: "IntelliJ IDEA",
+  "claude-desktop": "Claude Desktop (early alpha)",
+  "claude-cowork": "Claude Cowork (early alpha)",
+  zed: "Zed (early alpha)",
+  intellij: "IntelliJ IDEA (early alpha)",
   pycharm: "PyCharm",
   webstorm: "WebStorm",
 };
