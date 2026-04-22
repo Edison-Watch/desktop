@@ -5,6 +5,7 @@
  */
 
 import { app, BrowserWindow, Notification } from "electron";
+import { AGENT_REGISTRY, resolveAgentId } from "@edison/shared/agent-registry";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import trayIconPath from "../../resources/icon_tray.png?asset";
@@ -49,6 +50,7 @@ export interface PendingApproval {
   name: string;
   reason?: string;
   timestamp: number;
+  agentName?: string;
 }
 
 export interface TrifectaEventData {
@@ -57,6 +59,23 @@ export interface TrifectaEventData {
   name: string;
   reason?: string;
   user_id?: string;
+  agent_name?: string;
+}
+
+/** Inline SVG for the agent icon, or empty string if unknown / unmapped. */
+function renderAgentIconSvg(agentName: string | undefined): string {
+  if (!agentName) return "";
+  const id = resolveAgentId(agentName);
+  if (!id) return "";
+  const entry = AGENT_REGISTRY[id];
+  if (entry.svgPath) {
+    return `<svg class="approval-agent-icon" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="${entry.svgPath}"/></svg>`;
+  }
+  if (entry.customSvg) {
+    const vb = entry.customViewBox ?? "0 0 24 24";
+    return `<svg class="approval-agent-icon" viewBox="${vb}" fill="currentColor" xmlns="http://www.w3.org/2000/svg">${entry.customSvg}</svg>`;
+  }
+  return "";
 }
 
 // References to windows managed by the caller (index.ts) - populated via initApprovalsHandler.
@@ -210,7 +229,7 @@ function isAlive(w: BrowserWindow | null): w is BrowserWindow {
 function handleTrifectaEvent(data: TrifectaEventData): void {
   const mainWindow = _getMainWindow();
   const approvalWindow = _getApprovalWindow();
-  const { session_id, kind, name, reason } = data;
+  const { session_id, kind, name, reason, agent_name } = data;
   const approvalId = `${session_id}::${kind}::${name}::${Date.now()}`;
 
   const pending: PendingApproval = {
@@ -220,6 +239,7 @@ function handleTrifectaEvent(data: TrifectaEventData): void {
     name,
     reason,
     timestamp: Date.now(),
+    agentName: agent_name,
   };
   pendingApprovals.set(approvalId, pending);
   _onPendingChanged?.();
@@ -234,6 +254,8 @@ function handleTrifectaEvent(data: TrifectaEventData): void {
       name,
       reason,
       timestamp: pending.timestamp,
+      agentName: agent_name,
+      agentIconSvg: renderAgentIconSvg(agent_name),
     });
   }
 
@@ -499,10 +521,11 @@ export function showPendingApprovalsDialog(mainWindow: BrowserWindow | null): vo
         .split(" ")
         .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(" ");
+      const agentIconSvg = renderAgentIconSvg(a.agentName);
       return `
         <div class="approval-item" data-approval-id="${escapeHtml(a.id)}">
           <div class="approval-header">
-            <strong>${escapeHtml(readableName)}</strong>
+            <div class="approval-title">${agentIconSvg}<strong>${escapeHtml(readableName)}</strong></div>
             <span class="approval-kind">${escapeHtml(a.kind)}</span>
           </div>
           <div class="approval-timestamp" data-timestamp="${escapeHtml(String(a.timestamp))}"></div>
@@ -546,6 +569,20 @@ ${BUTTON_CSS}
   font-size: 15px;
   font-weight: 500;
   color: var(--text-primary);
+}
+
+.approval-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.approval-agent-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-muted);
 }
 
 .approval-kind {
@@ -622,7 +659,7 @@ setInterval(updateTimestamps,1000);updateTimestamps();
 function removeApprovalItem(id){const item=document.querySelector('[data-approval-id="'+CSS.escape(id)+'"]');if(!item)return;item.style.transition='all .4s cubic-bezier(.4,0,.2,1)';item.style.transform='translateX(-100%)';item.style.opacity='0';item.style.maxHeight=item.offsetHeight+'px';setTimeout(()=>{item.style.maxHeight='0';item.style.marginBottom='0';item.style.paddingTop='0';item.style.paddingBottom='0';item.style.borderWidth='0'},100);setTimeout(()=>{item.remove();updateHeaderCount();if(document.querySelectorAll('.approval-item').length===0)setTimeout(()=>window.close(),300)},400)}
 document.addEventListener('click',e=>{const btn=e.target.closest('button');if(!btn)return;const item=btn.closest('.approval-item');if(!item)return;const aId=item.dataset.approvalId,cmd=btn.dataset.command;if(aId&&cmd){item.querySelectorAll('button').forEach(b=>{b.disabled=true;b.style.opacity='0.5'});const ch='approval:'+cmd;ipcRenderer.invoke(ch,aId).catch(err=>{alert('Failed: '+(err.message||String(err)));item.querySelectorAll('button').forEach(b=>{b.disabled=false;b.style.opacity='1'})})}});
 function escapeHtml(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
-function addApprovalItem(a){const c=document.getElementById('approvals');if(!c)return;const tn=(a.name||'').replace(/^agent_/,'').replace(/_/g,' ');const rn=tn.split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');const item=document.createElement('div');item.className='approval-item';item.setAttribute('data-approval-id',a.id);item.style.opacity='0';item.style.transform='translateY(-20px)';item.innerHTML='<div class="approval-header"><strong>'+escapeHtml(rn)+'</strong><span class="approval-kind">'+escapeHtml(a.kind)+'</span></div><div class="approval-timestamp" data-timestamp="'+escapeHtml(a.timestamp)+'"></div><div class="approval-actions"><button class="button button-approve" data-command="approve">Approve</button><button class="button button-deny" data-command="deny">Deny</button></div>';c.appendChild(item);setTimeout(()=>{item.style.transition='all .3s cubic-bezier(.4,0,.2,1)';item.style.opacity='1';item.style.transform='translateY(0)'},10);const tel=item.querySelector('.approval-timestamp');if(tel)tel.textContent=formatTimestamp(a.timestamp);updateHeaderCount()}
+function addApprovalItem(a){const c=document.getElementById('approvals');if(!c)return;const tn=(a.name||'').replace(/^agent_/,'').replace(/_/g,' ');const rn=tn.split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');const icon=a.agentIconSvg||'';const item=document.createElement('div');item.className='approval-item';item.setAttribute('data-approval-id',a.id);item.style.opacity='0';item.style.transform='translateY(-20px)';item.innerHTML='<div class="approval-header"><div class="approval-title">'+icon+'<strong>'+escapeHtml(rn)+'</strong></div><span class="approval-kind">'+escapeHtml(a.kind)+'</span></div><div class="approval-timestamp" data-timestamp="'+escapeHtml(a.timestamp)+'"></div><div class="approval-actions"><button class="button button-approve" data-command="approve">Approve</button><button class="button button-deny" data-command="deny">Deny</button></div>';c.appendChild(item);setTimeout(()=>{item.style.transition='all .3s cubic-bezier(.4,0,.2,1)';item.style.opacity='1';item.style.transform='translateY(0)'},10);const tel=item.querySelector('.approval-timestamp');if(tel)tel.textContent=formatTimestamp(a.timestamp);updateHeaderCount()}
 ipcRenderer.on('approval:removed',(_e,id)=>removeApprovalItem(id));
 ipcRenderer.on('approval:added',(_e,a)=>addApprovalItem(a));
 document.getElementById('approve-all')?.addEventListener('click',()=>{document.querySelectorAll('.approval-item').forEach(item=>{const b=item.querySelector('.button-approve');if(b&&!b.disabled)b.click()})});
