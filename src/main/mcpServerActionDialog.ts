@@ -155,8 +155,8 @@ export function showQuarantinedServersDialog(
         </div>
         <div class="description">
           ${isAdminOrOwner
-            ? 'We noticed you\'ve added new extensions to your AI tools. As an admin, you can add them to Edison directly.'
-            : 'We noticed you\'ve added new extensions to your AI tools. Your IT team needs to approve them before they can be used through Edison Watch. Would you like to request approval?'}
+            ? 'We noticed you\'ve added new extensions to your AI tools. As an admin, you can add them to Edison directly. <span style="color: var(--danger)">If you choose <strong>Skip for Now</strong> or <strong>Skip All</strong>, these extensions will be removed from your AI tool, since auto-quarantine is enabled.</span>'
+            : 'We noticed you\'ve added new extensions to your AI tools. Your IT team needs to approve them before they can be used through Edison Watch. <span style="color: var(--danger)">If you choose <strong>Skip for Now</strong> or <strong>Skip All</strong>, these extensions will be removed from your AI tool, since your admin has enabled auto-quarantine.</span> Would you like to request approval?'}
         </div>
         <div id="servers">${serversHtml}</div>
         <script>
