@@ -1,0 +1,364 @@
+{
+  "version": "0.0.1",
+  "lastUpdated": "2026-03-19T00:00:00Z",
+  "servers": [
+    {
+      "id": "supabase",
+      "name": "supabase",
+      "displayName": "Supabase",
+      "description": "Supabase MCP server for database and backend operations",
+      "author": "Supabase",
+      "is_official": true,
+      "version": "0.5.10",
+      "category": "data",
+      "icon-dark": "icons/supabase.png",
+      "icon-light": "icons/supabase.png",
+      "serverFile": "servers/supabase.json",
+      "tags": [
+        "database",
+        "supabase",
+        "backend"
+      ]
+    },
+    {
+      "id": "zapier",
+      "name": "zapier",
+      "displayName": "Zapier",
+      "description": "Zapier automation and integration MCP server",
+      "author": "Zapier",
+      "is_official": true,
+      "version": "0.2.27",
+      "category": "automation",
+      "icon-dark": "icons/zapier.png",
+      "icon-light": "icons/zapier.png",
+      "serverFile": "servers/zapier.json",
+      "tags": [
+        "automation",
+        "zapier",
+        "integrations"
+      ]
+    },
+    {
+      "id": "atlassian",
+      "name": "atlassian",
+      "displayName": "Atlassian",
+      "description": "Atlassian (Jira, Confluence) MCP server",
+      "author": "Atlassian",
+      "is_official": true,
+      "version": null,
+      "category": "productivity",
+      "icon-dark": "icons/atlassian.png",
+      "icon-light": "icons/atlassian.png",
+      "serverFile": "servers/atlassian.json",
+      "tags": [
+        "atlassian",
+        "jira",
+        "confluence",
+        "oauth"
+      ]
+    },
+    {
+      "id": "github",
+      "name": "github",
+      "displayName": "GitHub",
+      "description": "GitHub MCP server for repository operations",
+      "author": "GitHub",
+      "is_official": true,
+      "version": null,
+      "category": "development",
+      "icon-dark": "icons/github.png",
+      "icon-light": "icons/github_light.png",
+      "serverFile": "servers/github.json",
+      "tags": [
+        "github",
+        "git",
+        "version-control"
+      ]
+    },
+    {
+      "id": "microsoft-docs",
+      "name": "microsoft-docs",
+      "displayName": "Microsoft Learn Docs",
+      "description": "Search and fetch official Microsoft documentation, Azure, M365, and code samples",
+      "author": "Microsoft",
+      "is_official": true,
+      "version": null,
+      "category": "development",
+      "icon-dark": "icons/microsoft-docs.png",
+      "icon-light": "icons/microsoft-docs.png",
+      "serverFile": "servers/microsoft-docs.json",
+      "tags": [
+        "microsoft",
+        "documentation",
+        "azure"
+      ]
+    },
+    {
+      "id": "context7",
+      "name": "context7",
+      "displayName": "Context7",
+      "description": "Context7 MCP server",
+      "author": "Context7",
+      "is_official": true,
+      "version": null,
+      "category": "productivity",
+      "icon-dark": "icons/context7.png",
+      "icon-light": "icons/context7.png",
+      "serverFile": "servers/context7.json",
+      "tags": [
+        "context7"
+      ]
+    },
+    {
+      "id": "grafana",
+      "name": "grafana",
+      "displayName": "Grafana",
+      "description": "Grafana monitoring and observability MCP server",
+      "author": "Grafana",
+      "is_official": true,
+      "version": null,
+      "category": "data",
+      "icon-dark": "icons/grafana.png",
+      "icon-light": "icons/grafana.png",
+      "serverFile": "servers/grafana.json",
+      "tags": [
+        "grafana",
+        "monitoring",
+        "observability"
+      ]
+    },
+    {
+      "id": "mongodb",
+      "name": "mongodb",
+      "displayName": "MongoDB",
+      "description": "MongoDB database MCP server",
+      "author": "MongoDB",
+      "is_official": true,
+      "version": null,
+      "category": "data",
+      "icon-dark": "icons/mongodb.png",
+      "icon-light": "icons/mongodb.png",
+      "serverFile": "servers/mongodb.json",
+      "tags": [
+        "database",
+        "mongodb",
+        "nosql"
+      ]
+    },
+    {
+      "id": "mcp-neo4j-cloud-aura-api",
+      "name": "mcp-neo4j-cloud-aura-api",
+      "displayName": "Neo4j Cloud Aura API",
+      "description": "Neo4j Cloud Aura API MCP server",
+      "author": "Neo4j",
+      "is_official": true,
+      "version": "0.4.7",
+      "category": "data",
+      "icon-dark": "icons/neo4j_white.png",
+      "icon-light": "icons/neo4j.png",
+      "serverFile": "servers/mcp-neo4j-cloud-aura-api.json",
+      "tags": [
+        "database",
+        "neo4j",
+        "graph"
+      ]
+    },
+    {
+      "id": "mcp-neo4j-cypher",
+      "name": "mcp-neo4j-cypher",
+      "displayName": "Neo4j Cypher",
+      "description": "Neo4j Cypher query MCP server",
+      "author": "Neo4j",
+      "is_official": true,
+      "version": "0.5.2",
+      "category": "data",
+      "icon-dark": "icons/neo4j_white.png",
+      "icon-light": "icons/neo4j.png",
+      "serverFile": "servers/mcp-neo4j-cypher.json",
+      "tags": [
+        "database",
+        "neo4j",
+        "cypher",
+        "graph"
+      ]
+    },
+    {
+      "id": "mcp-neo4j-data-modeling",
+      "name": "mcp-neo4j-data-modeling",
+      "displayName": "Neo4j Data Modeling",
+      "description": "Neo4j data modeling MCP server",
+      "author": "Neo4j",
+      "is_official": true,
+      "version": "0.8.2",
+      "category": "data",
+      "icon-dark": "icons/neo4j_white.png",
+      "icon-light": "icons/neo4j.png",
+      "serverFile": "servers/mcp-neo4j-data-modeling.json",
+      "tags": [
+        "database",
+        "neo4j",
+        "modeling",
+        "graph"
+      ]
+    },
+    {
+      "id": "mcp-neo4j-memory",
+      "name": "mcp-neo4j-memory",
+      "displayName": "Neo4j Memory",
+      "description": "Neo4j memory and vector operations MCP server",
+      "author": "Neo4j",
+      "is_official": true,
+      "version": "0.4.4",
+      "category": "data",
+      "icon-dark": "icons/neo4j_white.png",
+      "icon-light": "icons/neo4j.png",
+      "serverFile": "servers/mcp-neo4j-memory.json",
+      "tags": [
+        "database",
+        "neo4j",
+        "memory",
+        "vector"
+      ]
+    },
+    {
+      "id": "postgres",
+      "name": "postgres",
+      "displayName": "PostgreSQL",
+      "description": "PostgreSQL database MCP server",
+      "author": "Anthropic",
+      "is_official": true,
+      "version": "0.6.2",
+      "category": "data",
+      "icon-dark": "icons/postgres.png",
+      "icon-light": "icons/postgres.png",
+      "serverFile": "servers/postgres.json",
+      "tags": [
+        "database",
+        "postgres",
+        "postgresql",
+        "sql"
+      ]
+    },
+    {
+      "id": "skyvern",
+      "name": "skyvern",
+      "displayName": "Skyvern",
+      "description": "Skyvern browser automation and web scraping MCP server",
+      "author": "Skyvern",
+      "is_official": true,
+      "version": null,
+      "category": "automation",
+      "icon-dark": "icons/skyvern.png",
+      "icon-light": "icons/skyvern_light.png",
+      "serverFile": "servers/skyvern.json",
+      "tags": [
+        "browser",
+        "automation",
+        "scraping",
+        "skyvern"
+      ]
+    },
+    {
+      "id": "stripe",
+      "name": "stripe",
+      "displayName": "Stripe",
+      "description": "Stripe payment processing MCP server",
+      "author": "Stripe",
+      "is_official": true,
+      "version": "0.2.5",
+      "category": "productivity",
+      "icon-dark": "icons/stripe.png",
+      "icon-light": "icons/stripe.png",
+      "serverFile": "servers/stripe.json",
+      "tags": [
+        "stripe",
+        "payments",
+        "commerce"
+      ]
+    },
+    {
+      "id": "everything",
+      "name": "everything",
+      "displayName": "MCP Everything Server",
+      "description": "MCP Everything Server for testing and demonstration",
+      "author": "Model Context Protocol",
+      "is_official": true,
+      "version": "2026.1.26",
+      "category": "productivity",
+      "icon-dark": "icons/mcp.png",
+      "icon-light": "icons/mcp.png",
+      "serverFile": "servers/everything.json",
+      "tags": [
+        "everything",
+        "testing",
+        "productivity",
+        "demo"
+      ]
+    },
+    {
+      "id": "linear",
+      "name": "linear",
+      "displayName": "Linear",
+      "description": "Linear issue tracking MCP server for managing issues, projects, and teams",
+      "author": "Model Context Protocol",
+      "is_official": true,
+      "version": "0.1.0",
+      "category": "productivity",
+      "icon-dark": "icons/linear.png",
+      "icon-light": "icons/linear.png",
+      "serverFile": "servers/linear.json",
+      "tags": [
+        "linear",
+        "issues",
+        "project-management",
+        "productivity"
+      ]
+    },
+    {
+      "id": "hubspot",
+      "name": "hubspot",
+      "displayName": "HubSpot",
+      "description": "HubSpot CRM MCP server for managing contacts, deals, workflows, and CRM objects",
+      "author": "HubSpot",
+      "is_official": true,
+      "version": "0.4.0",
+      "category": "productivity",
+      "icon-dark": "icons/hubspot.png",
+      "icon-light": "icons/hubspot.png",
+      "serverFile": "servers/hubspot.json",
+      "tags": [
+        "hubspot",
+        "crm",
+        "marketing",
+        "sales"
+      ]
+    },
+    {
+      "id": "sentry",
+      "name": "sentry",
+      "displayName": "Sentry",
+      "description": "Sentry error monitoring MCP server for investigating issues, traces, and error events",
+      "author": "Sentry",
+      "is_official": true,
+      "version": "0.29.0",
+      "category": "development",
+      "icon-dark": "icons/sentry_white.png",
+      "icon-light": "icons/sentry.png",
+      "serverFile": "servers/sentry.json",
+      "tags": [
+        "sentry",
+        "errors",
+        "monitoring",
+        "observability"
+      ]
+    }
+  ],
+  "categories": [
+    "automation",
+    "development",
+    "productivity",
+    "data",
+    "communication",
+    "security"
+  ]
+}

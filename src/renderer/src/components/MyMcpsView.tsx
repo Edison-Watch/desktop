@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Badge } from '@edison/shared/ui'
-import edisonIcon from '../assets/edison-icon.png'
+import ServerIcon from './ServerIcon'
 
 // Mirrors fields from ServerSummary in src/api/v1/schemas/servers.py.
 // Duplicated here because the renderer doesn't consume the webapp's
@@ -41,86 +41,6 @@ const STATUS_ORDER: Record<ServerStatus, number> = {
   'needs-config': 2,
   'user-disabled': 3,
   disabled: 4
-}
-
-const MONOGRAM_COLORS = [
-  'bg-cyan-600',
-  'bg-violet-600',
-  'bg-amber-600',
-  'bg-rose-600',
-  'bg-emerald-600',
-  'bg-blue-600',
-  'bg-orange-600',
-  'bg-pink-600'
-]
-
-function hashColor(name: string): string {
-  let hash = 0
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) | 0
-  }
-  return MONOGRAM_COLORS[Math.abs(hash) % MONOGRAM_COLORS.length]
-}
-
-function monogram(name: string): string {
-  return name.slice(0, 2).toUpperCase()
-}
-
-function ServerMonogram({
-  name,
-  isBuiltin
-}: {
-  name: string
-  isBuiltin: boolean
-}): React.ReactNode {
-  const color = isBuiltin
-    ? 'bg-[var(--accent-dim)] text-[var(--accent)]'
-    : `${hashColor(name)} text-white`
-  return (
-    <span
-      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-[10px] font-bold leading-none ${color}`}
-      title={name}
-    >
-      {monogram(name)}
-    </span>
-  )
-}
-
-// Mirrors frontend-v2/src/shared/ui/ServerIcon.tsx: builtin servers and
-// Edison-branded demos (e.g. trifecta) use the edison icon instead of
-// falling through to logo.dev or the monogram.
-function resolveLogoSrc(name: string, iconUrl: string | null, isBuiltin: boolean): string | null {
-  if (isBuiltin) return edisonIcon
-  const segments = name.toLowerCase().split(/[-_]/)
-  if (segments.includes('edison') || segments.includes('trifecta')) return edisonIcon
-  return iconUrl
-}
-
-function ServerLogo({
-  name,
-  iconUrl,
-  isBuiltin
-}: {
-  name: string
-  iconUrl: string | null
-  isBuiltin: boolean
-}): React.ReactNode {
-  const src = resolveLogoSrc(name, iconUrl, isBuiltin)
-  const [errored, setErrored] = useState(false)
-  useEffect(() => {
-    setErrored(false)
-  }, [src])
-  if (!src || errored) {
-    return <ServerMonogram name={name} isBuiltin={isBuiltin} />
-  }
-  return (
-    <img
-      src={src}
-      alt={name}
-      className="h-8 w-8 shrink-0 rounded object-contain"
-      onError={() => setErrored(true)}
-    />
-  )
 }
 
 function StatusDot({ status }: { status: ServerStatus }): React.ReactNode {
@@ -277,7 +197,11 @@ export default function MyMcpsView(): React.ReactNode {
                 key={s.id}
                 className={`group relative flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${STATUS_BORDER[status]}`}
               >
-                <ServerLogo name={s.name} iconUrl={s.icon_url} isBuiltin={s.is_builtin} />
+                <ServerIcon
+                  name={s.name}
+                  iconUrl={s.icon_url}
+                  isBuiltin={s.is_builtin}
+                />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-medium text-[var(--text-primary)] truncate">
