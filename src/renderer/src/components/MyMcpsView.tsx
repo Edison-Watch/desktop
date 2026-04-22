@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Badge } from '@edison/shared/ui'
+import edisonIcon from '../assets/edison-icon.png'
 
 // Mirrors fields from ServerSummary in src/api/v1/schemas/servers.py.
 // Duplicated here because the renderer doesn't consume the webapp's
@@ -14,6 +15,7 @@ interface ServerSummary {
   is_builtin: boolean
   user_enabled: boolean | null
   config_warnings: string[]
+  icon_url: string | null
 }
 
 type ServerStatus = 'active' | 'unverified' | 'needs-config' | 'user-disabled' | 'disabled'
@@ -81,6 +83,43 @@ function ServerMonogram({
     >
       {monogram(name)}
     </span>
+  )
+}
+
+// Mirrors frontend-v2/src/shared/ui/ServerIcon.tsx: builtin servers and
+// Edison-branded demos (e.g. trifecta) use the edison icon instead of
+// falling through to logo.dev or the monogram.
+function resolveLogoSrc(name: string, iconUrl: string | null, isBuiltin: boolean): string | null {
+  if (isBuiltin) return edisonIcon
+  const segments = name.toLowerCase().split(/[-_]/)
+  if (segments.includes('edison') || segments.includes('trifecta')) return edisonIcon
+  return iconUrl
+}
+
+function ServerLogo({
+  name,
+  iconUrl,
+  isBuiltin
+}: {
+  name: string
+  iconUrl: string | null
+  isBuiltin: boolean
+}): React.ReactNode {
+  const src = resolveLogoSrc(name, iconUrl, isBuiltin)
+  const [errored, setErrored] = useState(false)
+  useEffect(() => {
+    setErrored(false)
+  }, [src])
+  if (!src || errored) {
+    return <ServerMonogram name={name} isBuiltin={isBuiltin} />
+  }
+  return (
+    <img
+      src={src}
+      alt={name}
+      className="h-8 w-8 shrink-0 rounded object-contain"
+      onError={() => setErrored(true)}
+    />
   )
 }
 
@@ -238,7 +277,7 @@ export default function MyMcpsView(): React.ReactNode {
                 key={s.id}
                 className={`group relative flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${STATUS_BORDER[status]}`}
               >
-                <ServerMonogram name={s.name} isBuiltin={s.is_builtin} />
+                <ServerLogo name={s.name} iconUrl={s.icon_url} isBuiltin={s.is_builtin} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-medium text-[var(--text-primary)] truncate">
