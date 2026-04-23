@@ -82,8 +82,8 @@ export function setDebugEnvOverride(env: DebugEnvName | null): void {
 // ── Setup data persistence ──────────────────────────────────────────
 
 export const ALL_SUPPORTED_APPS = [
-  "vscode", "cursor", "claude-desktop",
-  "claude-code", "claude-cowork", "windsurf", "zed", "codex",
+  "vscode", "cursor",
+  "claude-code", "windsurf", "zed", "codex",
   "intellij", "pycharm", "webstorm",
 ];
 

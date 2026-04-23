@@ -25,12 +25,8 @@ vi.mock("../mcpDiscovery", async (importOriginal) => {
     ...actual,
     getVscodeUserMcpPath: () => mockPaths.vscode ?? "/tmp/nope",
     getCursorConfigPath: () => mockPaths.cursor ?? "/tmp/nope",
-    getClaudeDesktopConfigPath: () =>
-      mockPaths["claude-desktop"] ?? "/tmp/nope",
     getWindsurfConfigPath: () => mockPaths.windsurf ?? "/tmp/nope",
     getZedConfigPath: () => mockPaths.zed ?? "/tmp/nope",
-    getClaudeCoworkConfigPath: () =>
-      mockPaths["claude-cowork"] ?? "/tmp/nope",
     getJetBrainsMcpConfigPaths: vi.fn().mockResolvedValue([]),
   };
 });
@@ -87,8 +83,6 @@ describe("isEdisonWatchRegistered", () => {
   // --- Parameterized: apps using `mcpServers` key (JSON) ---
   describe.each([
     "cursor",
-    "claude-desktop",
-    "claude-cowork",
     "windsurf",
   ])("%s (mcpServers key)", (appId) => {
     it("returns false when config file does not exist", async () => {

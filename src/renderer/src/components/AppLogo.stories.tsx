@@ -12,10 +12,6 @@ const meta: Meta<typeof AppLogo> = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const ClaudeDesktop: Story = {
-  args: { id: 'claude-desktop', name: 'Claude Desktop' },
-};
-
 export const ClaudeCode: Story = {
   args: { id: 'claude-code', name: 'Claude Code' },
 };
@@ -48,7 +44,6 @@ export const AllLogos: Story = {
   render: () => (
     <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
       {[
-        { id: 'claude-desktop', name: 'Claude Desktop' },
         { id: 'claude-code', name: 'Claude Code' },
         { id: 'cursor', name: 'Cursor' },
         { id: 'vscode', name: 'VS Code' },

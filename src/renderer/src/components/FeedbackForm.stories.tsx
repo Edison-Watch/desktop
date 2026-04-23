@@ -29,14 +29,14 @@ export const Empty: Story = {
 export const WithMessage: Story = {
   args: {
     initialState: 'idle',
-    initialMessage: 'The hook injection fails silently when Claude Desktop is running. No error shown.',
+    initialMessage: 'The hook injection fails silently when VS Code is running. No error shown.',
   },
 };
 
 export const Submitting: Story = {
   args: {
     initialState: 'submitting',
-    initialMessage: 'The hook injection fails silently when Claude Desktop is running.',
+    initialMessage: 'The hook injection fails silently when VS Code is running.',
   },
 };
 

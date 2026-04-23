@@ -8,7 +8,6 @@
 import type { McpClientId } from './mcpDiscovery'
 import {
   getVscodeUserMcpPath,
-  getClaudeDesktopConfigPath,
   getCursorConfigPath,
   getCursorWorkspaceStoragePath,
   getClaudeCodeUserSettingsPath,
@@ -24,7 +23,6 @@ import {
   getCursorPluginsInstalledPaths,
   getClaudeCodeProjectMcpPaths,
 } from './mcpDiscovery'
-import { getClaudeCoworkConfigPath } from './mcpDiscoveryCowork'
 import { getCursorStateDbPath } from './mcpDiscoveryCursorMarketplace'
 import { getVscodeStateDbPath } from './mcpDiscoveryVscodeState'
 import { getCodexConfigPath } from './hookInjectionClients'
@@ -54,12 +52,6 @@ export function getStaticConfigEntries(): McpConfigEntry[] {
     // VS Code
     { client: 'vscode', path: getVscodeUserMcpPath(), kind: 'json', scope: 'user' },
     { client: 'vscode', path: getVscodeStateDbPath(), kind: 'sqlite-state', scope: 'marketplace' },
-
-    // Claude Desktop
-    { client: 'claude-desktop', path: getClaudeDesktopConfigPath(), kind: 'json', scope: 'user' },
-
-    // Claude Cowork
-    { client: 'claude-cowork', path: getClaudeCoworkConfigPath(), kind: 'json', scope: 'user' },
 
     // Cursor
     { client: 'cursor', path: getCursorConfigPath(), kind: 'jsonc', scope: 'user' },
@@ -155,8 +147,6 @@ export { getCursorPluginCachePath } from './mcpDiscovery'
 /** @deprecated Use getStaticConfigEntries() or getAllConfigEntries() instead. */
 export interface McpConfigPaths {
   vscode: string
-  claudeDesktop: string
-  claudeCowork: string
   cursor: string
   cursorWorkspaceStorage: string
   claudeCode: string[]
@@ -169,8 +159,6 @@ export interface McpConfigPaths {
 export function getAllConfigPaths(): McpConfigPaths {
   return {
     vscode: getVscodeUserMcpPath(),
-    claudeDesktop: getClaudeDesktopConfigPath(),
-    claudeCowork: getClaudeCoworkConfigPath(),
     cursor: getCursorConfigPath(),
     cursorWorkspaceStorage: getCursorWorkspaceStoragePath(),
     claudeCode: [

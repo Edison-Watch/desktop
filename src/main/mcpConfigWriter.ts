@@ -21,11 +21,9 @@ import {
   getVscodeUserMcpPath,
   getCursorConfigPath,
   getCursorProjectMcpPaths,
-  getClaudeDesktopConfigPath,
   getClaudeCodeHomeJsonPath,
   getWindsurfConfigPath,
   getZedConfigPath,
-  getClaudeCoworkConfigPath,
   getJetBrainsMcpConfigPaths,
 } from './mcpDiscovery'
 import { getCodexConfigPath } from './hookInjectionClients'
@@ -71,7 +69,6 @@ function buildEdisonEntry(
   // Cursor v2.5+ has known MCP detection bugs - explicit type avoids silent failures.
   const needsExplicitType: McpClientId[] = [
     'vscode',
-    'claude-desktop',
     'cursor',
   ]
   if (needsExplicitType.includes(clientId)) {
@@ -89,8 +86,6 @@ async function getPathForApp(
   const STATIC_MAP: Record<string, () => string> = {
     vscode: getVscodeUserMcpPath,
     cursor: getCursorConfigPath,
-    'claude-desktop': getClaudeDesktopConfigPath,
-    'claude-cowork': getClaudeCoworkConfigPath,
     windsurf: getWindsurfConfigPath,
     zed: getZedConfigPath,
   }

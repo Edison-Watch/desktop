@@ -352,7 +352,7 @@ export async function replaceServerWithProxy(
       ...(headers && { headers })
     } as McpServerConfig
   } else {
-    // Claude Desktop, Cursor, Claude Code, Windsurf, Zed format
+    // Cursor, Claude Code, Windsurf, Zed format
     servers[configKey] = {
       type: 'sse',
       url: edisonWatchUrl,
@@ -716,7 +716,6 @@ function inferClientFromPath(configPath: string): McpClientId {
   // (e.g., /Users/alice/code/project/.cursor/mcp.json matching VS Code)
   if (lower.includes('.codex')) return 'codex'
   if (lower.includes('.cursor')) return 'cursor'
-  if (lower.includes('claude') && lower.includes('claude_desktop_config')) return 'claude-desktop'
   if (lower.includes('.claude')) return 'claude-code'
   if (lower.includes('code - insiders')) return 'vscode' // VS Code Insiders uses same format as VS Code
   if (lower.includes('code') && lower.includes('user') && lower.includes('mcp.json'))

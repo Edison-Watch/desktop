@@ -165,7 +165,6 @@ describe("mcpConfigMonitor", () => {
     it("returns human-readable names for known clients", () => {
       expect(getClientDisplayName("vscode")).toBe("VS Code");
       expect(getClientDisplayName("cursor")).toBe("Cursor");
-      expect(getClientDisplayName("claude-desktop")).toBe("Claude Desktop");
       expect(getClientDisplayName("claude-code")).toBe("Claude Code");
       expect(getClientDisplayName("windsurf")).toBe("Windsurf");
       expect(getClientDisplayName("zed")).toBe("Zed");

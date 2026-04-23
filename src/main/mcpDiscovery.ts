@@ -11,11 +11,11 @@ import {
   getCursorPluginCachePath,
   getClaudeCodeProjectMcpPaths
 } from './mcpProjectPaths'
+import { clientAlias } from './serverDeduplication'
 
 // Re-export so callers don't need to know about the split
 export { getCursorWorkspaceStoragePath, getCursorProjectMcpPaths, getCursorPluginsInstalledPath, getCursorPluginsInstalledPaths, getCursorPluginMcpPaths, getCursorPluginCachePath, getClaudeCodeProjectMcpPaths }
 export { getServerFingerprint } from './seenServersStore'
-export { getClaudeCoworkConfigPath, parseClaudeCoworkConfig } from './mcpDiscoveryCowork'
 export { getCursorStateDbPath, getCursorProjectsDir, discoverCursorMarketplaceMcps } from './mcpDiscoveryCursorMarketplace'
 export { getVscodeStateDbPath, discoverVscodeStateMcps } from './mcpDiscoveryVscodeState'
 export {
@@ -29,7 +29,6 @@ export {
   parseClaudeHomeJson,
   parseClaudeDedicatedMcpServers,
 } from './mcpDiscoveryClaudeCode'
-import { discoverClaudeCowork, deduplicateByNameAndConfig } from './mcpDiscoveryCowork'
 import { discoverClaudeCode } from './mcpDiscoveryClaudeCode'
 import { discoverCursorMarketplaceMcps } from './mcpDiscoveryCursorMarketplace'
 import { discoverVscodeStateMcps } from './mcpDiscoveryVscodeState'
@@ -39,8 +38,6 @@ import { discoverVscodeStateMcps } from './mcpDiscoveryVscodeState'
 export type McpClientId =
   | 'vscode'
   | 'cursor'
-  | 'claude-desktop'
-  | 'claude-cowork'
   | 'claude-code'
   | 'windsurf'
   | 'zed'
@@ -111,7 +108,7 @@ export function describeUnsupportedReason(server: DiscoveredMcpServer): string |
   if (server.client === 'cursor' && server.source === 'marketplace') {
     return 'Cursor marketplace plugin: only SERVER_METADATA.json is exposed (no launch config)'
   }
-  if ((server.client === 'vscode' || server.client === 'claude-desktop') && server.source === 'marketplace') {
+  if (server.client === 'vscode' && server.source === 'marketplace') {
     return 'VS Code-style extension-managed server: state DB exposes no launch URL or command'
   }
   if (server.source === 'marketplace') {
@@ -137,28 +134,6 @@ export function getVscodeUserMcpPath(): string {
       )
     default:
       return join(homedir(), '.config', 'Code', 'User', 'mcp.json')
-  }
-}
-
-// Claude Desktop config path
-export function getClaudeDesktopConfigPath(): string {
-  switch (platform()) {
-    case 'darwin':
-      return join(
-        homedir(),
-        'Library',
-        'Application Support',
-        'Claude',
-        'claude_desktop_config.json'
-      )
-    case 'win32':
-      return join(
-        process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'),
-        'Claude',
-        'claude_desktop_config.json'
-      )
-    default:
-      return join(homedir(), '.config', 'Claude', 'claude_desktop_config.json')
   }
 }
 
@@ -313,43 +288,6 @@ export async function parseVscodeMcpJson(
     })
   }
   return servers
-}
-
-// Parse Claude Desktop config (shape: { mcpServers?: { [name]: { ... } } })
-// Exported for testing
-export async function parseClaudeDesktopConfig(filePath: string): Promise<DiscoveredMcpServer[]> {
-  const raw = await fs.readFile(filePath, 'utf-8')
-  const json = JSON.parse(raw) as {
-    mcpServers?: Record<string, McpServerConfig>
-  }
-
-  const servers: DiscoveredMcpServer[] = []
-  const entries = Object.entries(json.mcpServers ?? {})
-  for (const [name, cfg] of entries) {
-    servers.push({
-      name,
-      client: 'claude-desktop',
-      source: 'user',
-      path: filePath,
-      config: cfg as McpServerConfig
-    })
-  }
-  return servers
-}
-
-async function discoverClaudeDesktop(): Promise<DiscoveredMcpServer[]> {
-  const results: DiscoveredMcpServer[] = []
-
-  try {
-    const configPath = getClaudeDesktopConfigPath()
-    await fs.access(configPath)
-    const servers = await parseClaudeDesktopConfig(configPath)
-    results.push(...servers)
-  } catch {
-    // File not found or unreadable; ignore
-  }
-
-  return results
 }
 
 // Parse Cursor mcp.json (shape: { mcpServers?: { [name]: { ... } } })
@@ -522,8 +460,6 @@ export const MAC_APP_NAMES: Record<string, string[]> = {
   cursor: ['Cursor.app'],
   windsurf: ['Windsurf.app'],
   zed: ['Zed.app'],
-  'claude-desktop': ['Claude.app'],
-  'claude-cowork': ['Claude.app'],
   intellij: ['IntelliJ IDEA.app', 'IntelliJ IDEA CE.app', 'IntelliJ IDEA Ultimate.app'],
   pycharm: ['PyCharm.app', 'PyCharm CE.app'],
   webstorm: ['WebStorm.app'],
@@ -563,14 +499,6 @@ export async function discoverMcpServers(opts?: { includeRaw?: boolean }): Promi
   // Claude Code discovery
   const claudeCodeServers = await discoverClaudeCode()
   results.push(...claudeCodeServers)
-
-  // Claude Desktop discovery
-  const claudeDesktopServers = await discoverClaudeDesktop()
-  results.push(...claudeDesktopServers)
-
-  // Claude Cowork discovery (shares config with Desktop; separate client tag)
-  const claudeCoworkServers = await discoverClaudeCowork()
-  results.push(...claudeCoworkServers)
 
   // Cursor discovery
   const cursorServers = await discoverCursor()
@@ -636,4 +564,78 @@ export async function discoverMcpServers(opts?: { includeRaw?: boolean }): Promi
     if (anyInstalled) filtered.push(server)
   }
   return wrap(filtered)
+}
+
+/**
+ * Deduplicate discovered MCP servers by name + config.
+ *
+ * - Entries with the same name AND identical config (command/args/url) are
+ *   collapsed into one (true duplicates across clients).
+ * - Entries with the same name but different configs are kept but renamed
+ *   `name_2`, `name_3`, … so every entry has a unique name.
+ */
+export function deduplicateByNameAndConfig(servers: DiscoveredMcpServer[]): DiscoveredMcpServer[] {
+  const byName = new Map<string, DiscoveredMcpServer[]>()
+  for (const server of servers) {
+    const group = byName.get(server.name) ?? []
+    group.push(server)
+    byName.set(server.name, group)
+  }
+
+  const configKey = (s: DiscoveredMcpServer): string => {
+    const c = s.config
+    if ('command' in c && c.command) return JSON.stringify({ command: c.command, args: c.args ?? [] })
+    if ('url' in c) return JSON.stringify({ url: c.url })
+    return JSON.stringify(c)
+  }
+
+  const result: DiscoveredMcpServer[] = []
+  for (const [, group] of byName) {
+    if (group.length === 1) { result.push({ ...group[0], clients: [group[0].client] }); continue }
+
+    // Collapse true duplicates (same name + same config), merging clients.
+    const seen = new Map<string, DiscoveredMcpServer>()
+    for (const server of group) {
+      const key = configKey(server)
+      const existing = seen.get(key)
+      if (existing) {
+        const clients = existing.clients ?? [existing.client]
+        if (!clients.includes(server.client)) clients.push(server.client)
+        existing.clients = clients
+      } else {
+        seen.set(key, { ...server, clients: [server.client] })
+      }
+    }
+
+    const unique = [...seen.values()]
+    if (unique.length === 1) {
+      result.push(unique[0])
+    } else {
+      // Different configs under the same name - rename to disambiguate.
+      // If all from different clients, use name_clientAlias.
+      // If some share a client (e.g. same server in multiple Claude Code profiles),
+      // use numeric suffixes: name_ccode_1, name_ccode_2, etc.
+      const clientSet = new Set(unique.map((e) => e.client))
+      if (clientSet.size === unique.length) {
+        // Each entry from a different client - simple alias suffix
+        for (const entry of unique) {
+          const alias = clientAlias(entry.client)
+          result.push({ ...entry, name: `${entry.name}_${alias}`, originalName: entry.name })
+        }
+      } else {
+        // Some entries share a client - use numeric suffixes per client
+        const clientCounter = new Map<string, number>()
+        for (const entry of unique) {
+          const alias = clientAlias(entry.client)
+          const count = (clientCounter.get(alias) ?? 0) + 1
+          clientCounter.set(alias, count)
+          const suffix = count > 1 || unique.filter((e) => e.client === entry.client).length > 1
+            ? `${alias}_${count}` : alias
+          result.push({ ...entry, name: `${entry.name}_${suffix}`, originalName: entry.name })
+        }
+      }
+    }
+  }
+
+  return result
 }

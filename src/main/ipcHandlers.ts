@@ -17,8 +17,6 @@ import {
   getClaudeCodeUserSettingsPath,
   getWindsurfConfigPath,
   getZedConfigPath,
-  getClaudeDesktopConfigPath,
-  getClaudeCoworkConfigPath,
 } from "./mcpDiscovery";
 import { injectAllHooks, removeAllHooks, getHookStatus, injectVsCodeWorkspaceHook, removeVsCodeWorkspaceHook, getCodexConfigPath } from "./hookInjection";
 import { startHookHealthMonitor } from "./hookHealthMonitor";
@@ -286,14 +284,6 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
       { id: "claude-code", name: "Claude Code", getPath: () => Promise.resolve(getClaudeCodeUserSettingsPath()) },
       { id: "windsurf", name: "Windsurf", getPath: () => Promise.resolve(getWindsurfConfigPath()) },
       { id: "zed", name: "Zed", getPath: () => Promise.resolve(getZedConfigPath()) },
-      { id: "claude-desktop", name: "Claude Desktop", getPath: () => Promise.resolve(getClaudeDesktopConfigPath()) },
-      {
-        id: "claude-cowork",
-        name: "Claude Cowork",
-        getPath: () => Promise.resolve(getClaudeCoworkConfigPath()),
-        // Cowork is detected by the presence of vm_bundles/ (downloaded on first Cowork launch)
-        detectDir: (configPath) => join(dirname(configPath), 'vm_bundles'),
-      },
       {
         id: "codex",
         name: "Codex CLI",

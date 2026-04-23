@@ -18,13 +18,11 @@ import {
   getCursorConfigPath,
   getWindsurfConfigPath,
   getClaudeCodeHomeJsonPath,
-  getClaudeDesktopConfigPath,
   getZedConfigPath,
   getJetBrainsMcpConfigPaths,
   getInstalledJetBrainsIdes,
   MAC_APP_NAMES,
 } from './mcpDiscovery'
-import { getClaudeCoworkConfigPath } from './mcpDiscoveryCowork'
 import { captureError } from './sentry'
 import {
   getVsCodeWorkspacePaths,
@@ -148,7 +146,7 @@ export async function injectAllHooks(): Promise<HookInjectionResult[]> {
   }
 
   // Note: Zed has no workspace-open hook yet (feature request open upstream).
-  // JetBrains and Claude Desktop have no scriptable hook system.
+  // JetBrains IDEs have no scriptable hook system.
 
   return results
 }
@@ -338,7 +336,7 @@ export interface HookStatusEntry {
   mcpConfigured: boolean
   /** Whether MCP config is applicable for this client (false for hooks-only clients like Codex) */
   mcpApplicable: boolean
-  /** Whether hooks are applicable for this client (false for hookless clients like Claude Desktop, Zed, JetBrains) */
+  /** Whether hooks are applicable for this client (false for hookless clients like Zed, JetBrains) */
   hooksApplicable: boolean
   /** Actual runtime MCP connection status from the client CLI (only set for clients that support it) */
   mcpRuntimeStatus?: import('../main/setupConfig').ClaudeCodeMcpStatus
@@ -582,23 +580,6 @@ export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAli
   // ── Hookless clients (MCP-only, no hook support) ──────────────────────────
   // These clients have MCP config written during onboarding but no scriptable
   // hook system, so hooksApplicable is false.
-
-  // Claude Desktop
-  const claudeDesktopConfigPath = getClaudeDesktopConfigPath()
-  const claudeDesktopInstalled = existsSync(dirname(claudeDesktopConfigPath)) && appBundleExists(['Claude.app'])
-  const claudeDesktopMcpConfigured = claudeDesktopInstalled
-    ? await checkMcpEntry(claudeDesktopConfigPath, 'mcpServers', expectedMcpUrl ?? null)
-    : false
-  results.push({ client: 'claude-desktop', installed: claudeDesktopInstalled, hasHook: false, hookCount: 0, totalHooks: 0, mcpConnected: claudeDesktopMcpConfigured && mcpServerAlive, mcpConfigured: claudeDesktopMcpConfigured, mcpApplicable: true, hooksApplicable: false })
-
-  // Claude Cowork (shares config file with Desktop; detected by vm_bundles/ dir)
-  const claudeCoworkConfigPath = getClaudeCoworkConfigPath()
-  const coworkVmBundlesDir = join(dirname(claudeCoworkConfigPath), 'vm_bundles')
-  const claudeCoworkInstalled = existsSync(coworkVmBundlesDir) && appBundleExists(['Claude.app'])
-  const claudeCoworkMcpConfigured = claudeCoworkInstalled
-    ? await checkMcpEntry(claudeCoworkConfigPath, 'mcpServers', expectedMcpUrl ?? null)
-    : false
-  results.push({ client: 'claude-cowork', installed: claudeCoworkInstalled, hasHook: false, hookCount: 0, totalHooks: 0, mcpConnected: claudeCoworkMcpConfigured && mcpServerAlive, mcpConfigured: claudeCoworkMcpConfigured, mcpApplicable: true, hooksApplicable: false })
 
   // Zed (MCP servers live under assistant.mcp_servers in settings.json)
   const zedConfigPath = getZedConfigPath()

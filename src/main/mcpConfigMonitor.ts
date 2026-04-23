@@ -705,8 +705,6 @@ export function getClientDisplayName(client: McpClientId): string {
       return 'VS Code'
     case 'cursor':
       return 'Cursor'
-    case 'claude-desktop':
-      return 'Claude Desktop'
     case 'claude-code':
       return 'Claude Code'
     case 'windsurf':

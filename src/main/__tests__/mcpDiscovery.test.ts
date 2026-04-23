@@ -5,7 +5,6 @@ import { pathToFileURL } from "url";
 import { promises as fs } from "fs";
 import {
   getVscodeUserMcpPath,
-  getClaudeDesktopConfigPath,
   getCursorConfigPath,
   getWindsurfConfigPath,
   getZedConfigPath,
@@ -19,7 +18,6 @@ import {
   parseClaudeCodeMcpJson,
   parseClaudeHomeJson,
   parseClaudeDedicatedMcpServers,
-  parseClaudeDesktopConfig,
   parseCursorMcpJson,
   parseWindsurfMcpJson,
   parseZedSettingsJson,
@@ -85,25 +83,6 @@ describe("Path Resolution Functions", () => {
           break;
         default:
           expect(path).toContain(".config/Code/User");
-      }
-    });
-  });
-
-  describe("getClaudeDesktopConfigPath", () => {
-    it("returns platform-specific Claude Desktop config path", () => {
-      const path = getClaudeDesktopConfigPath();
-      expect(path.length).toBeGreaterThan(0);
-      expect(path).toMatch(/claude_desktop_config\.json$/);
-
-      switch (platform()) {
-        case "darwin":
-          expect(path).toContain("Library/Application Support/Claude");
-          break;
-        case "win32":
-          expect(path).toContain("Claude");
-          break;
-        default:
-          expect(path).toContain(".config/Claude");
       }
     });
   });
@@ -181,7 +160,6 @@ describe("Path Resolution Functions", () => {
       const paths = getAllConfigPaths();
 
       expect(typeof paths.vscode).toBe("string");
-      expect(typeof paths.claudeDesktop).toBe("string");
       expect(typeof paths.cursor).toBe("string");
       expect(Array.isArray(paths.claudeCode)).toBe(true);
       expect(paths.claudeCode.length).toBe(4);
@@ -441,25 +419,6 @@ describe("Config Parsing Functions", () => {
 
       expect(servers).toHaveLength(1);
       expect(servers[0].name).toBe("direct-server");
-    });
-  });
-
-  describe("parseClaudeDesktopConfig", () => {
-    it("parses Claude Desktop config", async () => {
-      const config = {
-        mcpServers: {
-          "desktop-server": { command: "npx", args: ["-y", "mcp-server"] },
-        },
-      };
-      const filePath = await createTempConfig(
-        testTmpDir,
-        "claude-desktop.json",
-        JSON.stringify(config),
-      );
-      const servers = await parseClaudeDesktopConfig(filePath);
-
-      expect(servers).toHaveLength(1);
-      expect(servers[0].client).toBe("claude-desktop");
     });
   });
 

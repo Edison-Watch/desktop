@@ -142,8 +142,6 @@ export function buildRemovalMap(
 export const CLIENT_SHORT_ALIAS: Record<string, string> = {
   'vscode': 'vscode',
   'cursor': 'cursor',
-  'claude-desktop': 'cdesktop',
-  'claude-cowork': 'ccowork',
   'claude-code': 'ccode',
   'windsurf': 'windsurf',
   'zed': 'zed',

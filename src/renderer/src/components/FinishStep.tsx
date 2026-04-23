@@ -5,7 +5,6 @@ const APP_ID_TO_NAME: Record<string, string> = {
   vscode: "VS Code",
   cursor: "Cursor",
   "claude-code": "Claude Code",
-  "claude-desktop": "Claude Desktop",
   windsurf: "Windsurf",
   zed: "Zed",
   intellij: "IntelliJ IDEA",
