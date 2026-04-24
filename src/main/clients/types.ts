@@ -71,6 +71,20 @@ export interface WatchTargets {
   needsPeriodicRescan: boolean
 }
 
+// ── Hook status ─────────────────────────────────────────────────────────────
+
+/** Snapshot of hook installation state for a client. */
+export interface ClientHookStatus {
+  /** True when the client itself (or its hook surface) is installed. */
+  installed: boolean
+  /** True when all expected edison hooks are present. */
+  hasHook: boolean
+  /** How many edison hooks are present. */
+  hookCount: number
+  /** How many edison hooks should be present when fully injected. */
+  totalHooks: number
+}
+
 // ── ClientIntegration interface ──────────────────────────────────────────────
 
 export interface ClientIntegration {
@@ -92,16 +106,15 @@ export interface ClientIntegration {
   /**
    * Hook surface. Absent for clients without a hook system (Zed, JetBrains).
    *
-   * `getStatus` and per-client edison-mcp registration operations are added in
-   * follow-up PRs alongside the orchestrator rewrites (hookInjection and
-   * mcpConfigWriter). Keeping this PR pure scaffolding avoids touching
-   * orchestrator internals prematurely.
+   * Per-client edison-mcp registration operations are added in follow-up PRs
+   * alongside the `mcpConfigWriter` orchestrator rewrite.
    */
   hooks?: {
     supportedEvents: Partial<Record<HookEvent, HookBinding>>
     sessionIdStrategy: SessionIdStrategy
     inject(): Promise<boolean>
     remove(): Promise<boolean>
+    getStatus(): Promise<ClientHookStatus>
   }
 
   /** `.backup.*` globs this client owns, for cleanup UX. */

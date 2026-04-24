@@ -8,8 +8,9 @@
  * preToolUse, and sessionEnd. Cursor v2.5+ exposes a conversation_id via
  * stdin on hook invocations.
  */
+import { promises as fs, existsSync } from 'fs'
 import { CLIENT_DISPLAY } from '../displayMeta'
-import type { ClientIntegration, DirWatchTarget, WatchTargets } from '../types'
+import type { ClientHookStatus, ClientIntegration, DirWatchTarget, WatchTargets } from '../types'
 import type { McpConfigEntry } from '../registry'
 import { discoverCursor, getCursorConfigPath } from './discovery'
 import {
@@ -21,6 +22,7 @@ import {
   injectCursorHook,
   isCursorInstalled,
   removeCursorHook,
+  type CursorHooksFile,
 } from './hooks'
 import {
   getCursorPluginCachePath,
@@ -29,6 +31,31 @@ import {
   getCursorProjectMcpPaths,
   getCursorWorkspaceStoragePath,
 } from '../../runtime/mcpProjectPaths'
+
+const CURSOR_TOTAL_HOOKS = 3
+
+async function getCursorHookStatus(): Promise<ClientHookStatus> {
+  const installed = isCursorInstalled()
+  let hookCount = 0
+  if (installed) {
+    try {
+      const hooksPath = getCursorHooksPath()
+      if (existsSync(hooksPath)) {
+        const content = await fs.readFile(hooksPath, 'utf-8')
+        const hooksFile = JSON.parse(content) as CursorHooksFile
+        const sessionStart = hooksFile.hooks?.sessionStart ?? []
+        const beforeMCP = hooksFile.hooks?.beforeMCPExecution ?? []
+        const preToolUse = hooksFile.hooks?.preToolUse ?? []
+        const sessionEnd = hooksFile.hooks?.sessionEnd ?? []
+        if (sessionStart.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook'))) hookCount++
+        if (beforeMCP.some((h) => h.command?.includes('edison-session-hook')) ||
+            preToolUse.some((h) => h.command?.includes('edison-session-hook'))) hookCount++
+        if (sessionEnd.some((h) => h.command?.includes('edison-session-end'))) hookCount++
+      }
+    } catch { /* ignore */ }
+  }
+  return { installed, hasHook: hookCount === CURSOR_TOTAL_HOOKS, hookCount, totalHooks: CURSOR_TOTAL_HOOKS }
+}
 
 const meta = CLIENT_DISPLAY['cursor']
 
@@ -101,6 +128,7 @@ export const integration: ClientIntegration = {
     sessionIdStrategy: { kind: 'native-stdin', field: 'conversation_id' },
     inject: injectCursorHook,
     remove: removeCursorHook,
+    getStatus: getCursorHookStatus,
   },
 
   backups: {

@@ -4,64 +4,40 @@
  * Injects hooks into MCP client applications to register project contexts
  * with Edison Watch when tool calls are executed.
  *
+ * The three public functions iterate `CLIENT_LIST` from
+ * `../clients/registry.ts` and delegate per-client work to each integration's
+ * `hooks` sub-object. Clients without a hook system (Zed, JetBrains) have
+ * `hooks === undefined` and are skipped by inject/remove but still surface an
+ * MCP-only status entry in `getHookStatus`.
+ *
+ * MCP-configured probing still lives here; it moves into each integration's
+ * `edisonMcp` sub-object in a separate PR.
+ *
  * Re-exports all per-client helpers so existing consumers work unchanged.
  */
 
 import { promises as fs, existsSync } from 'fs'
 import { platform } from 'os'
-import { join, dirname } from 'path'
 import { parse as parseJsonc } from 'jsonc-parser'
 import type { McpClientId } from '../discovery/types'
-import {
-  getVscodeUserMcpPath,
-} from '../clients/vscode/discovery'
-import {
-  getCursorConfigPath,
-} from '../clients/cursor/discovery'
-import {
-  getWindsurfConfigPath,
-} from '../clients/windsurf/discovery'
-import {
-  getClaudeCodeHomeJsonPath,
-} from '../clients/claude-code/discovery'
-import {
-  getZedConfigPath,
-} from '../clients/zed/discovery'
+import { CLIENT_LIST } from '../clients/registry'
+import type { ClientIntegration } from '../clients/types'
+import { getVscodeUserMcpPath } from '../clients/vscode/discovery'
+import { getCursorConfigPath } from '../clients/cursor/discovery'
+import { getWindsurfConfigPath } from '../clients/windsurf/discovery'
+import { getClaudeCodeHomeJsonPath } from '../clients/claude-code/discovery'
+import { getZedConfigPath } from '../clients/zed/discovery'
 import {
   getJetBrainsMcpConfigPaths,
   getInstalledJetBrainsIdes,
 } from '../clients/jetbrains/discovery'
-import { MAC_APP_NAMES } from '../discovery/mcpDiscovery'
 import { captureError } from '../infra/sentry'
+import { getVsCodeWorkspacePaths } from './mcpProjectPaths'
+import { getCodexConfigPath } from '../clients/codex/hooks'
 import {
-  getVsCodeWorkspacePaths,
-} from './mcpProjectPaths'
-import {
-  isClaudeCodeInstalled, injectClaudeCodeHook, removeClaudeCodeHook,
-  getClaudeCodeSettingsPath,
-  type ClaudeCodeSettings,
-} from '../clients/claude-code/hooks'
-import {
-  isCursorInstalled, injectCursorHook, removeCursorHook,
-  getCursorHooksPath,
-  type CursorHooksFile,
-} from '../clients/cursor/hooks'
-import {
-  isWindsurfInstalled, injectWindsurfHook, removeWindsurfHook,
-  getWindsurfHooksPath,
-  type WindsurfHooksFile,
-} from '../clients/windsurf/hooks'
-import {
-  isCodexInstalled, injectCodexHook, removeCodexHook,
-  getCodexConfigPath,
-} from '../clients/codex/hooks'
-import {
-  isVsCodeCopilotInstalled, injectVsCodeCopilotHook, removeVsCodeCopilotHook,
-  getVsCodeCopilotHooksPath,
-  type VsCodeCopilotHooksFile,
-  injectVsCodeWorkspaceHook, removeVsCodeWorkspaceHook,
+  injectVsCodeWorkspaceHook,
+  removeVsCodeWorkspaceHook,
 } from '../clients/vscode/hooks'
-import { appBundleExists } from '../clients/shared'
 import type { ClaudeCodeMcpStatus } from '../infra/setupConfig'
 
 // Re-export all helpers so existing imports of hookInjection still work.
@@ -83,95 +59,51 @@ export interface HookInjectionResult {
   error?: string
 }
 
+// ── Inject / Remove ─────────────────────────────────────────────────────────
+
+async function runHookOp(
+  client: ClientIntegration,
+  op: 'inject' | 'remove',
+  operation: 'injectAllHooks' | 'removeAllHooks',
+): Promise<HookInjectionResult> {
+  const hooks = client.hooks!
+  try {
+    const changed = op === 'inject' ? await hooks.inject() : await hooks.remove()
+    const installed = op === 'inject' ? changed : false
+    return { client: client.id, installed, alreadyExists: !changed }
+  } catch (err) {
+    captureError(err instanceof Error ? err : new Error(String(err)), {
+      client: client.id, operation, platform: platform()
+    })
+    return { client: client.id, installed: false, alreadyExists: false, error: String(err) }
+  }
+}
+
 /**
  * Inject hooks into all supported MCP clients.
  */
 export async function injectAllHooks(): Promise<HookInjectionResult[]> {
   const results: HookInjectionResult[] = []
 
-  // Claude Code
-  if (isClaudeCodeInstalled()) {
-    try {
-      const injected = await injectClaudeCodeHook()
-      results.push({ client: 'claude-code', installed: injected, alreadyExists: !injected })
-    } catch (err) {
-      captureError(err instanceof Error ? err : new Error(String(err)), {
-        client: 'claude-code', operation: 'injectAllHooks', platform: platform()
-      })
-      results.push({ client: 'claude-code', installed: false, alreadyExists: false, error: String(err) })
-    }
+  for (const client of CLIENT_LIST) {
+    if (!client.hooks) continue
+    if (!client.isInstalled()) continue
+    results.push(await runHookOp(client, 'inject', 'injectAllHooks'))
   }
 
-  // Cursor
-  if (isCursorInstalled()) {
-    try {
-      const injected = await injectCursorHook()
-      results.push({ client: 'cursor', installed: injected, alreadyExists: !injected })
-    } catch (err) {
-      captureError(err instanceof Error ? err : new Error(String(err)), {
-        client: 'cursor', operation: 'injectAllHooks', platform: platform()
-      })
-      results.push({ client: 'cursor', installed: false, alreadyExists: false, error: String(err) })
-    }
-  }
-
-  // Windsurf
-  if (isWindsurfInstalled()) {
-    try {
-      const injected = await injectWindsurfHook()
-      results.push({ client: 'windsurf', installed: injected, alreadyExists: !injected })
-    } catch (err) {
-      captureError(err instanceof Error ? err : new Error(String(err)), {
-        client: 'windsurf', operation: 'injectAllHooks', platform: platform()
-      })
-      results.push({ client: 'windsurf', installed: false, alreadyExists: false, error: String(err) })
-    }
-  }
-
-  // VS Code - inject workspace task into each known workspace
+  // VS Code workspace tasks: per-workspace, orchestrated separately from the
+  // client-level hook registry. Kept out of the loop because these call sites
+  // are also reused from ipcHandlers.
   try {
     const workspacePaths = await getVsCodeWorkspacePaths()
-    let anyInjected = false
-    let allExisted = true
     for (const wsPath of workspacePaths) {
-      const injected = await injectVsCodeWorkspaceHook(wsPath)
-      if (injected) anyInjected = true
-      if (injected) allExisted = false
-    }
-
-    // Copilot agent hooks: shared ~/.copilot (global, not workspace-specific)
-    const copilotInstalled = isVsCodeCopilotInstalled()
-    if (copilotInstalled) {
-      const copilotInjected = await injectVsCodeCopilotHook()
-      if (copilotInjected) anyInjected = true
-      if (copilotInjected) allExisted = false
-    }
-
-    if (workspacePaths.length > 0 || copilotInstalled) {
-      results.push({ client: 'vscode', installed: anyInjected, alreadyExists: allExisted })
+      await injectVsCodeWorkspaceHook(wsPath)
     }
   } catch (err) {
     captureError(err instanceof Error ? err : new Error(String(err)), {
       client: 'vscode', operation: 'injectAllHooks', platform: platform()
     })
-    results.push({ client: 'vscode', installed: false, alreadyExists: false, error: String(err) })
   }
-
-  // Codex CLI
-  if (isCodexInstalled()) {
-    try {
-      const injected = await injectCodexHook()
-      results.push({ client: 'codex', installed: injected, alreadyExists: !injected })
-    } catch (err) {
-      captureError(err instanceof Error ? err : new Error(String(err)), {
-        client: 'codex', operation: 'injectAllHooks', platform: platform()
-      })
-      results.push({ client: 'codex', installed: false, alreadyExists: false, error: String(err) })
-    }
-  }
-
-  // Note: Zed has no workspace-open hook yet (feature request open upstream).
-  // JetBrains IDEs have no scriptable hook system.
 
   return results
 }
@@ -182,78 +114,28 @@ export async function injectAllHooks(): Promise<HookInjectionResult[]> {
 export async function removeAllHooks(): Promise<HookInjectionResult[]> {
   const results: HookInjectionResult[] = []
 
-  if (isClaudeCodeInstalled()) {
-    try {
-      const removed = await removeClaudeCodeHook()
-      results.push({ client: 'claude-code', installed: false, alreadyExists: !removed })
-    } catch (err) {
-      captureError(err instanceof Error ? err : new Error(String(err)), {
-        client: 'claude-code', operation: 'removeAllHooks', platform: platform()
-      })
-      results.push({ client: 'claude-code', installed: false, alreadyExists: false, error: String(err) })
-    }
+  for (const client of CLIENT_LIST) {
+    if (!client.hooks) continue
+    if (!client.isInstalled()) continue
+    results.push(await runHookOp(client, 'remove', 'removeAllHooks'))
   }
 
-  if (isCursorInstalled()) {
-    try {
-      const removed = await removeCursorHook()
-      results.push({ client: 'cursor', installed: false, alreadyExists: !removed })
-    } catch (err) {
-      captureError(err instanceof Error ? err : new Error(String(err)), {
-        client: 'cursor', operation: 'removeAllHooks', platform: platform()
-      })
-      results.push({ client: 'cursor', installed: false, alreadyExists: false, error: String(err) })
-    }
-  }
-
-  if (isWindsurfInstalled()) {
-    try {
-      const removed = await removeWindsurfHook()
-      results.push({ client: 'windsurf', installed: false, alreadyExists: !removed })
-    } catch (err) {
-      captureError(err instanceof Error ? err : new Error(String(err)), {
-        client: 'windsurf', operation: 'removeAllHooks', platform: platform()
-      })
-      results.push({ client: 'windsurf', installed: false, alreadyExists: false, error: String(err) })
-    }
-  }
-
-  // VS Code - remove workspace task + Copilot agent hooks
+  // VS Code workspace tasks removal (see note in injectAllHooks).
   try {
     const workspacePaths = await getVsCodeWorkspacePaths()
     for (const wsPath of workspacePaths) {
       await removeVsCodeWorkspaceHook(wsPath)
     }
-
-    const copilotInstalled = isVsCodeCopilotInstalled()
-    if (copilotInstalled) {
-      await removeVsCodeCopilotHook()
-    }
-
-    if (workspacePaths.length > 0 || copilotInstalled) {
-      results.push({ client: 'vscode', installed: false, alreadyExists: false })
-    }
   } catch (err) {
     captureError(err instanceof Error ? err : new Error(String(err)), {
       client: 'vscode', operation: 'removeAllHooks', platform: platform()
     })
-    results.push({ client: 'vscode', installed: false, alreadyExists: false, error: String(err) })
-  }
-
-  if (isCodexInstalled()) {
-    try {
-      const removed = await removeCodexHook()
-      results.push({ client: 'codex', installed: false, alreadyExists: !removed })
-    } catch (err) {
-      captureError(err instanceof Error ? err : new Error(String(err)), {
-        client: 'codex', operation: 'removeAllHooks', platform: platform()
-      })
-      results.push({ client: 'codex', installed: false, alreadyExists: false, error: String(err) })
-    }
   }
 
   return results
 }
+
+// ── Status ──────────────────────────────────────────────────────────────────
 
 /**
  * Get the status of Edison Watch hooks for all clients.
@@ -330,192 +212,88 @@ async function checkZedMcpEntry(
   }
 }
 
-const VSCODE_TASK_LABEL = 'Edison Watch Registration'
-
-interface VsCodeTasksFile {
-  version: string
-  tasks: Array<{ label: string; [k: string]: unknown }>
+async function probeMcpConfigured(
+  clientId: McpClientId,
+  installed: boolean,
+  expectedMcpUrl: string | null,
+): Promise<boolean> {
+  if (!installed) return false
+  switch (clientId) {
+    case 'claude-code':
+      return checkMcpEntry(getClaudeCodeHomeJsonPath(), 'mcpServers', expectedMcpUrl)
+    case 'cursor':
+      return checkMcpEntry(getCursorConfigPath(), 'mcpServers', expectedMcpUrl)
+    case 'windsurf':
+      return checkMcpEntry(getWindsurfConfigPath(), 'mcpServers', expectedMcpUrl)
+    case 'vscode':
+      return checkMcpEntry(getVscodeUserMcpPath(), 'servers', expectedMcpUrl)
+    case 'codex':
+      return checkCodexMcpEntry(getCodexConfigPath(), expectedMcpUrl)
+    case 'zed':
+      return checkZedMcpEntry(getZedConfigPath(), expectedMcpUrl)
+    case 'intellij':
+    case 'pycharm':
+    case 'webstorm': {
+      const entries = await getJetBrainsMcpConfigPaths()
+      for (const { client, path } of entries) {
+        if (client !== clientId) continue
+        if (await checkMcpEntry(path, 'mcpServers', expectedMcpUrl)) return true
+      }
+      return false
+    }
+  }
 }
 
-export async function getHookStatus(expectedMcpUrl?: string | null, mcpServerAlive = false, claudeCodeMcpStatus?: ClaudeCodeMcpStatus): Promise<HookStatusEntry[]> {
+export async function getHookStatus(
+  expectedMcpUrl?: string | null,
+  mcpServerAlive = false,
+  claudeCodeMcpStatus?: ClaudeCodeMcpStatus,
+): Promise<HookStatusEntry[]> {
   const results: HookStatusEntry[] = []
+  const url = expectedMcpUrl ?? null
 
-  // Claude Code - expects 4 hooks
-  const claudeInstalled = isClaudeCodeInstalled()
-  let claudeHookCount = 0
-  const claudeTotalHooks = 4
-  if (claudeInstalled) {
-    try {
-      const settingsPath = getClaudeCodeSettingsPath()
-      if (existsSync(settingsPath)) {
-        const content = await fs.readFile(settingsPath, 'utf-8')
-        const settings = parseJsonc(content) as ClaudeCodeSettings
-        const promptHooks = settings.hooks?.UserPromptSubmit ?? []
-        const toolHooks = settings.hooks?.PreToolUse ?? []
-        const startHooks = settings.hooks?.SessionStart ?? []
-        const endHooks = settings.hooks?.SessionEnd ?? []
-        if (promptHooks.some((group) =>
-          group.hooks?.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook'))
-        )) claudeHookCount++
-        if (toolHooks.some((group) =>
-          group.hooks?.some((h) => h.command?.includes('edison-session-hook'))
-        )) claudeHookCount++
-        if (startHooks.some((group) =>
-          group.hooks?.some((h) => h.command?.includes('edison-session-start'))
-        )) claudeHookCount++
-        if (endHooks.some((group) =>
-          group.hooks?.some((h) => h.command?.includes('edison-session-end'))
-        )) claudeHookCount++
-      }
-    } catch { /* ignore */ }
-  }
-  const claudeMcpConfigured = claudeInstalled
-    ? await checkMcpEntry(getClaudeCodeHomeJsonPath(), 'mcpServers', expectedMcpUrl ?? null)
-    : false
-  const claudeMcpConnected = claudeCodeMcpStatus && claudeCodeMcpStatus !== 'unknown'
-    ? claudeCodeMcpStatus === 'connected'
-    : claudeMcpConfigured && mcpServerAlive
-  results.push({ client: 'claude-code', installed: claudeInstalled, hasHook: claudeHookCount === claudeTotalHooks, hookCount: claudeHookCount, totalHooks: claudeTotalHooks, mcpConnected: claudeMcpConnected, mcpConfigured: claudeMcpConfigured, mcpApplicable: true, hooksApplicable: true, mcpRuntimeStatus: claudeCodeMcpStatus })
-
-  // Cursor - expects 3 hooks
-  const cursorInstalled = isCursorInstalled()
-  let cursorHookCount = 0
-  const cursorTotalHooks = 3
-  if (cursorInstalled) {
-    try {
-      const hooksPath = getCursorHooksPath()
-      if (existsSync(hooksPath)) {
-        const content = await fs.readFile(hooksPath, 'utf-8')
-        const hooksFile = JSON.parse(content) as CursorHooksFile
-        const sessionStart = hooksFile.hooks?.sessionStart ?? []
-        const beforeMCP = hooksFile.hooks?.beforeMCPExecution ?? []
-        const preToolUse = hooksFile.hooks?.preToolUse ?? []
-        const sessionEnd = hooksFile.hooks?.sessionEnd ?? []
-        if (sessionStart.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook'))) cursorHookCount++
-        if (beforeMCP.some((h) => h.command?.includes('edison-session-hook')) ||
-            preToolUse.some((h) => h.command?.includes('edison-session-hook'))) cursorHookCount++
-        if (sessionEnd.some((h) => h.command?.includes('edison-session-end'))) cursorHookCount++
-      }
-    } catch { /* ignore */ }
-  }
-  const cursorMcpConfigured = cursorInstalled
-    ? await checkMcpEntry(getCursorConfigPath(), 'mcpServers', expectedMcpUrl ?? null)
-    : false
-  results.push({ client: 'cursor', installed: cursorInstalled, hasHook: cursorHookCount === cursorTotalHooks, hookCount: cursorHookCount, totalHooks: cursorTotalHooks, mcpConnected: cursorMcpConfigured && mcpServerAlive, mcpConfigured: cursorMcpConfigured, mcpApplicable: true, hooksApplicable: true })
-
-  // Windsurf
-  const windsurfInstalled = isWindsurfInstalled()
-  let windsurfHasHook = false
-  if (windsurfInstalled) {
-    try {
-      const hooksPath = getWindsurfHooksPath()
-      if (existsSync(hooksPath)) {
-        const content = await fs.readFile(hooksPath, 'utf-8')
-        const hooksFile = JSON.parse(content) as WindsurfHooksFile
-        const hooks = hooksFile.hooks?.pre_user_prompt ?? []
-        windsurfHasHook = hooks.some((h) => h.command?.includes('edison-hook'))
-      }
-    } catch { /* ignore */ }
-  }
-  const windsurfTotal = 1
-  const windsurfMcpConfigured = windsurfInstalled
-    ? await checkMcpEntry(getWindsurfConfigPath(), 'mcpServers', expectedMcpUrl ?? null)
-    : false
-  results.push({ client: 'windsurf', installed: windsurfInstalled, hasHook: windsurfHasHook, hookCount: windsurfHasHook ? 1 : 0, totalHooks: windsurfTotal, mcpConnected: windsurfMcpConfigured && mcpServerAlive, mcpConfigured: windsurfMcpConfigured, mcpApplicable: true, hooksApplicable: true })
-
-  // VS Code
-  if (!appBundleExists(['Visual Studio Code.app'])) {
-    results.push({ client: 'vscode', installed: false, hasHook: false, hookCount: 0, totalHooks: 1, mcpConnected: false, mcpConfigured: false, mcpApplicable: true, hooksApplicable: true })
-  } else {
-    let vsHookCount = 0
-    let vsTotalHooks = 0
-    try {
-      const workspacePaths = await getVsCodeWorkspacePaths()
-      if (workspacePaths.length > 0) vsTotalHooks++
-      for (const wsPath of workspacePaths) {
-        const tasksPath = join(wsPath, '.vscode', 'tasks.json')
-        if (!existsSync(tasksPath)) continue
-        try {
-          const content = await fs.readFile(tasksPath, 'utf-8')
-          const tasksFile = JSON.parse(content) as VsCodeTasksFile
-          if (tasksFile.tasks?.some((t) => t.label === VSCODE_TASK_LABEL)) {
-            vsHookCount++
-            break
-          }
-        } catch { /* unreadable; skip */ }
-      }
-
-      const copilotInstalled = isVsCodeCopilotInstalled()
-      if (copilotInstalled) {
-        vsTotalHooks += 4
-        try {
-          const copilotHooksPath = getVsCodeCopilotHooksPath()
-          if (existsSync(copilotHooksPath)) {
-            const content = await fs.readFile(copilotHooksPath, 'utf-8')
-            const hooksFile = JSON.parse(content) as VsCodeCopilotHooksFile
-            if (hooksFile.hooks?.SessionStart?.some((h) => h.command?.includes('edison-session-start'))) vsHookCount++
-            if (hooksFile.hooks?.UserPromptSubmit?.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook'))) vsHookCount++
-            if (hooksFile.hooks?.PreToolUse?.some((h) => h.command?.includes('edison-session-hook') && !h.command?.includes('edison-session-end'))) vsHookCount++
-            if (hooksFile.hooks?.Stop?.some((h) => h.command?.includes('edison-session-end'))) vsHookCount++
-          }
-        } catch { /* ignore */ }
-      }
-
-      const installed = workspacePaths.length > 0 || copilotInstalled
-      const vsMcpConfigured = installed
-        ? await checkMcpEntry(getVscodeUserMcpPath(), 'servers', expectedMcpUrl ?? null)
-        : false
-      results.push({ client: 'vscode', installed, hasHook: vsTotalHooks > 0 && vsHookCount === vsTotalHooks, hookCount: vsHookCount, totalHooks: vsTotalHooks, mcpConnected: vsMcpConfigured && mcpServerAlive, mcpConfigured: vsMcpConfigured, mcpApplicable: true, hooksApplicable: true })
-    } catch {
-      results.push({ client: 'vscode', installed: false, hasHook: false, hookCount: 0, totalHooks: 1, mcpConnected: false, mcpConfigured: false, mcpApplicable: true, hooksApplicable: true })
-    }
-  }
-
-  // Codex CLI
-  const codexInstalled = isCodexInstalled()
-  let codexHookCount = 0
-  const codexTotalHooks = 2
-  if (codexInstalled) {
-    try {
-      const configPath = getCodexConfigPath()
-      if (existsSync(configPath)) {
-        const content = await fs.readFile(configPath, 'utf-8')
-        if (content.includes('edison-hook')) codexHookCount++
-        if (content.includes('edison-session-end')) codexHookCount++
-      }
-    } catch { /* ignore */ }
-  }
-  const codexMcpConfigured = codexInstalled
-    ? await checkCodexMcpEntry(getCodexConfigPath(), expectedMcpUrl ?? null)
-    : false
-  results.push({ client: 'codex', installed: codexInstalled, hasHook: codexHookCount === codexTotalHooks, hookCount: codexHookCount, totalHooks: codexTotalHooks, mcpConnected: codexMcpConfigured && mcpServerAlive, mcpConfigured: codexMcpConfigured, mcpApplicable: true, hooksApplicable: true })
-
-  // ── Hookless clients ──────────────────────────────────────────────────────
-
-  // Zed
-  const zedConfigPath = getZedConfigPath()
-  const zedInstalled = existsSync(dirname(zedConfigPath)) && appBundleExists(['Zed.app'])
-  const zedMcpConfigured = zedInstalled
-    ? await checkZedMcpEntry(zedConfigPath, expectedMcpUrl ?? null)
-    : false
-  results.push({ client: 'zed', installed: zedInstalled, hasHook: false, hookCount: 0, totalHooks: 0, mcpConnected: zedMcpConfigured && mcpServerAlive, mcpConfigured: zedMcpConfigured, mcpApplicable: true, hooksApplicable: false })
-
-  // JetBrains IDEs
+  // JetBrains installed-state probe reuses the filesystem check so we can
+  // AND it with bundle existence before the per-client loop.
   const installedJetBrains = await getInstalledJetBrainsIdes()
-  const jetbrainsEntries = await getJetBrainsMcpConfigPaths()
-  for (const jbClient of ['intellij', 'pycharm', 'webstorm'] as const) {
-    const jbInstalled = installedJetBrains.has(jbClient) && appBundleExists(MAC_APP_NAMES[jbClient] ?? [])
-    let jbMcpConfigured = false
-    if (jbInstalled) {
-      const paths = jetbrainsEntries.filter((e) => e.client === jbClient)
-      for (const { path } of paths) {
-        if (await checkMcpEntry(path, 'mcpServers', expectedMcpUrl ?? null)) {
-          jbMcpConfigured = true
-          break
-        }
+
+  for (const client of CLIENT_LIST) {
+    const hooksApplicable = client.hooks !== undefined
+
+    let base: { installed: boolean; hasHook: boolean; hookCount: number; totalHooks: number }
+    if (client.hooks) {
+      base = await client.hooks.getStatus()
+    } else if (client.id === 'intellij' || client.id === 'pycharm' || client.id === 'webstorm') {
+      // JetBrains isInstalled() is a sync .app-bundle probe; also require the
+      // preferences-folder scan to match the legacy strict check.
+      const installed = installedJetBrains.has(client.id) && client.isInstalled()
+      base = { installed, hasHook: false, hookCount: 0, totalHooks: 0 }
+    } else {
+      base = { installed: client.isInstalled(), hasHook: false, hookCount: 0, totalHooks: 0 }
+    }
+
+    const mcpConfigured = await probeMcpConfigured(client.id, base.installed, url)
+
+    let mcpConnected = mcpConfigured && mcpServerAlive
+    let mcpRuntimeStatus: ClaudeCodeMcpStatus | undefined
+    if (client.id === 'claude-code') {
+      mcpRuntimeStatus = claudeCodeMcpStatus
+      if (claudeCodeMcpStatus && claudeCodeMcpStatus !== 'unknown') {
+        mcpConnected = claudeCodeMcpStatus === 'connected'
       }
     }
-    results.push({ client: jbClient, installed: jbInstalled, hasHook: false, hookCount: 0, totalHooks: 0, mcpConnected: jbMcpConfigured && mcpServerAlive, mcpConfigured: jbMcpConfigured, mcpApplicable: true, hooksApplicable: false })
+
+    results.push({
+      client: client.id,
+      installed: base.installed,
+      hasHook: base.hasHook,
+      hookCount: base.hookCount,
+      totalHooks: base.totalHooks,
+      mcpConnected,
+      mcpConfigured,
+      mcpApplicable: true,
+      hooksApplicable,
+      ...(mcpRuntimeStatus !== undefined ? { mcpRuntimeStatus } : {}),
+    })
   }
 
   return results

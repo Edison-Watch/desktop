@@ -14,7 +14,7 @@
  * separately by `injectVsCodeWorkspaceHook`.
  */
 import { CLIENT_DISPLAY } from '../displayMeta'
-import type { ClientIntegration, WatchTargets } from '../types'
+import type { ClientHookStatus, ClientIntegration, WatchTargets } from '../types'
 import type { McpConfigEntry } from '../registry'
 import {
   discoverVscodeStateMcps,
@@ -27,10 +27,65 @@ import {
   injectVsCodeCopilotHook,
   isVsCodeCopilotInstalled,
   removeVsCodeCopilotHook,
+  VSCODE_TASK_LABEL,
+  type VsCodeCopilotHooksFile,
+  type VsCodeTasksFile,
 } from './hooks'
 import { appBundleExists } from '../shared'
-import { promises as fs } from 'fs'
+import { promises as fs, existsSync } from 'fs'
+import { join } from 'path'
+import { getVsCodeWorkspacePaths } from '../../runtime/mcpProjectPaths'
 import type { DiscoveredMcpServer } from '../../discovery/types'
+
+async function getVsCodeHookStatus(): Promise<ClientHookStatus> {
+  if (!appBundleExists(['Visual Studio Code.app'])) {
+    return { installed: false, hasHook: false, hookCount: 0, totalHooks: 1 }
+  }
+  try {
+    const workspacePaths = await getVsCodeWorkspacePaths()
+    let hookCount = 0
+    let totalHooks = 0
+    if (workspacePaths.length > 0) totalHooks++
+    for (const wsPath of workspacePaths) {
+      const tasksPath = join(wsPath, '.vscode', 'tasks.json')
+      if (!existsSync(tasksPath)) continue
+      try {
+        const content = await fs.readFile(tasksPath, 'utf-8')
+        const tasksFile = JSON.parse(content) as VsCodeTasksFile
+        if (tasksFile.tasks?.some((t) => t.label === VSCODE_TASK_LABEL)) {
+          hookCount++
+          break
+        }
+      } catch { /* unreadable; skip */ }
+    }
+
+    const copilotInstalled = isVsCodeCopilotInstalled()
+    if (copilotInstalled) {
+      totalHooks += 4
+      try {
+        const copilotHooksPath = getVsCodeCopilotHooksPath()
+        if (existsSync(copilotHooksPath)) {
+          const content = await fs.readFile(copilotHooksPath, 'utf-8')
+          const hooksFile = JSON.parse(content) as VsCodeCopilotHooksFile
+          if (hooksFile.hooks?.SessionStart?.some((h) => h.command?.includes('edison-session-start'))) hookCount++
+          if (hooksFile.hooks?.UserPromptSubmit?.some((h) => h.command?.includes('edison-hook') && !h.command?.includes('edison-session-hook'))) hookCount++
+          if (hooksFile.hooks?.PreToolUse?.some((h) => h.command?.includes('edison-session-hook') && !h.command?.includes('edison-session-end'))) hookCount++
+          if (hooksFile.hooks?.Stop?.some((h) => h.command?.includes('edison-session-end'))) hookCount++
+        }
+      } catch { /* ignore */ }
+    }
+
+    const installed = workspacePaths.length > 0 || copilotInstalled
+    return {
+      installed,
+      hasHook: totalHooks > 0 && hookCount === totalHooks,
+      hookCount,
+      totalHooks,
+    }
+  } catch {
+    return { installed: false, hasHook: false, hookCount: 0, totalHooks: 1 }
+  }
+}
 
 const meta = CLIENT_DISPLAY['vscode']
 
@@ -84,6 +139,7 @@ export const integration: ClientIntegration = {
       return injectVsCodeCopilotHook()
     },
     remove: removeVsCodeCopilotHook,
+    getStatus: getVsCodeHookStatus,
   },
 
   backups: {

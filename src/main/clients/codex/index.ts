@@ -8,8 +8,9 @@
  * has no discovery surface today - its MCP configuration is opaque from our
  * side.
  */
+import { promises as fs, existsSync } from 'fs'
 import { CLIENT_DISPLAY } from '../displayMeta'
-import type { ClientIntegration, WatchTargets } from '../types'
+import type { ClientHookStatus, ClientIntegration, WatchTargets } from '../types'
 import type { McpConfigEntry } from '../registry'
 import {
   getCodexConfigPath,
@@ -17,6 +18,24 @@ import {
   isCodexInstalled,
   removeCodexHook,
 } from './hooks'
+
+const CODEX_TOTAL_HOOKS = 2
+
+async function getCodexHookStatus(): Promise<ClientHookStatus> {
+  const installed = isCodexInstalled()
+  let hookCount = 0
+  if (installed) {
+    try {
+      const configPath = getCodexConfigPath()
+      if (existsSync(configPath)) {
+        const content = await fs.readFile(configPath, 'utf-8')
+        if (content.includes('edison-hook')) hookCount++
+        if (content.includes('edison-session-end')) hookCount++
+      }
+    } catch { /* ignore */ }
+  }
+  return { installed, hasHook: hookCount === CODEX_TOTAL_HOOKS, hookCount, totalHooks: CODEX_TOTAL_HOOKS }
+}
 
 const meta = CLIENT_DISPLAY['codex']
 
@@ -53,6 +72,7 @@ export const integration: ClientIntegration = {
     },
     inject: injectCodexHook,
     remove: removeCodexHook,
+    getStatus: getCodexHookStatus,
   },
 
   backups: {

@@ -103,7 +103,7 @@ export async function removeVsCodeCopilotHook(): Promise<boolean> {
 
 // ── VS Code Workspace Task Hooks ────────────────────────────────────────────
 
-const VSCODE_TASK_LABEL = 'Edison Watch Registration'
+export const VSCODE_TASK_LABEL = 'Edison Watch Registration'
 
 interface VsCodeTask {
   label: string
@@ -114,7 +114,7 @@ interface VsCodeTask {
   presentation?: { reveal: string; panel: string }
 }
 
-interface VsCodeTasksFile {
+export interface VsCodeTasksFile {
   version: string
   tasks: VsCodeTask[]
 }
