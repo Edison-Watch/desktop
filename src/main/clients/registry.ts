@@ -1,33 +1,66 @@
 /**
- * Unified MCP config-path registry.
+ * Unified MCP config-path registry + per-client integration map.
  *
- * Single source of truth for all MCP config file paths across all agents.
- * Used by discovery, the config monitor, and quarantine restore so they
- * never drift out of sync.
+ * `CLIENTS` / `CLIENT_LIST` give every orchestrator a uniform way to reach a
+ * client's discovery, hook, and (future) edison-mcp operations. The helpers
+ * (`getAllConfigEntries`, `buildEntryMap`, `getWatchablePaths`) delegate to
+ * each integration's `configEntries()` instead of branching on client id.
  */
+import type { ClientIntegration } from './types'
 import type { McpClientId } from '../discovery/types'
-import { getVscodeUserMcpPath, getVscodeStateDbPath } from './vscode/discovery'
+import {
+  getVscodeUserMcpPath,
+} from './vscode/discovery'
 import { getCursorConfigPath } from './cursor/discovery'
-import { getCursorStateDbPath } from './cursor/marketplace'
 import {
   getClaudeCodeUserSettingsPath,
   getClaudeCodeLocalSettingsPath,
   getClaudeCodeHomeJsonPath,
   getClaudeCodeDedicatedMcpPath,
-  getClaudeCodeManagedMcpPath,
 } from './claude-code/discovery'
 import { getWindsurfConfigPath } from './windsurf/discovery'
 import { getZedConfigPath } from './zed/discovery'
-import { getJetBrainsMcpConfigPaths } from './jetbrains/discovery'
 import { getCodexConfigPath } from './codex/hooks'
 import {
   getCursorWorkspaceStoragePath,
-  getCursorProjectMcpPaths,
-  getCursorPluginMcpPaths,
-  getCursorPluginsInstalledPaths,
   getCursorPluginCachePath,
-  getClaudeCodeProjectMcpPaths,
 } from '../runtime/mcpProjectPaths'
+
+import { integration as claudeCode } from './claude-code'
+import { integration as codex } from './codex'
+import { integration as cursor } from './cursor'
+import { integration as vscode } from './vscode'
+import { integration as windsurf } from './windsurf'
+import { integration as zed } from './zed'
+import { integration as intellij } from './jetbrains/intellij'
+import { integration as pycharm } from './jetbrains/pycharm'
+import { integration as webstorm } from './jetbrains/webstorm'
+
+// ── Client integration map ───────────────────────────────────────────────────
+
+/**
+ * Every supported client, keyed by McpClientId.
+ *
+ * Orchestrators (hookInjection, mcpConfigWriter, mcpConfigActions,
+ * mcpConfigMonitor, mcpDiscovery) iterate over this map instead of branching
+ * on client id.
+ */
+export const CLIENTS: Record<McpClientId, ClientIntegration> = {
+  'claude-code': claudeCode,
+  codex,
+  cursor,
+  vscode,
+  windsurf,
+  zed,
+  intellij,
+  pycharm,
+  webstorm,
+}
+
+/** All integrations as an array, in the insertion order of `CLIENTS`. */
+export const CLIENT_LIST: ClientIntegration[] = Object.values(CLIENTS)
+
+// ── Config entries ───────────────────────────────────────────────────────────
 
 /** Describes a single MCP config file or database. */
 export interface McpConfigEntry {
@@ -46,80 +79,10 @@ export interface McpConfigEntry {
   triggersDynamicRescan?: 'claude-code-projects' | 'cursor-plugins'
 }
 
-// ── Static (sync) entries ────────────────────────────────────────────────────
-
-/** All statically-known config paths (no I/O required). */
-export function getStaticConfigEntries(): McpConfigEntry[] {
-  const entries: McpConfigEntry[] = [
-    // VS Code
-    { client: 'vscode', path: getVscodeUserMcpPath(), kind: 'json', scope: 'user' },
-    { client: 'vscode', path: getVscodeStateDbPath(), kind: 'sqlite-state', scope: 'marketplace' },
-
-    // Cursor
-    { client: 'cursor', path: getCursorConfigPath(), kind: 'jsonc', scope: 'user' },
-    { client: 'cursor', path: getCursorStateDbPath(), kind: 'sqlite-state', scope: 'marketplace' },
-    // Plugin registry files (trigger rescan of plugin .mcp.json paths when changed)
-    ...getCursorPluginsInstalledPaths().map((p): McpConfigEntry => ({
-      client: 'cursor', path: p, kind: 'json', scope: 'plugin-registry',
-      triggersDynamicRescan: 'cursor-plugins',
-    })),
-
-    // Claude Code
-    { client: 'claude-code', path: getClaudeCodeUserSettingsPath(), kind: 'json', scope: 'user' },
-    { client: 'claude-code', path: getClaudeCodeLocalSettingsPath(), kind: 'json', scope: 'user' },
-    {
-      client: 'claude-code', path: getClaudeCodeHomeJsonPath(), kind: 'json', scope: 'user',
-      triggersDynamicRescan: 'claude-code-projects',
-    },
-    { client: 'claude-code', path: getClaudeCodeDedicatedMcpPath(), kind: 'json', scope: 'user' },
-
-    // Codex
-    { client: 'codex', path: getCodexConfigPath(), kind: 'toml', scope: 'user' },
-
-    // Windsurf
-    { client: 'windsurf', path: getWindsurfConfigPath(), kind: 'json', scope: 'user' },
-
-    // Zed
-    { client: 'zed', path: getZedConfigPath(), kind: 'json', scope: 'user' },
-  ]
-
-  // Claude Code enterprise managed MCP (platform-dependent, may be null)
-  const managedPath = getClaudeCodeManagedMcpPath()
-  if (managedPath) {
-    entries.push({ client: 'claude-code', path: managedPath, kind: 'json', scope: 'enterprise' })
-  }
-
-  return entries
-}
-
-// ── Dynamic (async) entries ──────────────────────────────────────────────────
-
-/** All config paths including dynamically-scanned ones (JetBrains, Cursor projects/plugins, Claude Code projects). */
+/** All config paths (static + dynamically scanned), collected from every client's integration. */
 export async function getAllConfigEntries(): Promise<McpConfigEntry[]> {
-  const entries = getStaticConfigEntries()
-
-  const [jetbrainsPaths, cursorProjectPaths, cursorPluginPaths, claudeCodeProjectPaths] =
-    await Promise.all([
-      getJetBrainsMcpConfigPaths(),
-      getCursorProjectMcpPaths(),
-      getCursorPluginMcpPaths(),
-      getClaudeCodeProjectMcpPaths(),
-    ])
-
-  for (const { client, path } of jetbrainsPaths) {
-    entries.push({ client, path, kind: 'json', scope: 'user' })
-  }
-  for (const path of cursorProjectPaths) {
-    entries.push({ client: 'cursor', path, kind: 'jsonc', scope: 'project' })
-  }
-  for (const path of cursorPluginPaths) {
-    entries.push({ client: 'cursor', path, kind: 'json', scope: 'user' })
-  }
-  for (const path of claudeCodeProjectPaths) {
-    entries.push({ client: 'claude-code', path, kind: 'json', scope: 'project' })
-  }
-
-  return entries
+  const perClient = await Promise.all(CLIENT_LIST.map((c) => c.configEntries()))
+  return perClient.flat()
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -146,7 +109,7 @@ export { getCursorPluginCachePath }
 
 // ── Deprecated - use getAllConfigEntries() instead ───────────────────────────
 
-/** @deprecated Use getStaticConfigEntries() or getAllConfigEntries() instead. */
+/** @deprecated Use getAllConfigEntries() instead. */
 export interface McpConfigPaths {
   vscode: string
   cursor: string
@@ -157,7 +120,7 @@ export interface McpConfigPaths {
   zed: string
 }
 
-/** @deprecated Use getStaticConfigEntries() or getAllConfigEntries() instead. */
+/** @deprecated Use getAllConfigEntries() instead. */
 export function getAllConfigPaths(): McpConfigPaths {
   return {
     vscode: getVscodeUserMcpPath(),
