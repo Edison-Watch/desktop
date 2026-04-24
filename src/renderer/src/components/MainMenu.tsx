@@ -33,7 +33,7 @@ export default function MainMenu(): React.ReactNode {
   const [accounts, setAccounts] = useState<SavedAccount[]>([]);
   const [showAccounts, setShowAccounts] = useState(false);
   const [switching, setSwitching] = useState(false);
-  const [activeTab, setActiveTab] = useState<MenuTab>("home");
+  const [activeTab, setActiveTab] = useState<MenuTab>("clients");
 
   useEffect(() => {
     (async () => {
@@ -53,9 +53,8 @@ export default function MainMenu(): React.ReactNode {
       setSetupData(mergedData);
       const saved = await window.api.accounts.list();
       setAccounts(saved);
-      // Resize window to fit the compact menu - taller when MCP buttons are shown
-      const hasMcp = Boolean(mergedData.mcpBaseUrl && mergedData.apiKey);
-      await window.api.menu.resizeWindow(461, hasMcp ? 605 : 547);
+      // Default tab is "clients" which needs taller window for the list
+      await window.api.menu.resizeWindow(461, 749);
     })();
     const interval = setInterval(async () => {
       const status = await window.api.health.check();
@@ -210,9 +209,9 @@ export default function MainMenu(): React.ReactNode {
           {/* Tab navigation */}
           <div className="flex gap-1 border-b border-[var(--border)] -mx-1">
             {([
-              { key: "home" as const, label: "Home", icon: "M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" },
+              { key: "clients" as const, label: "Home", icon: "M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" },
               { key: "my-mcps" as const, label: "My MCPs", icon: "M4 5a1 1 0 011-1h14a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM8 6.5h.01M8 16.5h.01" },
-              { key: "clients" as const, label: "Clients", icon: "M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" },
+              { key: "home" as const, label: "Config", icon: "M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" },
             ]).map((tab) => (
               <button
                 key={tab.key}

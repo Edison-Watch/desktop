@@ -9,6 +9,7 @@ import {
 import { AGENT_REGISTRY, type AgentId } from "@edison/shared/agent-registry";
 import type { ModifiedConfig, DiscoveredServer, RemovalTarget } from "./AppsStep";
 import { AppLogo } from "./AppLogo";
+import EncryptionAnimation from "./EncryptionAnimation";
 import CredentialReviewCard from "./CredentialReviewCard";
 import type { TemplateOverrideEntry } from "./CredentialReviewCard";
 import ScanResultsPanel from "./ScanResultsPanel";
@@ -529,6 +530,8 @@ export default function EncryptionStep({
           )}
         </Card>
       )}
+
+      {currentSubStep >= 2 && <EncryptionAnimation />}
 
       {/* ── Sub-step 3: Register Servers ── */}
       {currentSubStep >= 2 && (

@@ -340,22 +340,16 @@ export default function FinishStep({
       )}
 
       <div className="flex flex-col gap-2">
-        {/* Primary action: finish setup (close window) */}
         <Button
           variant="primary"
-          onClick={handleComplete}
+          onClick={async () => {
+            try { await handleOpenDashboard(); } catch { /* best-effort */ }
+            await handleComplete();
+          }}
           loading={completing}
           className="w-full"
         >
-          Finish Setup
-        </Button>
-        {/* Secondary: open dashboard in browser */}
-        <Button
-          variant="ghost"
-          onClick={handleOpenDashboard}
-          className="w-full"
-        >
-          Open Dashboard
+          Finish Setup and back to Web
         </Button>
       </div>
     </div>
