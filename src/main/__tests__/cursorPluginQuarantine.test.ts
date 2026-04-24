@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { tmpdir } from "os";
 import { join } from "path";
 import { promises as fs } from "fs";
-import type { DiscoveredMcpServer } from "../mcpDiscovery";
+import type { DiscoveredMcpServer } from "../discovery/mcpDiscovery";
 import {
   quarantineCursorPlugin,
   restoreAllCursorPlugins,
-} from "../mcpConfigActions";
+} from "../runtime/mcpConfigActions";
 
 // ---------------------------------------------------------------------------
 // Helpers - build a fake Cursor plugin + projects layout in a temp dir
@@ -98,7 +98,7 @@ describe("cursorPluginQuarantine", () => {
       );
 
       // Mock getCursorProjectsDir to point at our temp dir
-      const discovery = await import("../mcpDiscovery");
+      const discovery = await import("../discovery/mcpDiscovery");
       const spy = vi.spyOn(discovery, "getCursorProjectsDir")
         .mockReturnValue(join(testDir, "projects"));
 
@@ -131,7 +131,7 @@ describe("cursorPluginQuarantine", () => {
       );
       await fs.mkdir(join(testDir, "projects"), { recursive: true });
 
-      const discovery = await import("../mcpDiscovery");
+      const discovery = await import("../discovery/mcpDiscovery");
       const spy = vi.spyOn(discovery, "getCursorProjectsDir")
         .mockReturnValue(join(testDir, "projects"));
 
@@ -158,7 +158,7 @@ describe("cursorPluginQuarantine", () => {
       const mcpsDir = join(testDir, "projects", "proj1", "mcps");
       await fs.mkdir(join(mcpsDir, "ew-disabled-plugin-slack-slack"), { recursive: true });
 
-      const discovery = await import("../mcpDiscovery");
+      const discovery = await import("../discovery/mcpDiscovery");
       const spy = vi.spyOn(discovery, "getCursorProjectsDir")
         .mockReturnValue(join(testDir, "projects"));
 
@@ -193,7 +193,7 @@ describe("cursorPluginQuarantine", () => {
       await fs.mkdir(join(cacheDir, "ew-disabled-datadog", "sha1"), { recursive: true });
       await fs.writeFile(join(cacheDir, "ew-disabled-datadog", "sha1", "mcp.json"), "{}");
 
-      const discovery = await import("../mcpDiscovery");
+      const discovery = await import("../discovery/mcpDiscovery");
       const projSpy = vi.spyOn(discovery, "getCursorProjectsDir")
         .mockReturnValue(join(testDir, "projects"));
       const cacheSpy = vi.spyOn(discovery, "getCursorPluginCachePath")
@@ -227,7 +227,7 @@ describe("cursorPluginQuarantine", () => {
       await fs.mkdir(join(testDir, "projects", "proj1", "mcps", "plugin-normal"), { recursive: true });
       await fs.mkdir(join(testDir, "plugins", "cache", "cursor-public", "normal", "sha1"), { recursive: true });
 
-      const discovery = await import("../mcpDiscovery");
+      const discovery = await import("../discovery/mcpDiscovery");
       const projSpy = vi.spyOn(discovery, "getCursorProjectsDir")
         .mockReturnValue(join(testDir, "projects"));
       const cacheSpy = vi.spyOn(discovery, "getCursorPluginCachePath")
@@ -260,7 +260,7 @@ describe("cursorPluginQuarantine", () => {
         "tmp-session-abc123", "plugin-datadog-datadog", "datadog",
       );
 
-      const discovery = await import("../mcpDiscovery");
+      const discovery = await import("../discovery/mcpDiscovery");
       const projSpy = vi.spyOn(discovery, "getCursorProjectsDir")
         .mockReturnValue(join(testDir, "projects"));
       const cacheSpy = vi.spyOn(discovery, "getCursorPluginCachePath")

@@ -3,8 +3,8 @@
  * CLI tool to test the MCP server discovery pipeline.
  * Usage: npx tsx client_2/scripts/discover-mcp.ts [--json] [--client cursor|vscode|...]
  */
-import { discoverMcpServers } from '../src/main/mcpDiscovery'
-import type { DiscoveredMcpServer } from '../src/main/mcpDiscovery'
+import { discoverMcpServers } from '../src/main/discovery/mcpDiscovery'
+import type { DiscoveredMcpServer } from '../src/main/discovery/mcpDiscovery'
 
 const args = process.argv.slice(2)
 const jsonOutput = args.includes('--json')

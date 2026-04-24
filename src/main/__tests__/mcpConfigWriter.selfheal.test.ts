@@ -14,13 +14,13 @@ vi.mock("electron", () => ({
   },
 }));
 
-vi.mock("../sentry", () => ({ captureError: vi.fn() }));
+vi.mock("../infra/sentry", () => ({ captureError: vi.fn() }));
 
 const mockPaths: Record<string, string> = {};
 
-vi.mock("../mcpDiscovery", async (importOriginal) => {
+vi.mock("../discovery/mcpDiscovery", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("../mcpDiscovery")>();
+    await importOriginal<typeof import("../discovery/mcpDiscovery")>();
   return {
     ...actual,
     getVscodeUserMcpPath: () => mockPaths.vscode ?? "/tmp/nope",
@@ -31,9 +31,9 @@ vi.mock("../mcpDiscovery", async (importOriginal) => {
   };
 });
 
-vi.mock("../hookInjectionClients", async (importOriginal) => {
+vi.mock("../clients/codex/hooks", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("../hookInjectionClients")>();
+    await importOriginal<typeof import("../clients/codex/hooks")>();
   return {
     ...actual,
     getCodexConfigPath: () => mockPaths.codex ?? "/tmp/nope",
@@ -43,8 +43,8 @@ vi.mock("../hookInjectionClients", async (importOriginal) => {
 import {
   isEdisonWatchRegistered,
   findAppsNeedingReRegistration,
-} from "../mcpConfigWriter";
-import { getJetBrainsMcpConfigPaths } from "../mcpDiscovery";
+} from "../runtime/mcpConfigWriter";
+import { getJetBrainsMcpConfigPaths } from "../discovery/mcpDiscovery";
 
 // ---------------------------------------------------------------------------
 // Helpers & constants

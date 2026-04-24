@@ -15,13 +15,13 @@ vi.mock("electron", () => ({
 }));
 
 // Mock sentry
-vi.mock("../sentry", () => ({
+vi.mock("../infra/sentry", () => ({
   captureError: vi.fn(),
 }));
 
 // Mock marketplace restore so it doesn't touch real state.vscdb files during tests
-vi.mock("../mcpQuarantineSqlite", async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../mcpQuarantineSqlite')>();
+vi.mock("../quarantine/mcpQuarantineSqlite", async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../quarantine/mcpQuarantineSqlite')>();
   return {
     ...actual,
     restoreAllMarketplaceServers: vi.fn().mockResolvedValue({ restored: 0, errors: [] }),
@@ -32,13 +32,13 @@ import {
   getDisabledConfigPath,
   getServerConfigForImport,
   restoreAllQuarantinedServers,
-} from "../mcpConfigActions";
+} from "../runtime/mcpConfigActions";
 import {
   submitServerRequest,
   approveServerRequest,
   fetchUserRole,
-} from "../mcpServerSubmit";
-import type { DiscoveredMcpServer } from "../mcpDiscovery";
+} from "../discovery/mcpServerSubmit";
+import type { DiscoveredMcpServer } from "../discovery/mcpDiscovery";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -256,17 +256,20 @@ describe("mcpConfigActions", () => {
       );
 
       // Mock the unified config registry for full isolation
-      const mcpConfigPaths = await import("../mcpConfigPaths");
+      const mcpConfigPaths = await import("../clients/registry");
       const entriesSpy = vi
         .spyOn(mcpConfigPaths, "getAllConfigEntries")
         .mockResolvedValue([
           { client: "cursor", path: pluginMcpPath, kind: "json", scope: "user" },
         ]);
-      // Mock getCursorProjectsDir so restoreAllCursorPlugins doesn't scan real filesystem
-      const mcpDiscovery = await import("../mcpDiscovery");
+      // Mock getCursorProjectsDir and getCursorPluginCachePath so restoreAllCursorPlugins doesn't scan real filesystem
+      const mcpDiscovery = await import("../discovery/mcpDiscovery");
       const projectsDirSpy = vi
         .spyOn(mcpDiscovery, "getCursorProjectsDir")
         .mockReturnValue(join(testDir, "nonexistent-projects"));
+      const pluginCacheSpy = vi
+        .spyOn(mcpDiscovery, "getCursorPluginCachePath")
+        .mockReturnValue(join(testDir, "nonexistent-plugin-cache"));
 
       try {
         const result = await restoreAllQuarantinedServers();
@@ -286,6 +289,7 @@ describe("mcpConfigActions", () => {
       } finally {
         entriesSpy.mockRestore();
         projectsDirSpy.mockRestore();
+        pluginCacheSpy.mockRestore();
       }
     });
 
@@ -308,16 +312,19 @@ describe("mcpConfigActions", () => {
       };
       await fs.writeFile(codexDisabledPath, JSON.stringify(disabledContent), "utf-8");
 
-      const mcpConfigPaths = await import("../mcpConfigPaths");
+      const mcpConfigPaths = await import("../clients/registry");
       const entriesSpy = vi
         .spyOn(mcpConfigPaths, "getAllConfigEntries")
         .mockResolvedValue([
           { client: "codex", path: codexConfigPath, kind: "toml", scope: "user" },
         ]);
-      const mcpDiscovery = await import("../mcpDiscovery");
+      const mcpDiscovery = await import("../discovery/mcpDiscovery");
       const projectsDirSpy = vi
         .spyOn(mcpDiscovery, "getCursorProjectsDir")
         .mockReturnValue(join(testDir, "nonexistent-projects"));
+      const pluginCacheSpy = vi
+        .spyOn(mcpDiscovery, "getCursorPluginCachePath")
+        .mockReturnValue(join(testDir, "nonexistent-plugin-cache"));
 
       try {
         const result = await restoreAllQuarantinedServers();
@@ -332,6 +339,7 @@ describe("mcpConfigActions", () => {
       } finally {
         entriesSpy.mockRestore();
         projectsDirSpy.mockRestore();
+        pluginCacheSpy.mockRestore();
       }
     });
   });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { detectSecrets } from "../secretDetection";
-import type { DiscoveredMcpServer } from "../mcpDiscovery";
+import { detectSecrets } from "../discovery/secretDetection";
+import type { DiscoveredMcpServer } from "../discovery/mcpDiscovery";
 
 // ---------------------------------------------------------------------------
 // Helpers

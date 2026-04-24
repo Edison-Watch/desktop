@@ -15,7 +15,7 @@ vi.mock("electron", () => ({
 }));
 
 // Mock sentry
-vi.mock("../sentry", () => ({
+vi.mock("../infra/sentry", () => ({
   captureError: vi.fn(),
 }));
 
@@ -24,9 +24,9 @@ import {
   isEdisonWatchServer,
   filterOutEdisonWatchServers,
   getClientDisplayName,
-} from "../mcpConfigMonitor";
-import { SeenServersStore } from "../seenServersStore";
-import type { DiscoveredMcpServer } from "../mcpDiscovery";
+} from "../runtime/mcpConfigMonitor";
+import { SeenServersStore } from "../discovery/seenServersStore";
+import type { DiscoveredMcpServer } from "../discovery/mcpDiscovery";
 
 // ---------------------------------------------------------------------------
 // Helpers

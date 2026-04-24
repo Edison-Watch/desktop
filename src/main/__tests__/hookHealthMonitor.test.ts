@@ -15,18 +15,18 @@ vi.mock("electron", () => ({
 }));
 
 // Mock sentry
-vi.mock("../sentry", () => ({
+vi.mock("../infra/sentry", () => ({
   captureError: vi.fn(),
 }));
 
 // Mock setupConfig (imported by hookHealthMonitor for getMcpUrl / getIsServerOnline)
-vi.mock("../setupConfig", () => ({
+vi.mock("../infra/setupConfig", () => ({
   getMcpUrl: vi.fn().mockReturnValue(null),
   getIsServerOnline: vi.fn().mockReturnValue(false),
 }));
 
 // Mock hookInjection so we can control getHookStatus and getPendingErrorsDir
-vi.mock("../hookInjection", () => ({
+vi.mock("../runtime/hookInjection", () => ({
   getHookStatus: vi.fn().mockResolvedValue([
     { client: "claude-code", installed: true, hasHook: true, hooksApplicable: true, mcpApplicable: true, hookCount: 4, totalHooks: 4, mcpConnected: false, mcpConfigured: false },
     { client: "cursor", installed: true, hasHook: false, hooksApplicable: true, mcpApplicable: true, hookCount: 0, totalHooks: 3, mcpConnected: false, mcpConfigured: false },
@@ -45,7 +45,7 @@ import {
   getHookStatusLabel,
   startHookHealthMonitor,
   stopHookHealthMonitor,
-} from "../hookHealthMonitor";
+} from "../runtime/hookHealthMonitor";
 
 // ---------------------------------------------------------------------------
 // Helpers

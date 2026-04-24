@@ -27,9 +27,9 @@ import {
   getServerFingerprint,
   getCursorProjectMcpPaths,
   getCursorWorkspaceStoragePath,
-} from "../mcpDiscovery";
-import type { DiscoveredMcpServer } from "../mcpDiscovery";
-import { getAllConfigPaths } from "../mcpConfigPaths";
+} from "../discovery/mcpDiscovery";
+import type { DiscoveredMcpServer } from "../discovery/mcpDiscovery";
+import { getAllConfigPaths } from "../clients/registry";
 
 // ---------------------------------------------------------------------------
 // Helpers

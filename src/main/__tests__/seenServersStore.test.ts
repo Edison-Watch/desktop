@@ -14,8 +14,8 @@ vi.mock("electron", () => ({
   },
 }));
 
-import { SeenServersStore, getServerFingerprint } from "../seenServersStore";
-import type { DiscoveredMcpServer } from "../mcpDiscovery";
+import { SeenServersStore, getServerFingerprint } from "../discovery/seenServersStore";
+import type { DiscoveredMcpServer } from "../discovery/mcpDiscovery";
 
 // ---------------------------------------------------------------------------
 // Helpers

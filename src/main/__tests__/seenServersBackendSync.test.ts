@@ -17,7 +17,7 @@ vi.mock("electron", () => ({
 // Mock setupConfig so the helper sees deterministic credentials
 const apiBaseUrlMock = vi.fn<() => string | null>();
 const credentialsMock = vi.fn<() => { apiKey: string; edisonSecretKey?: string } | null>();
-vi.mock("../setupConfig", () => ({
+vi.mock("../infra/setupConfig", () => ({
   getApiBaseUrl: () => apiBaseUrlMock(),
   getCredentialsForEnv: () => credentialsMock(),
 }));
@@ -25,18 +25,18 @@ vi.mock("../setupConfig", () => ({
 // Mock orgIdCache so the test controls what "the client thinks its org is"
 const cachedOrgIdMock = vi.fn<() => string | null>();
 const refreshOrgIdMock = vi.fn<() => Promise<string | null>>();
-vi.mock("../orgIdCache", () => ({
+vi.mock("../infra/orgIdCache", () => ({
   getCachedOrgId: () => cachedOrgIdMock(),
   refreshOrgIdFromBackend: () => refreshOrgIdMock(),
 }));
 
 // Inject a real SeenServersStore pointed at a temp file by mocking
 // getSharedSeenStore - the helper just calls .markFromBackend / .pruneForOrg on it.
-import { SeenServersStore } from "../seenServersStore";
+import { SeenServersStore } from "../discovery/seenServersStore";
 let injectedStore: SeenServersStore;
-vi.mock("../seenServersStore", async () => {
-  const actual = await vi.importActual<typeof import("../seenServersStore")>(
-    "../seenServersStore",
+vi.mock("../discovery/seenServersStore", async () => {
+  const actual = await vi.importActual<typeof import("../discovery/seenServersStore")>(
+    "../discovery/seenServersStore",
   );
   return {
     ...actual,
@@ -44,7 +44,7 @@ vi.mock("../seenServersStore", async () => {
   };
 });
 
-import { syncRegisteredServersFromBackend } from "../seenServersBackendSync";
+import { syncRegisteredServersFromBackend } from "../discovery/seenServersBackendSync";
 
 // ---------------------------------------------------------------------------
 // Helpers

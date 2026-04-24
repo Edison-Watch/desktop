@@ -22,12 +22,12 @@ vi.mock("electron", () => ({
 }));
 
 // Mock sentry
-vi.mock("../sentry", () => ({
+vi.mock("../infra/sentry", () => ({
   captureError: vi.fn(),
 }));
 
 // Mock marketplace quarantine
-vi.mock("../mcpQuarantineSqlite", () => ({
+vi.mock("../quarantine/mcpQuarantineSqlite", () => ({
   quarantineMarketplaceServer: vi.fn(),
   restoreAllMarketplaceServers: vi.fn().mockResolvedValue({ restored: 0, errors: [] }),
 }));
@@ -46,9 +46,9 @@ import {
   disableServerInConfig,
   replaceServerWithProxy,
   quarantineServer,
-} from "../mcpConfigActions";
-import { buildRemovalMap } from "../serverDeduplication";
-import type { DiscoveredMcpServer, McpServerConfig } from "../mcpDiscovery";
+} from "../runtime/mcpConfigActions";
+import { buildRemovalMap } from "../discovery/serverDeduplication";
+import type { DiscoveredMcpServer, McpServerConfig } from "../discovery/mcpDiscovery";
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -26,7 +26,7 @@ import {
   stopUpdateChecker,
   getAvailableUpdate,
   openUpdateDownload,
-} from "../updateChecker";
+} from "../infra/updateChecker";
 
 // ============================================================================
 // Tests

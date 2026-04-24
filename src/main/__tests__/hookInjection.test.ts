@@ -15,7 +15,7 @@ vi.mock("electron", () => ({
 }));
 
 // Mock sentry to avoid side effects
-vi.mock("../sentry", () => ({
+vi.mock("../infra/sentry", () => ({
   captureError: vi.fn(),
 }));
 
@@ -25,7 +25,7 @@ import {
   isClaudeCodeInstalled,
   isCursorInstalled,
   isWindsurfInstalled,
-} from "../hookInjection";
+} from "../runtime/hookInjection";
 
 // ---------------------------------------------------------------------------
 // Helpers

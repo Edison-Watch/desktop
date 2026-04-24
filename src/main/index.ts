@@ -29,17 +29,17 @@ const is = { get dev() { return !app.isPackaged; } };
 const electronApp = { setAppUserModelId: (id: string) => { if (process.platform === "win32") app.setAppUserModelId(app.isPackaged ? id : process.execPath); } };
 const optimizer = { watchWindowShortcuts: (_win: BrowserWindow) => { /* no-op: dev shortcuts removed */ } };
 import windowStateKeeper from "electron-window-state";
-import { injectAllHooks, isCodexInstalled } from "./hookInjection";
-import { initSentry } from "./sentry";
-import { startHookHealthMonitor, stopHookHealthMonitor, getHookStatusLabel } from "./hookHealthMonitor";
-import { startUpdateChecker, stopUpdateChecker, getAvailableUpdate, openUpdateDownload, checkForUpdateNow } from "./updateChecker";
-import { showDebugWindow } from "./debugWindow";
-import { showFeedbackWindow } from "./feedbackWindow";
-import { showServerRegistrationDialog } from "./mcpServerActionDialog";
-import { showUpdateKeysWindow } from "./updateKeysWindow";
-import { fetchUserRole } from "./mcpServerSubmit";
-import { warmOrgIdCacheOnStartup } from "./orgIdCache";
-import { applyAppIntegrations, findAppsMissingClientTag, findAppsNeedingReRegistration } from "./mcpConfigWriter";
+import { injectAllHooks, isCodexInstalled } from "./runtime/hookInjection";
+import { initSentry } from "./infra/sentry";
+import { startHookHealthMonitor, stopHookHealthMonitor, getHookStatusLabel } from "./runtime/hookHealthMonitor";
+import { startUpdateChecker, stopUpdateChecker, getAvailableUpdate, openUpdateDownload, checkForUpdateNow } from "./infra/updateChecker";
+import { showDebugWindow } from "./dialogs/debugWindow";
+import { showFeedbackWindow } from "./dialogs/feedbackWindow";
+import { showServerRegistrationDialog } from "./dialogs/mcpServerActionDialog";
+import { showUpdateKeysWindow } from "./dialogs/updateKeysWindow";
+import { fetchUserRole } from "./discovery/mcpServerSubmit";
+import { warmOrgIdCacheOnStartup } from "./infra/orgIdCache";
+import { applyAppIntegrations, findAppsMissingClientTag, findAppsNeedingReRegistration } from "./runtime/mcpConfigWriter";
 import {
   initQuarantineManager,
   getAutoQuarantineEnabled,
@@ -50,7 +50,7 @@ import {
   startQuarantinePolling,
   stopQuarantinePolling,
   pollQuarantineConfig,
-} from "./quarantineManager";
+} from "./quarantine/quarantineManager";
 import {
   DEBUG_ENV_NAMES,
   getBuildDefaultEnv,
@@ -71,7 +71,7 @@ import {
   stopServerStatusChecks,
   getIsServerOnline,
   checkClaudeCodeMcpConnection,
-} from "./setupConfig";
+} from "./infra/setupConfig";
 import {
   pendingApprovals,
   startEventSubscription as _startEventSubscription,
@@ -80,8 +80,8 @@ import {
   initApprovalsHandler,
   isSseConnected,
   setSseStatusCallback,
-} from "./approvalsHandler";
-import { registerIpcHandlers } from "./ipcHandlers";
+} from "./ipc/approvalsHandler";
+import { registerIpcHandlers } from "./ipc/ipcHandlers";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import appIconPath from "../../resources/icon.png?asset";

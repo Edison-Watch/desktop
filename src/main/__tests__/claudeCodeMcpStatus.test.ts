@@ -19,7 +19,7 @@ vi.mock("child_process", () => ({
   execFile: mockExecFile,
 }));
 
-import { checkClaudeCodeMcpConnection } from "../setupConfig";
+import { checkClaudeCodeMcpConnection } from "../infra/setupConfig";
 
 describe("checkClaudeCodeMcpConnection", () => {
   beforeEach(() => {
