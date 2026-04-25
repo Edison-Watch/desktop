@@ -10,6 +10,7 @@ import { AGENT_REGISTRY, type AgentId } from "@edison/shared/agent-registry";
 import type { ModifiedConfig, DiscoveredServer, RemovalTarget } from "./AppsStep";
 import { AppLogo } from "./AppLogo";
 import EncryptionAnimation from "./EncryptionAnimation";
+import KeyEncryptionAnimation from "./KeyEncryptionAnimation";
 import CredentialReviewCard from "./CredentialReviewCard";
 import type { TemplateOverrideEntry } from "./CredentialReviewCard";
 import ScanResultsPanel from "./ScanResultsPanel";
@@ -330,6 +331,8 @@ export default function EncryptionStep({
           Edison will securely store your MCP server credentials encrypted, using your personal key before adding to the Edison MCP gateway.
         </p>
       </div>
+
+      {currentSubStep < 2 && <KeyEncryptionAnimation />}
 
       {/* ── Sub-step 1: Personal Key ── */}
       <Card>
