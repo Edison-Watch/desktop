@@ -7,12 +7,11 @@
  * This module re-exports types and per-client functions so that existing
  * consumers can update their import path without changing named imports.
  */
-import { promises as fs } from 'fs'
-import { homedir, platform } from 'os'
-import { join } from 'path'
+import { platform } from 'os'
 import type { DiscoveredMcpServer, DiscoveryResult } from './types'
 import { isOpaqueConfig } from './types'
 import { clientAlias } from './serverDeduplication'
+import { MAC_APP_NAMES, macAppExists } from './macAppNames'
 
 // ── Re-exports (backward compatibility) ────────────────────────────────────
 
@@ -38,7 +37,6 @@ export {
   parseClaudeHomeJson,
   parseClaudeDedicatedMcpServers,
 } from '../clients/claude-code/discovery'
-import { discoverClaudeCode } from '../clients/claude-code/discovery'
 
 // Runtime / project paths
 export {
@@ -56,82 +54,19 @@ export { getServerFingerprint } from './seenServersStore'
 
 // ── Imports for aggregator ──────────────────────────────────────────────────
 
-import { getVscodeUserMcpPath, discoverVscodeStateMcps, parseVscodeMcpJson } from '../clients/vscode/discovery'
-import { discoverCursor } from '../clients/cursor/discovery'
-import { discoverWindsurf } from '../clients/windsurf/discovery'
-import { discoverZed } from '../clients/zed/discovery'
-import { getJetBrainsMcpConfigPaths, parseJetBrainsServersJson } from '../clients/jetbrains/discovery'
+import { CLIENT_LIST } from '../clients/registry'
 
 // ── macOS app existence check ───────────────────────────────────────────────
 
-// On macOS, map client ids to possible .app bundle names.
-export const MAC_APP_NAMES: Record<string, string[]> = {
-  vscode: ['Visual Studio Code.app'],
-  cursor: ['Cursor.app'],
-  windsurf: ['Windsurf.app'],
-  zed: ['Zed.app'],
-  intellij: ['IntelliJ IDEA.app', 'IntelliJ IDEA CE.app', 'IntelliJ IDEA Ultimate.app'],
-  pycharm: ['PyCharm.app', 'PyCharm CE.app'],
-  webstorm: ['WebStorm.app'],
-}
-
-/** On macOS, check whether a GUI client's .app bundle exists. CLI-only clients always pass. */
-export async function macAppExists(clientId: string): Promise<boolean> {
-  if (platform() !== 'darwin') return true
-  const appNames = MAC_APP_NAMES[clientId]
-  if (!appNames) return true
-  for (const appName of appNames) {
-    try { await fs.access(join('/Applications', appName)); return true } catch { /* */ }
-    try { await fs.access(join(homedir(), 'Applications', appName)); return true } catch { /* */ }
-  }
-  return false
-}
+export { MAC_APP_NAMES, macAppExists }
 
 // ── Aggregator ──────────────────────────────────────────────────────────────
 
 export async function discoverMcpServers(): Promise<DiscoveredMcpServer[]>
 export async function discoverMcpServers(opts: { includeRaw: true }): Promise<DiscoveryResult>
 export async function discoverMcpServers(opts?: { includeRaw?: boolean }): Promise<DiscoveredMcpServer[] | DiscoveryResult> {
-  const results: DiscoveredMcpServer[] = []
-
-  // VS Code - user-level mcp.json file
-  try { await fs.access(getVscodeUserMcpPath()); results.push(...await parseVscodeMcpJson(getVscodeUserMcpPath(), 'vscode')) } catch { /* */ }
-
-  // VS Code state.vscdb - extension-provided MCP servers (marketplace)
-  {
-    const stateMcps = await discoverVscodeStateMcps('vscode')
-    const known = new Set(results.map((s) => s.name.toLowerCase()))
-    for (const mcp of stateMcps) {
-      if (!known.has(mcp.name.toLowerCase())) results.push(mcp)
-    }
-  }
-
-  // Claude Code discovery
-  const claudeCodeServers = await discoverClaudeCode()
-  results.push(...claudeCodeServers)
-
-  // Cursor discovery
-  const cursorServers = await discoverCursor()
-  results.push(...cursorServers)
-
-  // Windsurf discovery
-  const windsurfServers = await discoverWindsurf()
-  results.push(...windsurfServers)
-
-  // Zed discovery
-  const zedServers = await discoverZed()
-  results.push(...zedServers)
-
-  // JetBrains IDEs (IntelliJ, PyCharm, WebStorm) - macOS and Windows only
-  const jetbrainsPaths = await getJetBrainsMcpConfigPaths()
-  for (const { client, path } of jetbrainsPaths) {
-    try {
-      const servers = await parseJetBrainsServersJson(path, client)
-      results.push(...servers)
-    } catch {
-      // File unreadable or invalid JSON
-    }
-  }
+  const perClient = await Promise.all(CLIENT_LIST.map((c) => c.discoverServers()))
+  const results: DiscoveredMcpServer[] = perClient.flat()
 
   // Separate opaque (unsupported) servers before deduplication
   const supported: DiscoveredMcpServer[] = []

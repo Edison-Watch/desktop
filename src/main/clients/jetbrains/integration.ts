@@ -15,7 +15,7 @@ import {
   getJetBrainsMcpConfigPaths,
   parseJetBrainsServersJson,
 } from './discovery'
-import { MAC_APP_NAMES } from '../../discovery/mcpDiscovery'
+import { MAC_APP_NAMES } from '../../discovery/macAppNames'
 
 export type JetBrainsId = 'intellij' | 'pycharm' | 'webstorm'
 
