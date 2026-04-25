@@ -6,7 +6,7 @@ import { promises as fs, existsSync } from 'fs'
 import { homedir } from 'os'
 import { join, dirname } from 'path'
 import { ensureHookScript } from '../../runtime/hookInjectionCore'
-import { appBundleExists } from '../shared'
+import { appInstalled } from '../shared'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 
@@ -36,7 +36,11 @@ export interface WindsurfHooksFile {
 // ── Detection ───────────────────────────────────────────────────────────────
 
 export function isWindsurfInstalled(): boolean {
-  return existsSync(join(homedir(), '.codeium', 'windsurf')) && appBundleExists(['Windsurf.app'])
+  return existsSync(join(homedir(), '.codeium', 'windsurf')) && appInstalled({
+    mac: ['Windsurf.app'],
+    win: ['Windsurf\\Windsurf.exe'],
+    linux: ['windsurf'],
+  })
 }
 
 // ── Inject ──────────────────────────────────────────────────────────────────

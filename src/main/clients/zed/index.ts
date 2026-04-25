@@ -9,7 +9,7 @@ import { dirname } from 'path'
 import { CLIENT_DISPLAY } from '../displayMeta'
 import type { ClientIntegration, WatchTargets } from '../types'
 import type { McpConfigEntry } from '../registry'
-import { appBundleExists } from '../shared'
+import { appInstalled } from '../shared'
 import { discoverZed, getZedConfigPath } from './discovery'
 
 const meta = CLIENT_DISPLAY['zed']
@@ -19,7 +19,11 @@ export const integration: ClientIntegration = {
   display: { name: meta.name, brandColor: meta.brandColor },
 
   isInstalled(): boolean {
-    return existsSync(dirname(getZedConfigPath())) && appBundleExists(['Zed.app'])
+    return existsSync(dirname(getZedConfigPath())) && appInstalled({
+      mac: ['Zed.app'],
+      win: ['Zed\\zed.exe'],
+      linux: ['zed', 'zeditor'],
+    })
   },
 
   discoverServers: discoverZed,

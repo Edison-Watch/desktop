@@ -31,14 +31,20 @@ import {
   type VsCodeCopilotHooksFile,
   type VsCodeTasksFile,
 } from './hooks'
-import { appBundleExists } from '../shared'
+import { appInstalled } from '../shared'
 import { promises as fs, existsSync } from 'fs'
 import { join } from 'path'
 import { getVsCodeWorkspacePaths } from '../../runtime/mcpProjectPaths'
 import type { DiscoveredMcpServer } from '../../discovery/types'
 
+const VSCODE_INSTALL_HINTS = {
+  mac: ['Visual Studio Code.app'],
+  win: ['Microsoft VS Code\\Code.exe'],
+  linux: ['code'],
+}
+
 async function getVsCodeHookStatus(): Promise<ClientHookStatus> {
-  if (!appBundleExists(['Visual Studio Code.app'])) {
+  if (!appInstalled(VSCODE_INSTALL_HINTS)) {
     return { installed: false, hasHook: false, hookCount: 0, totalHooks: 1 }
   }
   try {
@@ -94,7 +100,7 @@ export const integration: ClientIntegration = {
   display: { name: meta.name, brandColor: meta.brandColor },
 
   isInstalled(): boolean {
-    return appBundleExists(['Visual Studio Code.app'])
+    return appInstalled(VSCODE_INSTALL_HINTS)
   },
 
   async discoverServers() {

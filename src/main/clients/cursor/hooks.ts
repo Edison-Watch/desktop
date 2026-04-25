@@ -6,7 +6,7 @@ import { promises as fs, existsSync } from 'fs'
 import { homedir } from 'os'
 import { join, dirname } from 'path'
 import { ensureHookScript, ensureSessionHookScript, ensureSessionEndHookScript } from '../../runtime/hookInjectionCore'
-import { appBundleExists } from '../shared'
+import { appInstalled } from '../shared'
 
 // ── Path helpers ─────────────────────────────────────────────────────────────
 
@@ -41,7 +41,11 @@ export interface CursorHooksFile {
 // ── Detection ───────────────────────────────────────────────────────────────
 
 export function isCursorInstalled(): boolean {
-  return existsSync(join(homedir(), '.cursor')) && appBundleExists(['Cursor.app'])
+  return existsSync(join(homedir(), '.cursor')) && appInstalled({
+    mac: ['Cursor.app'],
+    win: ['cursor\\Cursor.exe'],
+    linux: ['cursor'],
+  })
 }
 
 // ── Inject ──────────────────────────────────────────────────────────────────
