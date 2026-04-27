@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { Button, Input, Badge } from "@edison/shared/ui";
 import { supabase } from "@edison/shared/auth";
 import { clearCachedSecretKey } from "@edison/shared/crypto";
+import PromptInjectionAnimation from "./PromptInjectionAnimation";
 import type { AuthState } from "../hooks/useAuth";
 
 function GoogleIcon() {
@@ -43,24 +44,6 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
   const [password, setPassword] = useState("");
   const [authMode, setAuthMode] = useState<"sso" | "password">("sso");
 
-  // Keep a stable ref to onNext so the timer below isn't reset on every re-render
-  const onNextRef = useRef(onNext);
-  onNextRef.current = onNext;
-
-  // Track whether the user was already signed in when this step mounted.
-  // If they navigate back to this step while already signed in, we don't
-  // want to auto-advance - they should have to click Continue explicitly.
-  const wasSignedInOnMount = useRef(auth.signedIn);
-
-  // Auto-advance to next step shortly after sign-in succeeds.
-  // Only fires if the user actually signed in while on this step (not when
-  // navigating back while already authenticated).
-  useEffect(() => {
-    if (!auth.signedIn || wasSignedInOnMount.current) return;
-    const timer = setTimeout(() => onNextRef.current(), 1200);
-    return () => clearTimeout(timer);
-  }, [auth.signedIn]);
-
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setEmail(value);
@@ -78,10 +61,23 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
     }
   };
 
+  const hero = (
+    <>
+      <div className="text-center">
+        <h2 className="text-lg font-semibold text-[var(--text-primary)]">Protect your data handled by AI Agents</h2>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">
+          AI agents with access to your tools are vulnerable to prompt injection attacks that can exfiltrate sensitive data. Edison watches your agent actions and analyses each action, to protect your data.
+        </p>
+      </div>
+      <PromptInjectionAnimation />
+    </>
+  );
+
   // Signed-in state
   if (auth.signedIn) {
     return (
       <div className="flex flex-col gap-4">
+        {hero}
         <div
           className="rounded-lg border border-[var(--border)] overflow-hidden"
           style={{
@@ -128,6 +124,8 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
   // Sign-in form
   return (
     <div className="flex flex-col gap-5">
+      {hero}
+
       <p className="text-center text-xs text-[var(--text-secondary)]">
         {authMode === "sso" ? "Sign in with your organization email" : "Sign in with email and password"}
       </p>
