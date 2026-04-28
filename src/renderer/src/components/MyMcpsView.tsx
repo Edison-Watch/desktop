@@ -25,8 +25,8 @@ function isUnverified(s: ServerSummary): boolean {
 }
 
 function getServerStatus(s: ServerSummary): ServerStatus {
+  if (!s.enabled && s.user_enabled === false) return 'user-disabled'
   if (!s.enabled) return 'disabled'
-  if (s.user_enabled === false) return 'user-disabled'
   if (s.needs_config) return 'needs-config'
   if (isUnverified(s)) return 'unverified'
   return 'active'
