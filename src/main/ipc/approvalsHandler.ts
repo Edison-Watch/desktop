@@ -294,7 +294,12 @@ function handleTrifectaEvent(data: TrifectaEventData): void {
           "deny",
         ];
         const command = commands[index];
-        if (command) handleApproval(approvalId, command);
+        if (command) {
+          handleApproval(approvalId, command);
+          // The notification has served its purpose; dismiss it so it doesn't
+          // linger in Notification Center until the user manually clears it.
+          notification.close();
+        }
       });
     }
 
@@ -449,6 +454,7 @@ export async function handleApproval(
           ...(process.platform !== "darwin" && { icon: trayIconPath }),
         });
         n.show();
+        setTimeout(() => n.close(), 15_000);
       }
     } catch {
       // Don't let a notification failure block the UI cleanup
