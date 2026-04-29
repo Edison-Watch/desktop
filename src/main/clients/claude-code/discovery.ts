@@ -7,7 +7,7 @@
 
 import { promises as fs } from 'fs'
 import { homedir, platform } from 'os'
-import { join, basename, dirname } from 'path'
+import { join, dirname } from 'path'
 import { getClaudeCodeProjectMcpPaths } from '../../runtime/mcpProjectPaths'
 import type { DiscoveredMcpServer, McpServerConfig } from '../../discovery/mcpDiscovery'
 
@@ -238,11 +238,13 @@ export async function discoverClaudeCode(): Promise<DiscoveredMcpServer[]> {
   for (const mcpPath of projectMcpPaths) {
     try {
       await fs.access(mcpPath)
-      const projectName = basename(dirname(mcpPath))
+      // Store the full project directory path (matches parseClaudeHomeJson's
+      // convention) so downstream mutations like `claude mcp remove --cwd ...`
+      // can resolve the project unambiguously.
+      const projectDir = dirname(mcpPath)
       const servers = await parseClaudeCodeMcpJson(mcpPath, 'project')
-      // Tag each server with the project name for display
       for (const s of servers) {
-        s.projectName = projectName
+        s.projectName = projectDir
       }
       results.push(...servers)
     } catch {

@@ -10,6 +10,7 @@ import { join } from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { getEnvByName } from "@edison/shared/config";
+import { logClaudeCmd } from "../runtime/monitorLog";
 
 const execFileAsync = promisify(execFile);
 
@@ -431,8 +432,10 @@ export type ClaudeCodeMcpStatus = "connected" | "failed" | "needs-auth" | "not-f
  * parsing the human-readable status line.
  */
 export async function checkClaudeCodeMcpConnection(): Promise<ClaudeCodeMcpStatus> {
+  const getArgs = ["mcp", "get", "edison-watch"];
+  logClaudeCmd(getArgs);
   try {
-    const { stdout } = await execFileAsync("claude", ["mcp", "get", "edison-watch"], {
+    const { stdout } = await execFileAsync("claude", getArgs, {
       timeout: 5_000,
     });
     if (stdout.includes("\u2713 Connected")) return "connected";

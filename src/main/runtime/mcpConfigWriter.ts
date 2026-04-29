@@ -33,6 +33,7 @@ import {
   setServersInConfig,
   type ConfigFileFormat,
 } from './mcpConfigActions'
+import { logClaudeCmd } from './monitorLog'
 
 // ── Public types ──────────────────────────────────────────────────────
 
@@ -204,13 +205,17 @@ async function applyToClaudeCode(
 
   // Remove any existing edison-watch entries from both user and project scopes
   // to prevent stale registrations from interfering.
+  const removeUserArgs = ['mcp', 'remove', 'edison-watch', '--scope', 'user']
+  logClaudeCmd(removeUserArgs)
   try {
-    await execFileAsync('claude', ['mcp', 'remove', 'edison-watch', '--scope', 'user'], { timeout: 10_000 })
+    await execFileAsync('claude', removeUserArgs, { timeout: 10_000 })
   } catch {
     // Ignore - entry may not exist
   }
+  const removeProjectArgs = ['mcp', 'remove', 'edison-watch', '--scope', 'project']
+  logClaudeCmd(removeProjectArgs)
   try {
-    await execFileAsync('claude', ['mcp', 'remove', 'edison-watch', '--scope', 'project'], { timeout: 10_000 })
+    await execFileAsync('claude', removeProjectArgs, { timeout: 10_000 })
   } catch {
     // Ignore - entry may not exist
   }
@@ -221,6 +226,7 @@ async function applyToClaudeCode(
     : []
   const args = ['mcp', 'add', '--transport', 'http', '--scope', 'user', ...headerArgs, 'edison-watch', url]
 
+  logClaudeCmd(args)
   try {
     await execFileAsync('claude', args, { timeout: 10_000 })
     console.log('[mcpConfigWriter] Added edison-watch to Claude Code via CLI')

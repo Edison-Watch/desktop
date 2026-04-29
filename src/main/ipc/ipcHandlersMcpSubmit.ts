@@ -26,6 +26,7 @@ import { deduplicateServers, findDuplicateGroups, buildRemovalMap } from "../dis
 import { DRY_RUN, getApiBaseUrl, getSetupData, getCredentialsForEnv } from "../infra/setupConfig";
 import { getSharedSeenStore } from "../discovery/seenServersStore";
 import { getCachedOrgId, refreshOrgIdFromBackend } from "../infra/orgIdCache";
+import { logClaudeCmd } from "../runtime/monitorLog";
 
 /**
  * Get the caller's org_id for seen-store writes. Uses the cache if populated;
@@ -63,7 +64,9 @@ async function removeOrDisableServer(server: DiscoveredMcpServer): Promise<void>
   } else if (server.client === 'claude-code' && server.source === 'project' && server.projectName) {
     const name = server.originalName ?? server.name;
     console.log(`[MCP Config] Removing Claude Code project-scoped server "${name}" via CLI (project=${server.projectName})`);
-    await execFileAsync('claude', ['mcp', 'remove', name], {
+    const removeArgs = ['mcp', 'remove', name];
+    logClaudeCmd(removeArgs, { cwd: server.projectName });
+    await execFileAsync('claude', removeArgs, {
       timeout: 10_000,
       cwd: server.projectName,
     });
@@ -276,7 +279,9 @@ export function registerMcpSubmitHandlers(): void {
           const { execFile } = await import("child_process");
           const { promisify } = await import("util");
           const execFileAsync = promisify(execFile);
-          await execFileAsync("claude", ["mcp", "remove", "edison-watch", "-s", "user"], { timeout: 10_000 });
+          const revertArgs = ["mcp", "remove", "edison-watch", "-s", "user"];
+          logClaudeCmd(revertArgs);
+          await execFileAsync("claude", revertArgs, { timeout: 10_000 });
           reverted++;
           console.log("[MCP Revert] Removed edison-watch from Claude Code via CLI");
           continue;

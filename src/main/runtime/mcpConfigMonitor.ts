@@ -1,12 +1,12 @@
 import { EventEmitter } from 'events'
 import { watch, type FSWatcher } from 'chokidar'
-import { promises as fs, appendFileSync } from 'fs'
+import { promises as fs } from 'fs'
 import { dirname } from 'path'
 
-const MONITOR_LOG = '/tmp/ew-monitor.log'
+// All `[Monitor]`-prefixed messages are captured by installMonitorTee() in
+// index.ts and written to /tmp/ew-monitor.log. Keep this thin wrapper so the
+// existing call sites compile, but file-tee is centralised.
 function mlog(msg: string): void {
-  const line = `[${new Date().toISOString()}] ${msg}\n`
-  try { appendFileSync(MONITOR_LOG, line) } catch { /* ignore */ }
   console.log(msg)
 }
 import {

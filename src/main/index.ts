@@ -14,6 +14,9 @@ import {
 import type { MenuItemConstructorOptions } from "electron";
 import { join } from "path";
 import { appendFileSync, unlinkSync } from "fs";
+import { installMonitorTee } from "./runtime/monitorLog";
+
+installMonitorTee();
 
 const LOG_FILE = "/tmp/ew-startup.log";
 function slog(msg: string) {
@@ -21,8 +24,7 @@ function slog(msg: string) {
   try { appendFileSync(LOG_FILE, line); } catch {}
   console.log(msg);
 }
-import { createServer, type IncomingMessage, type ServerResponse } from "http";
-import type { AddressInfo } from "net";
+import { startDevAuthServer, getDevAuthCallbackUrl } from "./runtime/devAuthServer";
 // Inline replacements for @electron-toolkit/utils (removed due to Electron 40 compat issue:
 // it evaluates electron.app.isPackaged at module load time, crashing before app.ready)
 const is = { get dev() { return !app.isPackaged; } };
@@ -91,8 +93,6 @@ import trayIconPath from "../../resources/icon_tray.png?asset";
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let approvalWindow: BrowserWindow | null = null;
-let devAuthServer: ReturnType<typeof createServer> | null = null;
-let devAuthCallbackUrl: string | null = null;
 let isRestarting = false; // suppress app.quit() during intentional restarts
 
 function startEventSubscription(): void {
@@ -560,65 +560,6 @@ function createWindow(): void {
   }
 }
 
-// ── Dev auth server (localhost OAuth callback for unpackaged dev builds) ─
-
-/**
- * Start a tiny localhost HTTP server that receives OAuth callbacks in dev mode.
- */
-function startDevAuthServer(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const handler = (req: IncomingMessage, res: ServerResponse): void => {
-      const reqUrl = req.url ?? "/";
-      if (!reqUrl.startsWith("/auth/callback")) {
-        res.writeHead(404);
-        res.end("Not found");
-        return;
-      }
-
-      const port = (devAuthServer!.address() as AddressInfo).port;
-      const fullUrl = `http://127.0.0.1:${port}${reqUrl}`;
-      console.log("[DevAuthServer] Received OAuth callback:", fullUrl);
-
-      const parsedUrl = new URL(fullUrl);
-      const hasCode = parsedUrl.searchParams.has("code");
-      const hasToken = parsedUrl.searchParams.has("access_token");
-
-      if ((hasCode || hasToken) && mainWindow) {
-        mainWindow.webContents.send("auth:callback", fullUrl);
-      }
-
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(`<!DOCTYPE html>
-<html>
-<body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1C1C1C;color:#C3FFFD">
-  <div style="text-align:center">
-    <h2>Authentication successful</h2>
-    <p>You can close this tab and return to Edison Watch.</p>
-  </div>
-  <script>
-    if (window.location.hash && window.location.hash.length > 1) {
-      fetch('/auth/callback?from_hash=1&' + window.location.hash.substring(1))
-    }
-    window.close();
-  </script>
-</body>
-</html>`);
-    };
-
-    devAuthServer = createServer(handler);
-    devAuthServer.listen(0, "127.0.0.1", () => {
-      const port = (devAuthServer!.address() as AddressInfo).port;
-      devAuthCallbackUrl = `http://127.0.0.1:${port}/auth/callback`;
-      console.log(`[DevAuthServer] Listening at ${devAuthCallbackUrl}`);
-      resolve();
-    });
-    devAuthServer.on("error", (err) => {
-      console.error("[DevAuthServer] Failed to start:", err);
-      reject(err);
-    });
-  });
-}
-
 // ── Deep link protocol ──────────────────────────────────────────────
 
 app.on("open-url", (_event, url) => {
@@ -683,7 +624,7 @@ app.whenReady().then(async () => {
   if (is.dev) {
     try {
       await Promise.race([
-        startDevAuthServer(),
+        startDevAuthServer(() => mainWindow),
         new Promise<void>((_, reject) =>
           setTimeout(() => reject(new Error("DevAuthServer listen timeout")), 5_000),
         ),
@@ -700,7 +641,7 @@ app.whenReady().then(async () => {
   slog("calling registerIpcHandlers");
   registerIpcHandlers({
     getMainWindow: () => mainWindow,
-    getDevAuthCallbackUrl: () => devAuthCallbackUrl,
+    getDevAuthCallbackUrl: () => getDevAuthCallbackUrl(),
     createTray,
     startEventSubscription,
     startQuarantineMonitorIfEnabled,

@@ -16,6 +16,7 @@ import {
   quarantineCursorPlugin,
   restoreAllCursorPlugins,
 } from '../clients/cursor/quarantinePlugins'
+import { logClaudeCmd } from './monitorLog'
 
 /**
  * Structure for the disabled/quarantined servers file.
@@ -470,8 +471,10 @@ export async function quarantineServer(server: DiscoveredMcpServer): Promise<Qua
     const configKey = server.originalName ?? server.name
     const quarantinedAt = new Date().toISOString()
     console.log(`[MCP Quarantine] Removing Claude Code project-scoped server "${configKey}" via CLI (project=${server.projectName})`)
+    const removeArgs = ['mcp', 'remove', configKey]
+    logClaudeCmd(removeArgs, { cwd: server.projectName })
     try {
-      await execFileAsync('claude', ['mcp', 'remove', configKey], {
+      await execFileAsync('claude', removeArgs, {
         timeout: 10_000,
         cwd: server.projectName,
       })
