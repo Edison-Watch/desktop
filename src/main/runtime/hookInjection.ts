@@ -26,6 +26,9 @@ import { getVscodeUserMcpPath } from '../clients/vscode/discovery'
 import { getCursorConfigPath } from '../clients/cursor/discovery'
 import { getWindsurfConfigPath } from '../clients/windsurf/discovery'
 import { getClaudeCodeHomeJsonPath } from '../clients/claude-code/discovery'
+import { getClaudeDesktopConfigPath } from '../clients/claude-desktop/discovery'
+import { getClaudeCoworkConfigPath } from '../clients/claude-cowork/discovery'
+import { extractEdisonUrl } from './mcpConfigWriter'
 import { getZedConfigPath } from '../clients/zed/discovery'
 import {
   getJetBrainsMcpConfigPaths,
@@ -163,11 +166,15 @@ async function checkMcpEntry(
     if (!existsSync(configPath)) return false
     const raw = await fs.readFile(configPath, 'utf-8')
     const json = parseJsonc(raw) as Record<string, unknown>
-    const servers = json[serversKey] as Record<string, { url?: string }> | undefined
+    const servers = json[serversKey] as Record<string, Record<string, unknown>> | undefined
     const entry = servers?.['edison-watch']
-    if (!entry?.url) return false
+    // Pull the URL using the shape-aware extractor so the stdio-shim entry
+    // shape used for Claude Desktop / Cowork (npx mcp-remote <url> ...) is
+    // recognised, not just the plain Streamable HTTP shape.
+    const entryUrl = extractEdisonUrl(entry)
+    if (!entryUrl) return false
     const strip = (u: string) => u.replace(/\?.*$/, '').replace(/\/+$/, '')
-    return strip(entry.url) === strip(expectedMcpUrl)
+    return strip(entryUrl) === strip(expectedMcpUrl)
   } catch {
     return false
   }
@@ -221,6 +228,10 @@ async function probeMcpConfigured(
   switch (clientId) {
     case 'claude-code':
       return checkMcpEntry(getClaudeCodeHomeJsonPath(), 'mcpServers', expectedMcpUrl)
+    case 'claude-desktop':
+      return checkMcpEntry(getClaudeDesktopConfigPath(), 'mcpServers', expectedMcpUrl)
+    case 'claude-cowork':
+      return checkMcpEntry(getClaudeCoworkConfigPath(), 'mcpServers', expectedMcpUrl)
     case 'cursor':
       return checkMcpEntry(getCursorConfigPath(), 'mcpServers', expectedMcpUrl)
     case 'windsurf':

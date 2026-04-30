@@ -15,6 +15,8 @@ import {
   getVscodeUserMcpPath,
   getCursorConfigPath,
   getClaudeCodeUserSettingsPath,
+  getClaudeDesktopConfigPath,
+  getClaudeCoworkConfigPath,
   getWindsurfConfigPath,
   getZedConfigPath,
 } from "../discovery/mcpDiscovery";
@@ -282,6 +284,24 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
       },
       { id: "cursor", name: "Cursor", getPath: () => Promise.resolve(getCursorConfigPath()) },
       { id: "claude-code", name: "Claude Code", getPath: () => Promise.resolve(getClaudeCodeUserSettingsPath()) },
+      {
+        id: "claude-desktop",
+        name: "Claude Desktop",
+        getPath: () => Promise.resolve(getClaudeDesktopConfigPath()),
+        // detectDir defaults to dirname(configPath) which is what we want:
+        // ~/Library/Application Support/Claude/ exists iff Claude Desktop
+        // has been launched at least once.
+      },
+      {
+        id: "claude-cowork",
+        name: "Claude Cowork",
+        getPath: () => Promise.resolve(getClaudeCoworkConfigPath()),
+        // Cowork shares the .app bundle and config file with Claude Desktop.
+        // The discriminator is `vm_bundles/`, written on first Cowork launch.
+        // Pointing detectDir at it makes fs.access fail (and Cowork drop
+        // out of the list) when only Desktop has been used.
+        detectDir: (configPath) => join(dirname(configPath), "vm_bundles"),
+      },
       { id: "windsurf", name: "Windsurf", getPath: () => Promise.resolve(getWindsurfConfigPath()) },
       { id: "zed", name: "Zed", getPath: () => Promise.resolve(getZedConfigPath()) },
       {

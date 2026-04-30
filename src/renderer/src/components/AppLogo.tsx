@@ -2,15 +2,16 @@
  * App logos for MCP client discovery.
  *
  * Icon data sourced from @edison/shared/agent-registry (simple-icons, MIT license).
- * VS Code uses a local PNG asset for best rendering quality in the Electron
- * context (its SVG path exists in the registry but the PNG looks better at
- * the 32 px display size used here).
+ * Claude Cowork and VS Code use local PNG assets for best rendering quality in the
+ * Electron context (VS Code's SVG path exists in the registry but the PNG looks
+ * better at the 32 px display size used here).
  */
 import {
   AGENT_REGISTRY,
   type AgentId,
 } from "@edison/shared/agent-registry";
 import vscodePng from "../assets/logo-vscode.png";
+import claudeCoworkPng from "../assets/logo-claude-cowork.png";
 
 interface AppLogoProps {
   id: string;
@@ -19,6 +20,16 @@ interface AppLogoProps {
 
 export function AppLogo({ id, name }: AppLogoProps) {
   // --- PNG overrides (assets that can't be expressed as SVG paths) ---
+
+  if (id === "claude-cowork") {
+    return (
+      <img
+        src={claudeCoworkPng}
+        alt={name}
+        className="h-8 w-8 shrink-0 rounded-lg object-cover"
+      />
+    );
+  }
 
   if (id === "vscode") {
     return (

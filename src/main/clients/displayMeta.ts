@@ -15,6 +15,8 @@ export interface ClientDisplay {
 
 export const CLIENT_DISPLAY: Record<McpClientId, ClientDisplay> = {
   'claude-code': { name: 'Claude Code', brandColor: '#1A1A1A' },
+  'claude-desktop': { name: 'Claude Desktop', brandColor: '#D97757' },
+  'claude-cowork': { name: 'Claude Cowork', brandColor: '#C4745B' },
   codex: { name: 'Codex', brandColor: '#000000' },
   cursor: { name: 'Cursor', brandColor: '#000000' },
   vscode: { name: 'VS Code', brandColor: '#007ACC' },

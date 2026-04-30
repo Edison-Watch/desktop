@@ -13,6 +13,12 @@ import { join } from 'path'
 export const MAC_APP_NAMES: Record<string, string[]> = {
   vscode: ['Visual Studio Code.app'],
   cursor: ['Cursor.app'],
+  // Claude Desktop and Cowork ship the same .app bundle. Cowork is
+  // distinguished only by the `vm_bundles/` sibling directory under
+  // ~/Library/Application Support/Claude/, which is checked separately
+  // (see clients/claude-cowork/index.ts and the detectClients handler).
+  'claude-desktop': ['Claude.app'],
+  'claude-cowork': ['Claude.app'],
   windsurf: ['Windsurf.app'],
   zed: ['Zed.app'],
   intellij: ['IntelliJ IDEA.app', 'IntelliJ IDEA CE.app', 'IntelliJ IDEA Ultimate.app'],

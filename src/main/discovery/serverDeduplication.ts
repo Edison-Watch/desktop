@@ -143,6 +143,8 @@ export const CLIENT_SHORT_ALIAS: Record<string, string> = {
   'vscode': 'vscode',
   'cursor': 'cursor',
   'claude-code': 'ccode',
+  'claude-desktop': 'cdesktop',
+  'claude-cowork': 'ccowork',
   'windsurf': 'windsurf',
   'zed': 'zed',
   'codex': 'codex',

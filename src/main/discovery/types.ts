@@ -6,6 +6,8 @@ export type McpClientId =
   | 'vscode'
   | 'cursor'
   | 'claude-code'
+  | 'claude-desktop'
+  | 'claude-cowork'
   | 'windsurf'
   | 'zed'
   | 'codex'

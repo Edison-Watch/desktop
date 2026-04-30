@@ -27,6 +27,8 @@ import {
 } from '../runtime/mcpProjectPaths'
 
 import { integration as claudeCode } from './claude-code'
+import { integration as claudeDesktop } from './claude-desktop'
+import { integration as claudeCowork } from './claude-cowork'
 import { integration as codex } from './codex'
 import { integration as cursor } from './cursor'
 import { integration as vscode } from './vscode'
@@ -47,6 +49,8 @@ import { integration as webstorm } from './jetbrains/webstorm'
  */
 export const CLIENTS: Record<McpClientId, ClientIntegration> = {
   'claude-code': claudeCode,
+  'claude-desktop': claudeDesktop,
+  'claude-cowork': claudeCowork,
   codex,
   cursor,
   vscode,

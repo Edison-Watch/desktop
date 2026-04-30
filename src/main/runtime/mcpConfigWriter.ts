@@ -22,6 +22,8 @@ import {
   getCursorConfigPath,
   getCursorProjectMcpPaths,
   getClaudeCodeHomeJsonPath,
+  getClaudeDesktopConfigPath,
+  getClaudeCoworkConfigPath,
   getWindsurfConfigPath,
   getZedConfigPath,
   getJetBrainsMcpConfigPaths,
@@ -60,33 +62,78 @@ export interface ApplyIntegrationsResult {
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
-/** Build the Edison Watch MCP server entry for a given client. */
+/** Clients that don't natively speak Streamable HTTP and need the
+ *  npx-mcp-remote stdio shim. Claude Desktop/Cowork only spawn local stdio
+ *  processes, so the remote URL has to be wrapped in a subprocess.
+ */
+const NEEDS_MCP_REMOTE_SHIM: ReadonlySet<McpClientId> = new Set(['claude-desktop', 'claude-cowork'])
+
+/** Build the Edison Watch MCP server entry for a given client.
+ *
+ *  Two shapes are emitted:
+ *
+ *  1. Streamable HTTP (default): `{ type: "http", url, headers }`. Every
+ *     client that natively speaks remote MCP gets this. We always emit
+ *     the explicit `type: "http"` field; Cursor v2.5+ and VS Code in
+ *     particular have silent fallback bugs without it, the rest accept it
+ *     harmlessly.
+ *
+ *  2. Stdio-via-`mcp-remote`: `{ command: "npx", args: [...] }`. Claude
+ *     Desktop and Cowork are stdio-only hosts, so the remote URL is
+ *     wrapped in a subprocess that proxies stdio→HTTP. Headers turn into
+ *     `--header "Name: value"` pairs because mcp-remote's CLI is what
+ *     consumes them, not Claude Desktop itself.
+ */
 function buildEdisonEntry(
   clientId: McpClientId,
   url: string,
   headers?: Record<string, string>,
 ): Record<string, unknown> {
-  // Clients that need explicit type: "http" for reliable Streamable HTTP detection.
-  // Cursor v2.5+ has known MCP detection bugs - explicit type avoids silent failures.
-  const needsExplicitType: McpClientId[] = [
-    'vscode',
-    'cursor',
-  ]
-  if (needsExplicitType.includes(clientId)) {
-    return { type: 'http', url, ...(headers && { headers }) }
+  if (NEEDS_MCP_REMOTE_SHIM.has(clientId)) {
+    const headerArgs = headers
+      ? Object.entries(headers).flatMap(([k, v]) => ['--header', `${k}: ${v}`])
+      : []
+    return {
+      command: 'npx',
+      args: ['-y', 'mcp-remote', url, ...headerArgs],
+    }
   }
-  // All others: url only (type implied)
-  return { url, ...(headers && { headers }) }
+  return { type: 'http', url, ...(headers && { headers }) }
+}
+
+/** Read the upstream URL out of an edison-watch entry, regardless of shape.
+ *
+ *  Streamable HTTP entries store it as `entry.url`. Stdio-shim entries
+ *  store it as the first http(s) arg in `entry.args` (after `-y` and
+ *  `mcp-remote`). Returns null when no URL is found - callers treat that
+ *  as "registered but unrecognised shape" and trigger a re-write.
+ *
+ *  Exported so the hook-status / MCP-status probes in hookInjection.ts
+ *  can stay in sync with what we actually write here.
+ */
+export function extractEdisonUrl(entry: Record<string, unknown> | undefined | null): string | null {
+  if (!entry) return null
+  if (typeof entry.url === 'string') return entry.url
+  if (Array.isArray(entry.args)) {
+    for (const a of entry.args) {
+      if (typeof a === 'string' && /^https?:\/\//.test(a)) return a
+    }
+  }
+  return null
 }
 
 /** Map an appId string to its config path and client type. */
 async function getPathForApp(
   appId: string,
 ): Promise<{ configPath: string; clientId: McpClientId } | null> {
-  // claude-code is handled separately via applyToClaudeCode() - not in this map
+  // claude-code is handled separately via applyToClaudeCode() - not in this map.
+  // claude-desktop and claude-cowork share the same config file
+  // (claude_desktop_config.json); applyToApp writes the entry once per appId.
   const STATIC_MAP: Record<string, () => string> = {
     vscode: getVscodeUserMcpPath,
     cursor: getCursorConfigPath,
+    'claude-desktop': getClaudeDesktopConfigPath,
+    'claude-cowork': getClaudeCoworkConfigPath,
     windsurf: getWindsurfConfigPath,
     zed: getZedConfigPath,
   }
@@ -460,7 +507,8 @@ export async function isEdisonWatchRegistered(
     if (servers == null || !('edison-watch' in servers)) return false
     if (expectedUrl) {
       const entry = servers['edison-watch'] as Record<string, unknown>
-      if (stripQueryString(entry.url as string) !== stripQueryString(expectedUrl)) return false
+      const entryUrl = extractEdisonUrl(entry)
+      if (!entryUrl || stripQueryString(entryUrl) !== stripQueryString(expectedUrl)) return false
     }
     return true
   } catch {
@@ -532,7 +580,8 @@ export async function findAppsMissingClientTag(
       const servers = getServersFromConfig(config, pathInfo.clientId)
       if (servers && 'edison-watch' in servers) {
         const entry = servers['edison-watch'] as Record<string, unknown>
-        if (typeof entry.url === 'string' && !entry.url.includes('?client=')) {
+        const entryUrl = extractEdisonUrl(entry)
+        if (entryUrl && !entryUrl.includes('?client=')) {
           needsTag.push(appId)
         }
       }

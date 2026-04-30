@@ -37,6 +37,16 @@ export {
   parseClaudeHomeJson,
   parseClaudeDedicatedMcpServers,
 } from '../clients/claude-code/discovery'
+export {
+  getClaudeDesktopConfigPath,
+  parseClaudeDesktopConfig,
+  discoverClaudeDesktop,
+} from '../clients/claude-desktop/discovery'
+export {
+  getClaudeCoworkConfigPath,
+  parseClaudeCoworkConfig,
+  discoverClaudeCowork,
+} from '../clients/claude-cowork/discovery'
 
 // Runtime / project paths
 export {
