@@ -75,15 +75,20 @@ export function isOpaqueConfig(config: McpServerConfig): boolean {
  * Returns null for supported servers.
  */
 export function describeUnsupportedReason(server: DiscoveredMcpServer): string | null {
-  if (!isOpaqueConfig(server.config)) return null
-  if (server.client === 'cursor' && server.source === 'marketplace') {
-    return 'Cursor marketplace plugin: only SERVER_METADATA.json is exposed (no launch config)'
+  if (isOpaqueConfig(server.config)) {
+    if (server.client === 'cursor' && server.source === 'marketplace') {
+      return 'Cursor marketplace plugin: only SERVER_METADATA.json is exposed (no launch config)'
+    }
+    if (server.client === 'vscode' && server.source === 'marketplace') {
+      return 'VS Code-style extension-managed server: state DB exposes no launch URL or command'
+    }
+    if (server.source === 'marketplace') {
+      return `${server.client} marketplace install exposes no launch config`
+    }
+    return 'Opaque config (no launch command or URL surfaced by the host)'
   }
-  if (server.client === 'vscode' && server.source === 'marketplace') {
-    return 'VS Code-style extension-managed server: state DB exposes no launch URL or command'
+  if ('command' in server.config && server.config.command) {
+    return 'Local stdio servers are not yet supported'
   }
-  if (server.source === 'marketplace') {
-    return `${server.client} marketplace install exposes no launch config`
-  }
-  return 'Opaque config (no launch command or URL surfaced by the host)'
+  return null
 }

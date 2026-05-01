@@ -65,6 +65,7 @@ export { getServerFingerprint } from './seenServersStore'
 // ── Imports for aggregator ──────────────────────────────────────────────────
 
 import { CLIENT_LIST } from '../clients/registry'
+import { unwrapStdioShim } from './stdioShim'
 
 // ── macOS app existence check ───────────────────────────────────────────────
 
@@ -78,12 +79,28 @@ export async function discoverMcpServers(opts?: { includeRaw?: boolean }): Promi
   const perClient = await Promise.all(CLIENT_LIST.map((c) => c.discoverServers()))
   const results: DiscoveredMcpServer[] = perClient.flat()
 
-  // Separate opaque (unsupported) servers before deduplication
+  // Normalize stdio shims (e.g. `npx -y mcp-remote https://…`) to their
+  // URL-shaped equivalents so downstream code (submit, dedup, credential
+  // review, quarantine) treats them as the HTTP servers they actually are.
+  for (const s of results) {
+    const unwrapped = unwrapStdioShim(s.config)
+    if (unwrapped) s.config = unwrapped
+  }
+
+  // Split supported / unsupported. Unsupported = opaque (Cursor marketplace
+  // and VS Code state-DB shapes) OR local stdio that we can't unwrap into a
+  // URL. Local stdio is no longer executable post-rip-out, so we list it for
+  // visibility but don't quarantine or submit it.
   const supported: DiscoveredMcpServer[] = []
   const unsupportedRaw: DiscoveredMcpServer[] = []
   for (const s of results) {
-    if (isOpaqueConfig(s.config)) unsupportedRaw.push(s)
-    else supported.push(s)
+    if (isOpaqueConfig(s.config)) {
+      unsupportedRaw.push(s)
+    } else if ('command' in s.config && s.config.command) {
+      unsupportedRaw.push(s)
+    } else {
+      supported.push(s)
+    }
   }
   // Deduplicate unsupported list by name+client (same opaque server from multiple config paths)
   const unsupported: DiscoveredMcpServer[] = []
