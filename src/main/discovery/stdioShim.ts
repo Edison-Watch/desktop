@@ -52,6 +52,20 @@ function coerceArgs(raw: unknown): string[] {
 const MCP_REMOTE_RE = /(^|\/)mcp-remote(@[\w.+-]+)?$/
 
 /**
+ * mcp-remote flags that take a value as the next token. Anything outside this
+ * set is treated as a boolean flag unless the following token is clearly not
+ * a URL. This prevents `--allow-http https://x` from swallowing the URL.
+ */
+const VALUE_FLAGS: ReadonlySet<string> = new Set([
+  '--header',
+  '-H',
+  '--transport',
+  '--client',
+  '--port',
+  '--callback-port',
+])
+
+/**
  * Try to interpret `config` as a stdio invocation of `mcp-remote` wrapping a
  * remote MCP URL. Returns the URL-shaped config when successful, else null.
  *
@@ -120,11 +134,22 @@ export function unwrapStdioShim(config: McpServerConfig): UnwrappedRemoteConfig 
       continue
     }
     if (tok.startsWith('--') || tok.startsWith('-')) {
-      // Skip unknown flags. Some take a value; treat the next token as the
-      // flag's value when it doesn't itself start with `-`.
+      // Skip flags. mcp-remote mixes booleans (`--debug`, `--allow-http`,
+      // `--ignore-robots-txt`, `--clean`, `--headers-from-stdin`) with
+      // value-taking ones (`--transport`, `--client`, `--port`,
+      // `--callback-port`). The dangerous case is a boolean flag placed
+      // immediately before the URL: a naive "consume next non-flag token"
+      // rule would swallow the URL and the unwrap would silently fail. Use
+      // an allowlist for known value-taking flags; for anything else, only
+      // pair with the next token if that token doesn't look like a URL.
       const next = args[i + 1]
-      if (next !== undefined && !next.startsWith('-')) i += 2
-      else i += 1
+      const takesValue = VALUE_FLAGS.has(tok)
+      const nextLooksLikeUrl = next !== undefined && /^https?:\/\//i.test(next)
+      if (next !== undefined && !next.startsWith('-') && (takesValue || !nextLooksLikeUrl)) {
+        i += 2
+      } else {
+        i += 1
+      }
       continue
     }
     if (!url && /^https?:\/\//i.test(tok)) {

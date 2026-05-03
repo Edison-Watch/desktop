@@ -210,6 +210,72 @@ describe("unwrapStdioShim", () => {
     } as unknown as McpServerConfig;
     expect(unwrapStdioShim(cfg)).toBeNull();
   });
+
+  // ── Boolean flags placed before the URL must not consume it ───────────────
+
+  it("does not eat the URL when --allow-http precedes it", () => {
+    const cfg: McpServerConfig = {
+      command: "npx",
+      args: ["-y", "mcp-remote", "--allow-http", "http://localhost:3000/mcp"],
+    };
+    expect(unwrapStdioShim(cfg)).toEqual({
+      type: "http",
+      url: "http://localhost:3000/mcp",
+    });
+  });
+
+  it("does not eat the URL when --debug precedes it", () => {
+    const cfg: McpServerConfig = {
+      command: "npx",
+      args: ["mcp-remote", "--debug", "https://example.com/mcp"],
+    };
+    expect(unwrapStdioShim(cfg)).toEqual({
+      type: "http",
+      url: "https://example.com/mcp",
+    });
+  });
+
+  it("still consumes the value of known value-taking flags before the URL", () => {
+    // --transport takes a value; the literal `http-only` is the flag's value,
+    // not a URL. The URL comes after.
+    const cfg: McpServerConfig = {
+      command: "npx",
+      args: ["mcp-remote", "--transport", "http-only", "https://example.com/mcp"],
+    };
+    expect(unwrapStdioShim(cfg)).toEqual({
+      type: "http",
+      url: "https://example.com/mcp",
+    });
+  });
+
+  it("handles --allow-http between URL and a header pair", () => {
+    const cfg: McpServerConfig = {
+      command: "npx",
+      args: [
+        "mcp-remote",
+        "https://x/mcp",
+        "--allow-http",
+        "--header",
+        "Authorization: Bearer abc",
+      ],
+    };
+    expect(unwrapStdioShim(cfg)).toEqual({
+      type: "http",
+      url: "https://x/mcp",
+      headers: { Authorization: "Bearer abc" },
+    });
+  });
+
+  it("handles boolean-flag-before-URL via Cursor-style string args", () => {
+    const cfg = {
+      command: "npx",
+      args: "-y mcp-remote --allow-http http://localhost:3000/mcp",
+    } as unknown as McpServerConfig;
+    expect(unwrapStdioShim(cfg)).toEqual({
+      type: "http",
+      url: "http://localhost:3000/mcp",
+    });
+  });
 });
 
 describe("isLocalStdioConfig", () => {
