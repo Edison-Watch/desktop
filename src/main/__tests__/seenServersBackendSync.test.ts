@@ -160,7 +160,7 @@ describe("syncRegisteredServersFromBackend", () => {
     expect(entry!.action).toBe("requested");
   });
 
-  it("forwards Authorization and X-Edison-Secret-Key headers", async () => {
+  it("sends Authorization and never X-Edison-Secret-Key (fingerprinting is server-level)", async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -176,25 +176,8 @@ describe("syncRegisteredServersFromBackend", () => {
     expect((init as RequestInit).method).toBe("GET");
     const headers = (init as RequestInit).headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer edison_test_key");
-    expect(headers["X-Edison-Secret-Key"]).toBe("user:abc.admin:def");
-  });
-
-  it("omits the X-Edison-Secret-Key header when no secret key is configured", async () => {
-    credentialsMock.mockReturnValue({ apiKey: "edison_test_key" });
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ org_id: ORG_A, fingerprints: [] }),
-    });
-    vi.stubGlobal("fetch", mockFetch);
-
-    await syncRegisteredServersFromBackend();
-
-    const headers = (mockFetch.mock.calls[0][1] as RequestInit).headers as Record<
-      string,
-      string
-    >;
-    expect(headers.Authorization).toBe("Bearer edison_test_key");
+    // Fingerprinting reads raw rows on the backend - no per-user template
+    // resolution, no decryption, so the composite secret key is irrelevant.
     expect(headers["X-Edison-Secret-Key"]).toBeUndefined();
   });
 

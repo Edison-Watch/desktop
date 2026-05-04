@@ -6,6 +6,7 @@
 
 import type { DiscoveredMcpServer } from './types'
 import { detectSecrets } from './secretDetection'
+import { getServerFingerprint } from './seenServersStore'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,106 @@ export interface SubmitResult {
   alreadyPending?: boolean
   alreadyExists?: boolean
   errorMessage?: string
+}
+
+/**
+ * Backend's authoritative fingerprint list - approved templates ('registered')
+ * and pending admin-review requests ('requested'). Returned by GET /servers/fingerprints.
+ * Names are included so we can distinguish "fingerprint match" (same server already
+ * on backend) from "name match with different config" (must rename).
+ */
+export interface BackendFingerprintEntry {
+  name: string
+  fingerprint: string
+  status: 'registered' | 'requested'
+}
+
+export type BackendFingerprintIndex = {
+  byFingerprint: Map<string, BackendFingerprintEntry>
+  byName: Map<string, BackendFingerprintEntry>
+}
+
+const EMPTY_INDEX: BackendFingerprintIndex = {
+  byFingerprint: new Map(),
+  byName: new Map(),
+}
+
+/**
+ * Pull the org's fingerprint list once per submit batch. Returns an empty index
+ * on any error - the caller falls back to the existing 409-driven flow.
+ *
+ * Fingerprinting is server-level, not user-level: name + url (or
+ * name + command + args) is the same for everyone in the org, regardless of
+ * what each user has filled in for templated secrets like Authorization
+ * headers. So no `X-Edison-Secret-Key` is sent or needed.
+ */
+export async function fetchBackendFingerprints(
+  apiBaseUrl: string,
+  apiKey: string,
+): Promise<BackendFingerprintIndex> {
+  const url = `${apiBaseUrl.replace(/\/$/, '')}/api/v1/servers/fingerprints`
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: 'application/json',
+      },
+    })
+    if (!response.ok) {
+      console.warn(`[preflight] GET ${url} → ${response.status}; preflight disabled (will fall through to 409 path)`)
+      return EMPTY_INDEX
+    }
+    const data = (await response.json()) as { fingerprints?: BackendFingerprintEntry[] }
+    const list = data.fingerprints ?? []
+    const byFingerprint = new Map<string, BackendFingerprintEntry>()
+    const byName = new Map<string, BackendFingerprintEntry>()
+    for (const entry of list) {
+      byFingerprint.set(entry.fingerprint, entry)
+      byName.set(entry.name, entry)
+    }
+    console.log(`[preflight] backend has ${list.length} fingerprint(s):`)
+    for (const entry of list) {
+      console.log(`[preflight]   ${entry.name} → ${entry.fingerprint} (${entry.status})`)
+    }
+    return { byFingerprint, byName }
+  } catch (err) {
+    console.warn(`[preflight] GET ${url} failed:`, err)
+    return EMPTY_INDEX
+  }
+}
+
+/**
+ * Look up `server` in the backend index.
+ *
+ * Fingerprint match means the exact same `(name, command/args | url)` tuple is
+ * already on the backend - the caller should skip submission and surface
+ * "already exists on backend". Anything else (incl. same-name-different-config)
+ * falls through and the existing 409 path drives the rename dialog.
+ *
+ * Logs the comparison so a "rename was expected, got conflict instead"
+ * mismatch can be diagnosed - usually it's the URL stored on the backend
+ * differing from the URL in the user's mcp.json (trailing slash, https vs
+ * http, /sse vs /mcp suffix, etc.).
+ */
+export function findBackendFingerprintMatch(
+  server: DiscoveredMcpServer,
+  index: BackendFingerprintIndex,
+): BackendFingerprintEntry | null {
+  if (index.byFingerprint.size === 0) return null
+  const fp = getServerFingerprint(server)
+  const match = index.byFingerprint.get(fp) ?? null
+  if (match) {
+    console.log(`[preflight]   ✓ ${server.name} fp=${fp} matches backend "${match.name}" (${match.status})`)
+  } else {
+    const sameName = index.byName.get(server.name)
+    if (sameName) {
+      console.log(`[preflight]   ✗ ${server.name} fp=${fp} differs from backend "${sameName.name}" fp=${sameName.fingerprint} (same name, different config → 409 will drive rename)`)
+    } else {
+      console.log(`[preflight]   - ${server.name} fp=${fp} not on backend; will submit fresh`)
+    }
+  }
+  return match
 }
 
 export interface TemplateOverride {

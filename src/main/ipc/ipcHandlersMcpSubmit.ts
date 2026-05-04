@@ -17,7 +17,15 @@ import { discoverMcpServers, describeUnsupportedReason } from "../discovery/mcpD
 import type { DiscoveredMcpServer, McpClientId, McpServerConfig } from "../discovery/mcpDiscovery";
 import { removeServerFromConfig } from "../runtime/mcpConfigActions";
 import { quarantineCursorPlugin } from "../clients/cursor/quarantinePlugins";
-import { fetchUserRole, submitServerRequest, submitServerWithOverrides, approveServerRequest } from "../discovery/mcpServerSubmit";
+import {
+  fetchUserRole,
+  submitServerRequest,
+  submitServerWithOverrides,
+  approveServerRequest,
+  fetchBackendFingerprints,
+  findBackendFingerprintMatch,
+  type BackendFingerprintEntry,
+} from "../discovery/mcpServerSubmit";
 import { detectSecrets } from "../discovery/secretDetection";
 import type { TemplatizedConfig } from "../discovery/secretDetection";
 import { filterOutEdisonWatchServers } from "../runtime/mcpConfigMonitor";
@@ -92,6 +100,34 @@ async function runDiscovery() {
 /** Get cached discovery or return empty if cache is not populated. */
 function getCachedDiscovery() {
   return discoveryCache ?? { servers: [] as DiscoveredMcpServer[], raw: [] as DiscoveredMcpServer[], unsupported: [] as DiscoveredMcpServer[] };
+}
+
+/**
+ * Hook for when a discovered server's fingerprint already exists on the backend.
+ *
+ * The submit step is skipped (the server is already there), but we still
+ * (a) update the seen-store so quarantine recognises it on the next rescan,
+ * and (b) remove the local agent-config entry so traffic flows through
+ * Edison Watch instead of the bypass path. `removalMap` is omitted in the
+ * single-server path; we then fall back to removing the discovered server itself.
+ */
+async function handleAlreadyOnBackend(
+  server: DiscoveredMcpServer,
+  match: BackendFingerprintEntry,
+  apiBaseUrl: string,
+  apiKey: string,
+  removalMap?: Map<string, DiscoveredMcpServer[]>,
+): Promise<void> {
+  const orgId = await getOrRefreshOrgId(apiBaseUrl, apiKey);
+  if (orgId) {
+    try {
+      await getSharedSeenStore().markSeen(orgId, server, match.status);
+    } catch { /* non-fatal */ }
+  }
+  const entries = removalMap?.get(server.name) ?? [server];
+  for (const entry of entries) {
+    try { await removeOrDisableServer(entry); } catch { /* non-fatal */ }
+  }
 }
 
 export function registerMcpSubmitHandlers(): void {
@@ -368,11 +404,12 @@ export function registerMcpSubmitHandlers(): void {
     submitted: number;
     autoApproved: number;
     skipped: number;
+    alreadyOnBackend: number;
     total: number;
     servers?: Array<{ name: string; client: string; clients?: string[]; source: string }>;
     error?: string;
     errors?: string[];
-    failures?: Array<{ name: string; client: string; reason: "conflict" | "error"; message: string; config?: Record<string, unknown>; configPath?: string }>;
+    failures?: Array<{ name: string; client: string; reason: "conflict" | "error" | "already-on-backend"; message: string; config?: Record<string, unknown>; configPath?: string; backendStatus?: "registered" | "requested" }>;
   }> => {
     const setup = getSetupData();
     const creds = getCredentialsForEnv();
@@ -381,7 +418,7 @@ export function registerMcpSubmitHandlers(): void {
     const userId = params.userId || setup.userId;
 
     if (!apiKey || !apiBaseUrl) {
-      return { submitted: 0, autoApproved: 0, skipped: 0, total: 0,
+      return { submitted: 0, autoApproved: 0, skipped: 0, alreadyOnBackend: 0, total: 0,
         error: "Not signed in or server URL not configured." };
     }
 
@@ -394,13 +431,38 @@ export function registerMcpSubmitHandlers(): void {
     const serverList = servers.map((s) => ({ name: s.name, client: s.client, clients: s.clients, source: s.source }));
     let submitted = 0;
     let autoApproved = 0;
+    let alreadyOnBackend = 0;
     const errors: string[] = [];
-    const failures: Array<{ name: string; client: string; reason: "conflict" | "error"; message: string; config?: Record<string, unknown>; configPath?: string }> = [];
+    const failures: Array<{ name: string; client: string; reason: "conflict" | "error" | "already-on-backend"; message: string; config?: Record<string, unknown>; configPath?: string; backendStatus?: "registered" | "requested" }> = [];
+
+    // Preflight: pull org's existing fingerprints so we can short-circuit
+    // servers that are already on the backend (registered or pending). The
+    // 409 path on the server only catches name collisions; we want
+    // "already exists" surfaced as a non-error state, not as a rename prompt.
+    const backendIndex = await fetchBackendFingerprints(apiBaseUrl, apiKey);
 
     const role = await fetchUserRole(apiBaseUrl, apiKey);
     const canAutoApprove = role === "admin" || role === "owner";
 
     for (const server of servers) {
+      const backendMatch = findBackendFingerprintMatch(server, backendIndex);
+      if (backendMatch) {
+        alreadyOnBackend++;
+        await handleAlreadyOnBackend(server, backendMatch, apiBaseUrl, apiKey, removalMap);
+        failures.push({
+          name: server.name,
+          client: server.client,
+          reason: "already-on-backend",
+          message: backendMatch.status === "registered"
+            ? `Already registered on Edison Watch as "${backendMatch.name}"`
+            : `Already pending review on Edison Watch as "${backendMatch.name}"`,
+          backendStatus: backendMatch.status,
+          config: server.config as unknown as Record<string, unknown>,
+          configPath: server.path,
+        });
+        continue;
+      }
+
       try {
         const overrides = params.templateOverrides[server.name];
         const submitResult = overrides
@@ -454,7 +516,7 @@ export function registerMcpSubmitHandlers(): void {
       }
     }
     return {
-      submitted, autoApproved,
+      submitted, autoApproved, alreadyOnBackend,
       skipped: servers.length - submitted - failures.length,
       total: servers.length,
       servers: serverList,
@@ -473,11 +535,12 @@ export function registerMcpSubmitHandlers(): void {
     submitted: number;
     autoApproved: number;
     skipped: number;
+    alreadyOnBackend: number;
     total: number;
     servers?: Array<{ name: string; client: string; clients?: string[]; source: string }>;
     error?: string;
     errors?: string[];
-    failures?: Array<{ name: string; client: string; reason: "conflict" | "error"; message: string; config?: Record<string, unknown>; configPath?: string }>;
+    failures?: Array<{ name: string; client: string; reason: "conflict" | "error" | "already-on-backend"; message: string; config?: Record<string, unknown>; configPath?: string; backendStatus?: "registered" | "requested" }>;
   }> => {
     const setup = getSetupData();
     const creds = getCredentialsForEnv();
@@ -486,7 +549,7 @@ export function registerMcpSubmitHandlers(): void {
     const userId = params?.userId || setup.userId;
 
     if (!apiKey || !apiBaseUrl) {
-      return { submitted: 0, autoApproved: 0, skipped: 0, total: 0,
+      return { submitted: 0, autoApproved: 0, skipped: 0, alreadyOnBackend: 0, total: 0,
         error: "Not signed in or server URL not configured." };
     }
 
@@ -501,13 +564,36 @@ export function registerMcpSubmitHandlers(): void {
     const serverList = servers.map((s) => ({ name: s.name, client: s.client, clients: s.clients, source: s.source }));
     let submitted = 0;
     let autoApproved = 0;
+    let alreadyOnBackend = 0;
     const errors: string[] = [];
-    const failures: Array<{ name: string; client: string; reason: "conflict" | "error"; message: string; config?: Record<string, unknown>; configPath?: string }> = [];
+    const failures: Array<{ name: string; client: string; reason: "conflict" | "error" | "already-on-backend"; message: string; config?: Record<string, unknown>; configPath?: string; backendStatus?: "registered" | "requested" }> = [];
+
+    // Preflight: pull org's existing fingerprints. See note on the
+    // submitWithTemplates handler for why this matters.
+    const backendIndex = await fetchBackendFingerprints(apiBaseUrl, apiKey);
 
     const role = await fetchUserRole(apiBaseUrl, apiKey);
     const canAutoApprove = role === "admin" || role === "owner";
 
     for (const server of servers) {
+      const backendMatch = findBackendFingerprintMatch(server, backendIndex);
+      if (backendMatch) {
+        alreadyOnBackend++;
+        await handleAlreadyOnBackend(server, backendMatch, apiBaseUrl, apiKey, removalMap);
+        failures.push({
+          name: server.name,
+          client: server.client,
+          reason: "already-on-backend",
+          message: backendMatch.status === "registered"
+            ? `Already registered on Edison Watch as "${backendMatch.name}"`
+            : `Already pending review on Edison Watch as "${backendMatch.name}"`,
+          backendStatus: backendMatch.status,
+          config: server.config as unknown as Record<string, unknown>,
+          configPath: server.path,
+        });
+        continue;
+      }
+
       try {
         const submitResult = await submitServerRequest(server, apiBaseUrl, apiKey, userId);
         if (submitResult.alreadyPending) continue;
@@ -565,6 +651,7 @@ export function registerMcpSubmitHandlers(): void {
     return {
       submitted,
       autoApproved,
+      alreadyOnBackend,
       skipped: servers.length - submitted - failures.length,
       total: servers.length,
       servers: serverList,
@@ -611,6 +698,22 @@ export function registerMcpSubmitHandlers(): void {
       path: params.configPath,
       config: params.config as McpServerConfig,
     };
+
+    // Preflight: if the fingerprint is already on the backend, skip the
+    // submit (it's the same server) and just sync local state. This guards
+    // against the user double-acknowledging a quarantine dialog after the
+    // request was already filed in a previous session.
+    const backendIndex = await fetchBackendFingerprints(apiBaseUrl, apiKey);
+    const backendMatch = findBackendFingerprintMatch(server, backendIndex);
+    if (backendMatch) {
+      await handleAlreadyOnBackend(server, backendMatch, apiBaseUrl, apiKey);
+      return {
+        action: params.action,
+        alreadyOnBackend: true,
+        backendStatus: backendMatch.status,
+        existingName: backendMatch.name,
+      };
+    }
 
     const submitResult = params.templateOverrides && params.templateOverrides.length > 0
       ? await submitServerWithOverrides(server, params.templateOverrides, apiBaseUrl, apiKey, setup.userId)

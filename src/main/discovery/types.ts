@@ -71,6 +71,33 @@ export function isOpaqueConfig(config: McpServerConfig): boolean {
 }
 
 /**
+ * True iff `headers` is present on the config but is not a plain JSON object
+ * mapping name → value. Hand-edited mcp.json files sometimes carry the dict
+ * stringified (e.g. `"headers": "Authorization: Bearer x"`); when that hits
+ * the credential-review screen, JS iterates the string by character index
+ * and renders the headers as `0=A 1=u 2=t ...` rows.
+ *
+ * The accept criterion is intentionally tight: a plain object whose values
+ * are all strings. Arrays, scalars, and nested objects are rejected.
+ */
+export function hasMalformedHeaders(config: McpServerConfig): boolean {
+  if (!('headers' in config)) return false
+  const headers = (config as { headers?: unknown }).headers
+  if (headers === undefined || headers === null) return false
+  if (
+    typeof headers !== 'object' ||
+    Array.isArray(headers) ||
+    Object.getPrototypeOf(headers) !== Object.prototype
+  ) {
+    return true
+  }
+  for (const v of Object.values(headers as Record<string, unknown>)) {
+    if (typeof v !== 'string') return true
+  }
+  return false
+}
+
+/**
  * Human-readable explanation of why a server was classified as unsupported.
  * Returns null for supported servers.
  */
@@ -86,6 +113,9 @@ export function describeUnsupportedReason(server: DiscoveredMcpServer): string |
       return `${server.client} marketplace install exposes no launch config`
     }
     return 'Opaque config (no launch command or URL surfaced by the host)'
+  }
+  if (hasMalformedHeaders(server.config)) {
+    return 'Invalid `headers`: expected a JSON object mapping name → value (e.g. {"Authorization": "Bearer ..."})'
   }
   if ('command' in server.config && server.config.command) {
     return 'Local stdio servers are not yet supported'

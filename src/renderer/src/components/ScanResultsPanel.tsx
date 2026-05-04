@@ -3,16 +3,19 @@ import { useState } from "react";
 interface SubmitFailure {
   name: string;
   client: string;
-  reason: "conflict" | "error";
+  reason: "conflict" | "error" | "already-on-backend";
   message: string;
   config?: Record<string, unknown>;
   configPath?: string;
+  /** When reason === "already-on-backend": the backend's view of this server. */
+  backendStatus?: "registered" | "requested";
 }
 
 export interface ScanResult {
   submitted: number;
   autoApproved: number;
   skipped: number;
+  alreadyOnBackend?: number;
   total: number;
   servers?: Array<{ name: string; client: string; clients?: string[]; source: string }>;
   error?: string;
@@ -46,6 +49,10 @@ export default function ScanResultsPanel({
     );
   }
 
+  const allFailures = scanResult.failures ?? [];
+  const alreadyOnBackend = allFailures.filter((f) => f.reason === "already-on-backend");
+  const realFailures = allFailures.filter((f) => f.reason !== "already-on-backend");
+
   return (
     <div className="rounded-md bg-[var(--bg-input)] p-3 text-xs">
       <div className="flex flex-col gap-1">
@@ -62,7 +69,7 @@ export default function ScanResultsPanel({
         {scanResult.submitted === 0 && scanResult.total === 0 && (
           <span className="text-[var(--text-muted)]">No MCP servers found to register.</span>
         )}
-        {scanResult.submitted === 0 && scanResult.total > 0 && (
+        {scanResult.submitted === 0 && scanResult.total > 0 && alreadyOnBackend.length === 0 && (
           <span className="text-[var(--text-muted)]">{scanResult.skipped} server(s) skipped.</span>
         )}
 
@@ -98,13 +105,37 @@ export default function ScanResultsPanel({
           </div>
         )}
 
-        {scanResult.failures && scanResult.failures.length > 0 && (
+        {alreadyOnBackend.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-[var(--border)]/50">
+            <p className="text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+              Already on Edison Watch ({alreadyOnBackend.length})
+            </p>
+            <div className="flex flex-col gap-1">
+              {alreadyOnBackend.map((f) => (
+                <div
+                  key={f.name}
+                  className="rounded-md bg-[var(--bg-overlay)]/40 border border-[var(--border)]/40 px-2 py-1"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-[var(--text-primary)] text-xs font-medium truncate">{f.name}</span>
+                    <span className="text-[var(--text-muted)] text-[10px]">{f.client}</span>
+                    <span className="text-[10px] text-[var(--text-muted)]">
+                      {f.backendStatus === "registered" ? "registered" : "pending review"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {realFailures.length > 0 && (
           <div className="mt-2 pt-2 border-t border-[var(--border)]/50">
             <p className="text-xs font-medium text-red-400 mb-1.5">
-              Failed to submit ({scanResult.failures.length})
+              Failed to submit ({realFailures.length})
             </p>
             <div className="flex flex-col gap-2">
-              {scanResult.failures.map((f) => (
+              {realFailures.map((f) => (
                 <div key={f.name} className="rounded-md bg-red-500/5 border border-red-500/15 p-2">
                   <div className="flex items-center gap-2">
                     <span className="text-[var(--text-primary)] text-xs font-medium">{f.name}</span>

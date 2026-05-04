@@ -52,11 +52,12 @@ interface EdisonAPI {
       submitted: number;
       autoApproved: number;
       skipped: number;
+      alreadyOnBackend: number;
       total: number;
       servers?: Array<{ name: string; client: string; clients?: string[]; source: string }>;
       error?: string;
       errors?: string[];
-      failures?: Array<{ name: string; client: string; reason: "conflict" | "error"; message: string; config?: Record<string, unknown>; configPath?: string }>;
+      failures?: Array<{ name: string; client: string; reason: "conflict" | "error" | "already-on-backend"; message: string; config?: Record<string, unknown>; configPath?: string; backendStatus?: "registered" | "requested" }>;
     }>;
     analyzeSecrets: (params?: { skipServers?: string[] }) => Promise<Array<{
       name: string;
@@ -78,11 +79,12 @@ interface EdisonAPI {
       submitted: number;
       autoApproved: number;
       skipped: number;
+      alreadyOnBackend: number;
       total: number;
       servers?: Array<{ name: string; client: string; clients?: string[]; source: string }>;
       error?: string;
       errors?: string[];
-      failures?: Array<{ name: string; client: string; reason: "conflict" | "error"; message: string; config?: Record<string, unknown>; configPath?: string }>;
+      failures?: Array<{ name: string; client: string; reason: "conflict" | "error" | "already-on-backend"; message: string; config?: Record<string, unknown>; configPath?: string; backendStatus?: "registered" | "requested" }>;
     }>;
     injectHooks: () => Promise<unknown[]>;
     removeHooks: () => Promise<unknown[]>;

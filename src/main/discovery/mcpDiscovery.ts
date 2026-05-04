@@ -9,7 +9,7 @@
  */
 import { platform } from 'os'
 import type { DiscoveredMcpServer, DiscoveryResult } from './types'
-import { isOpaqueConfig } from './types'
+import { isOpaqueConfig, hasMalformedHeaders } from './types'
 import { clientAlias } from './serverDeduplication'
 import { MAC_APP_NAMES, macAppExists } from './macAppNames'
 
@@ -89,12 +89,15 @@ export async function discoverMcpServers(opts?: { includeRaw?: boolean }): Promi
 
   // Split supported / unsupported. Unsupported = opaque (Cursor marketplace
   // and VS Code state-DB shapes) OR local stdio that we can't unwrap into a
-  // URL. Local stdio is no longer executable post-rip-out, so we list it for
-  // visibility but don't quarantine or submit it.
+  // URL OR an HTTP server whose `headers` field is the wrong shape (must be
+  // a JSON object). Local stdio is no longer executable post-rip-out, so we
+  // list it for visibility but don't quarantine or submit it.
   const supported: DiscoveredMcpServer[] = []
   const unsupportedRaw: DiscoveredMcpServer[] = []
   for (const s of results) {
     if (isOpaqueConfig(s.config)) {
+      unsupportedRaw.push(s)
+    } else if (hasMalformedHeaders(s.config)) {
       unsupportedRaw.push(s)
     } else if ('command' in s.config && s.config.command) {
       unsupportedRaw.push(s)

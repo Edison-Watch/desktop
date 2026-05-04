@@ -71,15 +71,12 @@ export async function syncRegisteredServersFromBackend(): Promise<void> {
 
   const url = `${apiBaseUrl.replace(/\/$/, '')}/api/v1/servers/fingerprints`
   console.log(`[SeenServersSync] GET ${url} org=${cachedOrgId}`)
+  // Fingerprinting is server-level (name + url, or name + command + args),
+  // not user-level - per-user template values don't feed it. So no
+  // X-Edison-Secret-Key is needed.
   const headers: Record<string, string> = {
     Authorization: `Bearer ${creds.apiKey}`,
     Accept: 'application/json',
-  }
-  // The endpoint substitutes templates per-user before computing fingerprints,
-  // so it needs the composite secret key to decrypt user-scope template values
-  // - same header pattern as mcpServerSubmit.ts and templates.py.
-  if (creds.edisonSecretKey) {
-    headers['X-Edison-Secret-Key'] = creds.edisonSecretKey
   }
 
   let response: Response

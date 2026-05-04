@@ -232,6 +232,78 @@ export default function AppsStep({
 
   const selectedCount = clients.filter((c) => c.enabled).length;
 
+  const PARTIALLY_SUPPORTED_IDS = new Set(["claude-desktop", "claude-cowork"]);
+  const fullySupportedClients = clients.filter((c) => !PARTIALLY_SUPPORTED_IDS.has(c.id));
+  const partiallySupportedClients = clients.filter((c) => PARTIALLY_SUPPORTED_IDS.has(c.id));
+
+  const renderClientCard = (client: DetectedClient) => (
+    <div
+      key={client.id}
+      className="rounded-lg border border-[var(--border)] overflow-hidden transition-shadow"
+      style={{
+        borderTopColor: client.enabled ? "var(--accent-dim)" : "var(--border)",
+        background: "linear-gradient(180deg, var(--bg-overlay) 0%, var(--bg-raised) 48px)",
+        boxShadow: client.enabled ? "0 0 12px 0 rgba(125, 255, 246, 0.08)" : "none",
+      }}
+    >
+      {/* Clickable row - toggles selection */}
+      <button
+        type="button"
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--bg-input)]/40 transition-colors"
+        onClick={() => toggleClient(client.id)}
+      >
+        {/* Checkbox indicator */}
+        <div
+          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded transition-all ${
+            client.enabled
+              ? "bg-[var(--accent)] border-[var(--accent)]"
+              : "border-2 border-[var(--border)]"
+          }`}
+        >
+          {client.enabled && (
+            <svg viewBox="0 0 12 12" fill="none" className="h-2.5 w-2.5" aria-hidden="true">
+              <path d="M2 6l3 3 5-5" stroke="var(--bg-base)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </div>
+
+        {/* App logo */}
+        <AppLogo id={client.id} name={client.name} />
+
+        {/* Name + path */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-[var(--text-primary)]">
+              {client.name}
+            </span>
+            <span className="text-[10px] font-medium text-emerald-400/80 bg-emerald-400/10 px-1.5 py-0.5 rounded">
+              Detected
+            </span>
+          </div>
+          <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">
+            {client.configPath}
+          </p>
+        </div>
+      </button>
+
+      {/* Config preview toggle */}
+      {client.expanded && (
+        <pre className="mx-4 mb-3 max-h-40 overflow-auto rounded-md bg-[var(--bg-input)] p-3 text-xs text-[var(--text-secondary)]">
+          {client.configPreview ?? "Loading config..."}
+        </pre>
+      )}
+      <div className="px-4 pb-2.5">
+        <button
+          type="button"
+          className="text-xs text-[var(--accent-muted)] hover:text-[var(--accent)] transition-colors"
+          onClick={() => toggleExpanded(client.id)}
+        >
+          {client.expanded ? "Hide config" : "Show config"}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-6">
       <div className="text-center">
@@ -271,73 +343,28 @@ export default function AppsStep({
             </button>
           </div>
 
-          {clients.map((client) => (
-            <div
-              key={client.id}
-              className="rounded-lg border border-[var(--border)] overflow-hidden transition-shadow"
-              style={{
-                borderTopColor: client.enabled ? "var(--accent-dim)" : "var(--border)",
-                background: "linear-gradient(180deg, var(--bg-overlay) 0%, var(--bg-raised) 48px)",
-                boxShadow: client.enabled ? "0 0 12px 0 rgba(125, 255, 246, 0.08)" : "none",
-              }}
-            >
-              {/* Clickable row - toggles selection */}
-              <button
-                type="button"
-                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--bg-input)]/40 transition-colors"
-                onClick={() => toggleClient(client.id)}
-              >
-                {/* Checkbox indicator */}
-                <div
-                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded transition-all ${
-                    client.enabled
-                      ? "bg-[var(--accent)] border-[var(--accent)]"
-                      : "border-2 border-[var(--border)]"
-                  }`}
-                >
-                  {client.enabled && (
-                    <svg viewBox="0 0 12 12" fill="none" className="h-2.5 w-2.5" aria-hidden="true">
-                      <path d="M2 6l3 3 5-5" stroke="var(--bg-base)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
-                </div>
+          {fullySupportedClients.map(renderClientCard)}
 
-                {/* App logo */}
-                <AppLogo id={client.id} name={client.name} />
-
-                {/* Name + path */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-[var(--text-primary)]">
-                      {client.name}
-                    </span>
-                    <span className="text-[10px] font-medium text-emerald-400/80 bg-emerald-400/10 px-1.5 py-0.5 rounded">
-                      Detected
-                    </span>
-                  </div>
-                  <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">
-                    {client.configPath}
-                  </p>
-                </div>
-              </button>
-
-              {/* Config preview toggle */}
-              {client.expanded && (
-                <pre className="mx-4 mb-3 max-h-40 overflow-auto rounded-md bg-[var(--bg-input)] p-3 text-xs text-[var(--text-secondary)]">
-                  {client.configPreview ?? "Loading config..."}
-                </pre>
-              )}
-              <div className="px-4 pb-2.5">
-                <button
-                  type="button"
-                  className="text-xs text-[var(--accent-muted)] hover:text-[var(--accent)] transition-colors"
-                  onClick={() => toggleExpanded(client.id)}
-                >
-                  {client.expanded ? "Hide config" : "Show config"}
-                </button>
+          {partiallySupportedClients.length > 0 && (
+            <div className="mt-4 rounded-lg border border-amber-400/40 bg-amber-400/5 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-sm font-semibold text-amber-300">
+                  Partially supported
+                </span>
+                <span className="text-[10px] text-amber-200/70">
+                  ({partiallySupportedClients.map((c) => c.name).join(" & ")})
+                </span>
+              </div>
+              <div className="mb-3 rounded-md border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-100/90">
+                We currently only support local MCP servers, not Connectors. You
+                should remove your connectors manually for your safety and request
+                a equivalent server in Edison Watch from your admin.
+              </div>
+              <div className="flex flex-col gap-2">
+                {partiallySupportedClients.map(renderClientCard)}
               </div>
             </div>
-          ))}
+          )}
         </div>
       )}
 
