@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Button, Card, Input } from "@edison/shared/ui";
 import {
-  generateSecretKey,
   hashSecretKey,
   buildCompositeKey,
   cacheSecretKey,
@@ -11,6 +10,7 @@ import type { ModifiedConfig, DiscoveredServer, RemovalTarget } from "./AppsStep
 import { AppLogo } from "./AppLogo";
 import EncryptionAnimation from "./EncryptionAnimation";
 import KeyEncryptionAnimation from "./KeyEncryptionAnimation";
+import PersonalKeyCard from "./PersonalKeyCard";
 import CredentialReviewCard from "./CredentialReviewCard";
 import type { TemplateOverrideEntry } from "./CredentialReviewCard";
 import ScanResultsPanel from "./ScanResultsPanel";
@@ -49,21 +49,19 @@ export default function EncryptionStep({
   autoQuarantine = false,
   onNext,
 }: EncryptionStepProps): React.ReactNode {
+  // Render-time tracer so we can confirm the component is actually mounting.
+  // If this line never appears in DevTools console, the running build doesn't
+  // include these changes (clean rebuild needed) or DevTools is closed.
+  console.log("[EncryptionStep] render");
+
   // Progressive reveal: 0=personal key, 1=org key, 2=register servers
   const [currentSubStep, setCurrentSubStep] = useState(0);
 
-  // Personal key state
-  const [userKey, setUserKey] = useState("");
-  const [userKeyMode, setUserKeyMode] = useState<"generate" | "existing">("generate");
-  const [generatedKey, setGeneratedKey] = useState("");
-  const [keyCopied, setKeyCopied] = useState(false);
-  const [keyRegistering, setKeyRegistering] = useState(false);
-  const [, setKeyRegistered] = useState(false);
-  const [keyError, setKeyError] = useState("");
+  // Personal-key state. The interactive UI + lifecycle live in PersonalKeyCard;
+  // here we only retain the materialized values we need for the org-key + scan
+  // sub-steps that follow.
   const [rawPersonalKey, setRawPersonalKey] = useState("");
   const [compositeKey, setCompositeKey] = useState("");
-  const [keychainSaved, setKeychainSaved] = useState(false);
-  const [keychainSaving, setKeychainSaving] = useState(false);
 
   // Org key state
   const [orgKey, setOrgKey] = useState("");
@@ -102,88 +100,6 @@ export default function EncryptionStep({
   const visibleServers = discoveredServers.filter(
     (s) => !skipServers.includes(s.name)
   );
-
-  // On mount: auto-generate a key, check if already registered
-  useEffect(() => {
-    const init = async () => {
-      const newKey = generateSecretKey();
-      setGeneratedKey(newKey);
-      setUserKeyMode("generate");
-
-      try {
-        const res = await fetch(
-          `${apiBaseUrl.replace(/\/$/, "")}/api/v1/user/settings`,
-          { headers: { Authorization: `Bearer ${apiKey}` } }
-        );
-        if (res.ok) {
-          const data = await res.json() as { has_secret_key?: boolean };
-          if (data.has_secret_key) {
-            const stored = await window.api.keychain.load();
-            if (stored) {
-              const key = buildCompositeKey(stored, null);
-              cacheSecretKey(key);
-              setCompositeKey(key);
-              setRawPersonalKey(stored);
-              setKeyRegistered(true);
-              setKeychainSaved(true);
-              setCurrentSubStep(1);
-            } else {
-              setGeneratedKey("");
-              setUserKeyMode("existing");
-            }
-          }
-        }
-      } catch {
-        // Non-fatal
-      }
-    };
-    void init();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ── Personal key handlers ──
-
-  const handleSaveAndRegister = async (rawKey: string) => {
-    setKeychainSaving(true);
-    setKeyRegistering(true);
-    setKeyError("");
-    try {
-      // Register with backend first to avoid stale keychain entries
-      const userKeyHash = await hashSecretKey(rawKey);
-      const url = `${apiBaseUrl.replace(/\/$/, "")}/api/v1/user/secret-key/register`;
-      const hdrs = { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` };
-      const res = await fetch(url, { method: "POST", headers: hdrs, body: JSON.stringify({ user_key_hash: userKeyHash }) });
-      if (!res.ok) {
-        const detail = await res.text().catch(() => "");
-        throw new Error(`Registration failed (${res.status}): ${detail}`);
-      }
-
-      const key = buildCompositeKey(rawKey, null);
-      cacheSecretKey(key);
-      setCompositeKey(key);
-      setRawPersonalKey(rawKey);
-      setKeyRegistered(true);
-
-      // Save to keychain after successful registration
-      try {
-        const result = await window.api.keychain.save(rawKey);
-        if (result.ok) {
-          setKeychainSaved(true);
-        } else {
-          setKeyError("Key registered, but could not save to Keychain. Make sure you back up your key.");
-        }
-      } catch {
-        setKeyError("Key registered, but could not save to Keychain. Make sure you back up your key.");
-      }
-
-      setCurrentSubStep(1);
-    } catch (err) {
-      setKeyError(err instanceof Error ? err.message : "Failed to register key");
-    } finally {
-      setKeychainSaving(false);
-      setKeyRegistering(false);
-    }
-  };
 
   // ── Org key handlers ──
 
@@ -335,139 +251,16 @@ export default function EncryptionStep({
       {currentSubStep < 2 && <KeyEncryptionAnimation />}
 
       {/* ── Sub-step 1: Personal Key ── */}
-      <Card>
-        {currentSubStep > 0 ? (
-          <div className="group flex items-center gap-2 text-sm text-emerald-400">
-            <CheckCircle />
-            <span className="flex-1">
-              {keychainSaved
-                ? "Personal key saved to Keychain"
-                : "Personal key registered"}
-            </span>
-            {compositeKey && (
-              <button
-                type="button"
-                className="opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                onClick={async () => {
-                  await navigator.clipboard.writeText(compositeKey);
-                  setKeyCopied(true);
-                  setTimeout(() => setKeyCopied(false), 2000);
-                }}
-                title="Copy key"
-              >
-                {keyCopied ? (
-                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
-                  </svg>
-                ) : (
-                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M7 3.5A1.5 1.5 0 018.5 2h3.879a1.5 1.5 0 011.06.44l3.122 3.12A1.5 1.5 0 0117 6.622V12.5a1.5 1.5 0 01-1.5 1.5h-1v-3.379a3 3 0 00-.879-2.121L10.5 5.379A3 3 0 008.379 4.5H7v-1z" />
-                    <path d="M4.5 6A1.5 1.5 0 003 7.5v9A1.5 1.5 0 004.5 18h7a1.5 1.5 0 001.5-1.5v-5.879a1.5 1.5 0 00-.44-1.06L9.44 6.439A1.5 1.5 0 008.378 6H4.5z" />
-                  </svg>
-                )}
-              </button>
-            )}
-            {keyError && (
-              <p className="text-xs text-orange-400 mt-1">{keyError}</p>
-            )}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <div>
-              <p className="text-sm font-medium text-[var(--text-primary)]">Personal Encryption Key</p>
-              <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                Edison encrypts your credentials with a personal key that only you control. We never store or see this key.
-              </p>
-            </div>
-
-            {userKeyMode === "generate" ? (
-              <div className="flex flex-col gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-[var(--text-primary)] mb-1.5">
-                    Your Personal Key
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 min-w-0">
-                      <Input type="password" value={generatedKey} readOnly className="font-mono" />
-                    </div>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={async () => {
-                        await navigator.clipboard.writeText(generatedKey);
-                        setKeyCopied(true);
-                        setTimeout(() => setKeyCopied(false), 2000);
-                      }}
-                    >
-                      {keyCopied ? "Copied!" : "Copy"}
-                    </Button>
-                  </div>
-                </div>
-                <p className="text-xs text-[var(--text-muted)]">
-                  Back up this key in your password manager - it cannot be recovered if lost.
-                </p>
-                {keyError && (
-                  <p className="text-xs text-[var(--danger)]">{keyError}</p>
-                )}
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    loading={keychainSaving || keyRegistering}
-                    onClick={() => handleSaveAndRegister(generatedKey)}
-                    className="flex-1"
-                  >
-                    Save & Continue
-                  </Button>
-                  <button
-                    type="button"
-                    className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-                    disabled={keychainSaving || keyRegistering}
-                    onClick={() => setUserKeyMode("existing")}
-                  >
-                    I already have a key
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                <Input
-                  type="password"
-                  label="Existing Key"
-                  placeholder="Paste your edison_secret_key"
-                  value={userKey}
-                  onChange={(e) => setUserKey(e.target.value)}
-                />
-                {keyError && (
-                  <p className="text-xs text-[var(--danger)]">{keyError}</p>
-                )}
-                <div className="flex gap-2 justify-end">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      setUserKeyMode("generate");
-                      setUserKey("");
-                      setKeyError("");
-                    }}
-                  >
-                    Back
-                  </Button>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    loading={keychainSaving || keyRegistering}
-                    disabled={!userKey.trim()}
-                    onClick={() => handleSaveAndRegister(userKey.trim())}
-                  >
-                    Save & Continue
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </Card>
+      <PersonalKeyCard
+        apiBaseUrl={apiBaseUrl}
+        apiKey={apiKey}
+        done={currentSubStep > 0}
+        onReady={(rawKey, composite) => {
+          setRawPersonalKey(rawKey);
+          setCompositeKey(composite);
+          if (currentSubStep < 1) setCurrentSubStep(1);
+        }}
+      />
 
       {/* ── Sub-step 2: Organisation Key ── */}
       {currentSubStep >= 1 && (
