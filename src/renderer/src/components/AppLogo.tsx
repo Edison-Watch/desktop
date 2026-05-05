@@ -70,7 +70,7 @@ export function AppLogo({ id, name }: AppLogoProps) {
           viewBox={entry.customViewBox ?? "0 0 24 24"}
           xmlns="http://www.w3.org/2000/svg"
           className="h-full w-full"
-          shapeRendering={entry.customViewBox ? "crispEdges" : undefined}
+          shapeRendering={entry.crispEdges ? "crispEdges" : undefined}
           aria-hidden="true"
           dangerouslySetInnerHTML={{ __html: entry.customSvg }}
         />
