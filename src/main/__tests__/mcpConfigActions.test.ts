@@ -174,6 +174,23 @@ describe("mcpConfigActions", () => {
         ),
       ).rejects.toThrow();
     });
+
+    it("propagates auto_approved=true from the backend response", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ request_id: 99, auto_approved: true }),
+      });
+      vi.stubGlobal("fetch", mockFetch);
+
+      const server = makeServer("admin-submitted");
+      const result = await submitServerRequest(
+        server,
+        "https://api.edison.watch",
+        "admin-key",
+      );
+
+      expect(result).toEqual({ request_id: 99, autoApproved: true });
+    });
   });
 
   describe("approveServerRequest (mocked HTTP)", () => {

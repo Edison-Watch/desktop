@@ -147,6 +147,31 @@ describe("seenServersStore", () => {
         .slice(0, 16);
       expect(fp).toBe(expected);
     });
+
+    it("templatized URL: concrete embedded token matches its templatized form", () => {
+      // Discovery sees the live token in the user's mcp.json; backend stored
+      // the templatized form at submit time. detectSecrets() should pull the
+      // token out so both fingerprints land on the same value.
+      const concrete = makeHttp(
+        "zap",
+        "https://mcp.zapier.com/api/v1/connect?token=MmUwOWM2MDQtMzU1Zi00NjhlLTlkMWE",
+      );
+      const templated = makeHttp(
+        "zap",
+        "https://mcp.zapier.com/api/v1/connect?token={TOKEN}",
+      );
+      expect(getServerFingerprint(concrete)).toBe(getServerFingerprint(templated));
+    });
+
+    it("templatized URL: placeholder variable name does not affect fingerprint", () => {
+      // Two clients that auto-name the same secret differently still match.
+      const a = makeHttp("zap", "https://mcp.zapier.com/api/v1/connect?token={TOKEN}");
+      const b = makeHttp(
+        "zap",
+        "https://mcp.zapier.com/api/v1/connect?token={SOME_TOKEN}",
+      );
+      expect(getServerFingerprint(a)).toBe(getServerFingerprint(b));
+    });
   });
 
   const ORG_A = "00000000-0000-0000-0000-00000000000a";

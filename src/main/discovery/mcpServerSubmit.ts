@@ -16,6 +16,10 @@ export interface SubmitResult {
   alreadyPending?: boolean
   alreadyExists?: boolean
   errorMessage?: string
+  // True when the backend immediately approved the request (admin/owner
+  // submitter). Callers must skip the follow-up /admin/.../approve call -
+  // it would 400 because the row is no longer pending.
+  autoApproved?: boolean
 }
 
 /**
@@ -322,13 +326,18 @@ async function _postServerRequest(
     throw new Error(`Failed to submit server request: ${response.status} ${errorText}`)
   }
 
-  const responseData = (await response.json()) as { request_id: number }
+  const responseData = (await response.json()) as { request_id: number; auto_approved?: boolean }
   const hasSecrets = Object.keys(secretValues).length > 0
+  const autoApproved = responseData.auto_approved === true
   console.log(
-    `[MCP Config] Submitted server request for "${serverName}" (id: ${responseData.request_id})` +
+    `[MCP Config] Submitted server request for "${serverName}" (id: ${responseData.request_id}${autoApproved ? ', auto-approved' : ''})` +
       (hasSecrets ? ` with ${Object.keys(secretValues).length} template_fields` : '')
   )
-  return { request_id: responseData.request_id, ...(hasSecrets && { secretValues }) }
+  return {
+    request_id: responseData.request_id,
+    ...(hasSecrets && { secretValues }),
+    ...(autoApproved && { autoApproved: true }),
+  }
 }
 
 // ── Approve / Role ──────────────────────────────────────────────────────────

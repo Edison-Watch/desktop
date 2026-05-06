@@ -201,10 +201,12 @@ export function registerMcpSubmitHandlers(): void {
         return { success: false, error: result.errorMessage ?? `"${params.newName}" already exists.` };
       }
 
-      let wasAutoApproved = false;
-      const role = await fetchUserRole(apiBaseUrl, apiKey);
-      if (role === "admin" || role === "owner") {
-        try { await approveServerRequest(result.request_id, apiBaseUrl, apiKey); wasAutoApproved = true; } catch { /* non-fatal */ }
+      let wasAutoApproved = result.autoApproved === true;
+      if (!wasAutoApproved) {
+        const role = await fetchUserRole(apiBaseUrl, apiKey);
+        if (role === "admin" || role === "owner") {
+          try { await approveServerRequest(result.request_id, apiBaseUrl, apiKey); wasAutoApproved = true; } catch { /* non-fatal */ }
+        }
       }
 
       // Mark in seen store so quarantine recognises it as known.
@@ -483,8 +485,10 @@ export function registerMcpSubmitHandlers(): void {
         }
         submitted++;
 
-        let wasAutoApproved = false;
-        if (canAutoApprove) {
+        let wasAutoApproved = submitResult.autoApproved === true;
+        if (wasAutoApproved) {
+          autoApproved++;
+        } else if (canAutoApprove) {
           try {
             await approveServerRequest(submitResult.request_id, apiBaseUrl, apiKey);
             autoApproved++;
@@ -610,8 +614,10 @@ export function registerMcpSubmitHandlers(): void {
         }
         submitted++;
         const { request_id } = submitResult;
-        let wasAutoApproved = false;
-        if (canAutoApprove) {
+        let wasAutoApproved = submitResult.autoApproved === true;
+        if (wasAutoApproved) {
+          autoApproved++;
+        } else if (canAutoApprove) {
           try {
             await approveServerRequest(request_id, apiBaseUrl, apiKey);
             autoApproved++;
@@ -728,10 +734,12 @@ export function registerMcpSubmitHandlers(): void {
 
     const { request_id } = submitResult;
 
-    // Auto-approve if user is admin/owner and action is "registered"
-    let autoApproved = false;
+    // Auto-approve if user is admin/owner and action is "registered".
+    // The backend already auto-approves admin/owner submissions, so honour
+    // submitResult.autoApproved first and skip the redundant approve call.
+    let autoApproved = submitResult.autoApproved === true;
     let approveError: string | undefined;
-    if (params.action === "registered") {
+    if (!autoApproved && params.action === "registered") {
       const role = await fetchUserRole(apiBaseUrl, apiKey);
       if (role === "admin" || role === "owner") {
         try {
