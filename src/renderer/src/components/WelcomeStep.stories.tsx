@@ -29,6 +29,7 @@ const baseAuth: Parameters<typeof WelcomeStep>[0]['auth'] = {
   serverStatus: 'checking',
   signInWithSSO: async () => {},
   signInWithGoogle: async () => {},
+  signInWithMicrosoft: async () => {},
   signInWithPassword: async () => {},
   checkDomain: () => {},
   cancelPendingAuth: () => {},

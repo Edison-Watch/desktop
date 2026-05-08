@@ -28,10 +28,22 @@ function GoogleIcon() {
   );
 }
 
+function MicrosoftIcon() {
+  return (
+    <svg className="size-5" viewBox="0 0 23 23" aria-hidden="true">
+      <rect x="1" y="1" width="10" height="10" fill="#F25022" />
+      <rect x="12" y="1" width="10" height="10" fill="#7FBA00" />
+      <rect x="1" y="12" width="10" height="10" fill="#00A4EF" />
+      <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
+    </svg>
+  );
+}
+
 interface WelcomeStepProps {
   auth: AuthState & {
     signInWithSSO: (email: string) => Promise<void>;
     signInWithGoogle: () => Promise<void>;
+    signInWithMicrosoft: () => Promise<void>;
     signInWithPassword: (email: string, password: string) => Promise<void>;
     checkDomain: (email: string) => void;
     cancelPendingAuth: () => void;
@@ -227,6 +239,27 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
               >
                 <GoogleIcon />
                 Sign in with Google
+              </button>
+            )}
+
+            {/* Microsoft Sign In - becomes Cancel while a Microsoft flow is pending */}
+            {auth.awaitingBrowserCallback && auth.pendingAuthMethod === "microsoft" ? (
+              <button
+                type="button"
+                onClick={auth.cancelPendingAuth}
+                className="mt-2 w-full flex items-center justify-center gap-2.5 bg-[var(--danger)] text-white font-medium py-2 px-4 rounded-md border border-[var(--danger)] hover:opacity-90 transition-opacity text-sm"
+              >
+                Cancel Microsoft sign-in
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={auth.signInWithMicrosoft}
+                disabled={auth.loading}
+                className="mt-2 w-full flex items-center justify-center gap-2.5 bg-white text-gray-700 font-medium py-2 px-4 rounded-md border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+              >
+                <MicrosoftIcon />
+                Sign in with Microsoft
               </button>
             )}
 

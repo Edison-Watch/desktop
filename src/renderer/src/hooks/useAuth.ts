@@ -61,7 +61,7 @@ export interface AuthState {
   /** True while we're waiting for an external browser OAuth/SSO callback. */
   awaitingBrowserCallback: boolean;
   /** Which auth method initiated the pending browser flow, if any. */
-  pendingAuthMethod: "sso" | "google" | null;
+  pendingAuthMethod: "sso" | "google" | "microsoft" | null;
 }
 
 const initialState: AuthState = {
@@ -302,6 +302,34 @@ export default function useAuth() {
     }
   }, [getRedirectTo, startAuthBrowserTimeout, update]);
 
+  // Microsoft (Azure AD) OAuth
+  const signInWithMicrosoft = useCallback(async () => {
+    update({ loading: true, error: "" });
+    const redirectTo = await getRedirectTo();
+
+    // `email` scope is required by Supabase; `offline_access` returns a refresh token.
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "azure",
+      options: {
+        redirectTo,
+        skipBrowserRedirect: true,
+        scopes: "email offline_access",
+      },
+    });
+
+    if (error) {
+      update({ loading: false, error: error.message });
+      return;
+    }
+
+    if (data?.url) {
+      window.api.shell.openExternal(data.url);
+      awaitingBrowserCallbackRef.current = true;
+      update({ awaitingBrowserCallback: true, pendingAuthMethod: "microsoft" });
+      startAuthBrowserTimeout();
+    }
+  }, [getRedirectTo, startAuthBrowserTimeout, update]);
+
   // Password sign-in
   const signInWithPassword = useCallback(async (email: string, password: string) => {
     update({ loading: true, error: "" });
@@ -458,6 +486,7 @@ export default function useAuth() {
     ...state,
     signInWithSSO,
     signInWithGoogle,
+    signInWithMicrosoft,
     signInWithPassword,
     checkDomain,
     cancelPendingAuth,
