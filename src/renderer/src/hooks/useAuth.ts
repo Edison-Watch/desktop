@@ -252,6 +252,10 @@ export default function useAuth() {
   const signInWithSSO = useCallback(async (email: string) => {
     update({ loading: true, error: "" });
     const domain = email.split("@")[1];
+    if (!domain) {
+      update({ loading: false, error: "Invalid email address" });
+      return;
+    }
     const redirectTo = await getRedirectTo();
 
     const { data, error } = await supabase.auth.signInWithSSO({

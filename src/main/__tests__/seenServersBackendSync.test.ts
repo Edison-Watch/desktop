@@ -137,7 +137,7 @@ describe("syncRegisteredServersFromBackend", () => {
       path: "/tmp/datadog-mcp.json",
       config: { command: "node", args: ["datadog.js"] },
     }, "requested");
-    const fpDatadog = (await injectedStore.getAllForOrg(ORG_A))[0].fingerprint;
+    const fpDatadog = (await injectedStore.getAllForOrg(ORG_A))[0]!.fingerprint;
 
     vi.stubGlobal(
       "fetch",
@@ -171,7 +171,7 @@ describe("syncRegisteredServersFromBackend", () => {
     await syncRegisteredServersFromBackend();
 
     expect(mockFetch).toHaveBeenCalledOnce();
-    const [calledUrl, init] = mockFetch.mock.calls[0];
+    const [calledUrl, init] = mockFetch.mock.calls[0]!;
     expect(calledUrl).toBe("https://api.example.com/api/v1/servers/fingerprints");
     expect((init as RequestInit).method).toBe("GET");
     const headers = (init as RequestInit).headers as Record<string, string>;

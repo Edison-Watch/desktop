@@ -158,7 +158,7 @@ async function scanCursorPluginCache(seen: Set<string>): Promise<void> {
             if (shaDirs.length === 0) continue
 
             // If multiple sha dirs, pick the most recently modified
-            let bestDir = shaDirs[0].name
+            let bestDir = shaDirs[0]!.name
             if (shaDirs.length > 1) {
               let bestMtime = 0
               for (const d of shaDirs) {

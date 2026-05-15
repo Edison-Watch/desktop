@@ -141,7 +141,7 @@ describe("mcpConfigMonitor", () => {
       ];
       const filtered = filterOutEdisonWatchServers(servers);
       expect(filtered).toHaveLength(1);
-      expect(filtered[0].name).toBe("other-server");
+      expect(filtered[0]!.name).toBe("other-server");
     });
 
     it("returns empty array when all servers are Edison", () => {

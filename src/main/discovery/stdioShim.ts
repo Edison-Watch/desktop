@@ -97,9 +97,11 @@ export function unwrapStdioShim(config: McpServerConfig): UnwrappedRemoteConfig 
       start = 1
     }
     for (let i = start; i < args.length; i++) {
+      const a = args[i]
+      if (a === undefined) continue
       // Skip launcher flags like `-y`, `--yes`.
-      if (args[i].startsWith('-')) continue
-      if (MCP_REMOTE_RE.test(args[i])) {
+      if (a.startsWith('-')) continue
+      if (MCP_REMOTE_RE.test(a)) {
         remoteIdx = i
         break
       }
@@ -118,6 +120,7 @@ export function unwrapStdioShim(config: McpServerConfig): UnwrappedRemoteConfig 
   let i = remoteIdx + 1
   while (i < args.length) {
     const tok = args[i]
+    if (tok === undefined) { i += 1; continue }
     if (tok === '--header' || tok === '-H') {
       const value = args[i + 1]
       if (value) {
@@ -162,7 +165,7 @@ export function unwrapStdioShim(config: McpServerConfig): UnwrappedRemoteConfig 
 
   if (!url) return null
 
-  const path = url.split('?')[0].replace(/\/+$/, '')
+  const path = url.split('?')[0]!.replace(/\/+$/, '')
   const type: 'sse' | 'http' = path.endsWith('/sse') ? 'sse' : 'http'
 
   return Object.keys(headers).length > 0 ? { type, url, headers } : { type, url }

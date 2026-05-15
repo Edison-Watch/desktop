@@ -512,7 +512,7 @@ describe("nested scopes (project + profile)", () => {
 
       // Verify CLI was called instead of direct file edit
       expect(execFileMock).toHaveBeenCalledOnce();
-      const [cmd, args, opts] = execFileMock.mock.calls[0];
+      const [cmd, args, opts] = execFileMock.mock.calls[0]!;
       expect(cmd).toBe("claude");
       expect(args).toEqual(["mcp", "remove", "proj-a-server"]);
       expect(opts).toMatchObject({ cwd: "/Users/me/work/project-a" });
@@ -641,11 +641,11 @@ describe("nested scopes (project + profile)", () => {
       // Each deduped entry should map to exactly 1 raw entry
       const entries1 = map.get("samediff_ccode_1")!;
       expect(entries1).toHaveLength(1);
-      expect(entries1[0].projectName).toBe("/Users/me/work/project-a");
+      expect(entries1[0]!.projectName).toBe("/Users/me/work/project-a");
 
       const entries2 = map.get("samediff_ccode_2")!;
       expect(entries2).toHaveLength(1);
-      expect(entries2[0].projectName).toBe("/Users/me/work/project-b");
+      expect(entries2[0]!.projectName).toBe("/Users/me/work/project-b");
     });
 
     it("maps renamed server to own entry for profile conflicts", () => {
@@ -686,11 +686,11 @@ describe("nested scopes (project + profile)", () => {
 
       const entries1 = map.get("notion_ccode_1")!;
       expect(entries1).toHaveLength(1);
-      expect(entries1[0].profileName).toBe("work");
+      expect(entries1[0]!.profileName).toBe("work");
 
       const entries2 = map.get("notion_ccode_2")!;
       expect(entries2).toHaveLength(1);
-      expect(entries2[0].profileName).toBe("personal");
+      expect(entries2[0]!.profileName).toBe("personal");
     });
 
     it("maps renamed server across different clients correctly", () => {
@@ -731,11 +731,11 @@ describe("nested scopes (project + profile)", () => {
 
       const ccode = map.get("sqlite_ccode")!;
       expect(ccode).toHaveLength(1);
-      expect(ccode[0].path).toBe("/home/.claude/settings.json");
+      expect(ccode[0]!.path).toBe("/home/.claude/settings.json");
 
       const cursor = map.get("sqlite_cursor")!;
       expect(cursor).toHaveLength(1);
-      expect(cursor[0].path).toBe("/home/.cursor/mcp.json");
+      expect(cursor[0]!.path).toBe("/home/.cursor/mcp.json");
     });
 
     it("deduplicates raw entries with same name+path (prevents triple-removal)", () => {
@@ -797,7 +797,7 @@ describe("nested scopes (project + profile)", () => {
 
       const entries = map.get("ghost_ccode_1")!;
       expect(entries).toHaveLength(1);
-      expect(entries[0].name).toBe("ghost_ccode_1");
+      expect(entries[0]!.name).toBe("ghost_ccode_1");
     });
   });
 

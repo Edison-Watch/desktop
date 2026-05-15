@@ -236,12 +236,13 @@ export async function submitServerWithOverrides(
 
   for (const ov of overrides) {
     const [context, key] = ov.entryId.split(':', 2)
+    if (context === undefined || key === undefined) continue
     secretValues[ov.varName] = ov.selectedText
 
     // Track in template_fields
     const bucket = context === 'args' ? 'args' : 'env'
-    if (!templateFields[bucket]) templateFields[bucket] = {}
-    templateFields[bucket][ov.varName] = {
+    const bucketFields = (templateFields[bucket] ??= {})
+    bucketFields[ov.varName] = {
       description: `User-selected credential (${ov.varName})`,
       example: ''
     }
@@ -253,20 +254,23 @@ export async function submitServerWithOverrides(
     if (context === 'args') {
       const idx = parseInt(key.match(/\d+/)?.[0] ?? '0', 10)
       const args = cloned.args as string[] | undefined
-      if (args && args[idx] !== undefined) {
-        args[idx] = replaceInValue(args[idx])
+      const current = args?.[idx]
+      if (args && current !== undefined) {
+        args[idx] = replaceInValue(current)
       }
     } else if (context === 'env') {
       const env = cloned.env as Record<string, string> | undefined
-      if (env && env[key] !== undefined) {
-        env[key] = replaceInValue(env[key])
+      const current = env?.[key]
+      if (env && current !== undefined) {
+        env[key] = replaceInValue(current)
       }
     } else if (context === 'url') {
       cloned.url = replaceInValue(String(cloned.url))
     } else if (context === 'headers') {
       const headers = cloned.headers as Record<string, string> | undefined
-      if (headers && headers[key] !== undefined) {
-        headers[key] = replaceInValue(headers[key])
+      const current = headers?.[key]
+      if (headers && current !== undefined) {
+        headers[key] = replaceInValue(current)
       }
     }
   }
@@ -292,7 +296,7 @@ export async function submitServerWithOverrides(
     if (headers && Object.keys(headers).length > 0) payload.headers = headers
   }
 
-  if (Object.keys(templateFields).some(k => Object.keys(templateFields[k]).length > 0)) {
+  if (Object.values(templateFields).some(v => Object.keys(v).length > 0)) {
     payload.template_fields = templateFields
   }
 

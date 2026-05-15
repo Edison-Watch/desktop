@@ -202,14 +202,14 @@ describe("Config Parsing Functions", () => {
       const servers = await parseVscodeMcpJson(filePath);
 
       expect(servers).toHaveLength(2);
-      expect(servers[0].name).toBe("test-server");
-      expect(servers[0].client).toBe("vscode");
-      expect(servers[0].source).toBe("user");
-      expect(servers[0].path).toBe(filePath);
-      expect(servers[0].config).toEqual(config.servers["test-server"]);
+      expect(servers[0]!.name).toBe("test-server");
+      expect(servers[0]!.client).toBe("vscode");
+      expect(servers[0]!.source).toBe("user");
+      expect(servers[0]!.path).toBe(filePath);
+      expect(servers[0]!.config).toEqual(config.servers["test-server"]);
 
-      expect(servers[1].name).toBe("http-server");
-      expect((servers[1].config as { type: string }).type).toBe("http");
+      expect(servers[1]!.name).toBe("http-server");
+      expect((servers[1]!.config as { type: string }).type).toBe("http");
     });
 
     it("handles empty servers object", async () => {
@@ -255,11 +255,11 @@ describe("Config Parsing Functions", () => {
       const servers = await parseClaudeCodeSettingsJson(filePath);
 
       expect(servers).toHaveLength(1);
-      expect(servers[0].name).toBe("everything");
-      expect(servers[0].client).toBe("claude-code");
-      expect(servers[0].source).toBe("user");
+      expect(servers[0]!.name).toBe("everything");
+      expect(servers[0]!.client).toBe("claude-code");
+      expect(servers[0]!.source).toBe("user");
       expect(
-        (servers[0].config as { env?: Record<string, string> }).env,
+        (servers[0]!.config as { env?: Record<string, string> }).env,
       ).toEqual({ HOME: "/tmp" });
     });
 
@@ -293,8 +293,8 @@ describe("Config Parsing Functions", () => {
       const servers = await parseClaudeCodeMcpJson(filePath, "enterprise");
 
       expect(servers).toHaveLength(1);
-      expect(servers[0].name).toBe("enterprise-server");
-      expect(servers[0].source).toBe("enterprise");
+      expect(servers[0]!.name).toBe("enterprise-server");
+      expect(servers[0]!.source).toBe("enterprise");
     });
 
     it("parses .mcp.json as project source", async () => {
@@ -312,7 +312,7 @@ describe("Config Parsing Functions", () => {
       const servers = await parseClaudeCodeMcpJson(filePath, "project");
 
       expect(servers).toHaveLength(1);
-      expect(servers[0].source).toBe("project");
+      expect(servers[0]!.source).toBe("project");
     });
   });
 
@@ -332,9 +332,9 @@ describe("Config Parsing Functions", () => {
       const servers = await parseClaudeHomeJson(filePath);
 
       expect(servers).toHaveLength(1);
-      expect(servers[0].name).toBe("global-server");
-      expect(servers[0].source).toBe("user");
-      expect(servers[0].projectName).toBeUndefined();
+      expect(servers[0]!.name).toBe("global-server");
+      expect(servers[0]!.source).toBe("user");
+      expect(servers[0]!.projectName).toBeUndefined();
     });
 
     it("parses project-specific mcpServers", async () => {
@@ -356,9 +356,9 @@ describe("Config Parsing Functions", () => {
       const servers = await parseClaudeHomeJson(filePath);
 
       expect(servers).toHaveLength(1);
-      expect(servers[0].name).toBe("project-server");
-      expect(servers[0].source).toBe("project");
-      expect(servers[0].projectName).toBe("/Users/test/my-project");
+      expect(servers[0]!.name).toBe("project-server");
+      expect(servers[0]!.source).toBe("project");
+      expect(servers[0]!.projectName).toBe("/Users/test/my-project");
     });
 
     it("combines top-level and project servers", async () => {
@@ -403,7 +403,7 @@ describe("Config Parsing Functions", () => {
       const servers = await parseClaudeDedicatedMcpServers(filePath);
 
       expect(servers).toHaveLength(1);
-      expect(servers[0].name).toBe("wrapped-server");
+      expect(servers[0]!.name).toBe("wrapped-server");
     });
 
     it("parses direct mapping format", async () => {
@@ -418,7 +418,7 @@ describe("Config Parsing Functions", () => {
       const servers = await parseClaudeDedicatedMcpServers(filePath);
 
       expect(servers).toHaveLength(1);
-      expect(servers[0].name).toBe("direct-server");
+      expect(servers[0]!.name).toBe("direct-server");
     });
   });
 
@@ -440,7 +440,7 @@ describe("Config Parsing Functions", () => {
       const servers = await parseCursorMcpJson(filePath);
 
       expect(servers).toHaveLength(1);
-      expect(servers[0].client).toBe("cursor");
+      expect(servers[0]!.client).toBe("cursor");
     });
   });
 
@@ -526,7 +526,7 @@ describe("Config Parsing Functions", () => {
       const servers = await parseWindsurfMcpJson(filePath);
 
       expect(servers).toHaveLength(1);
-      expect(servers[0].client).toBe("windsurf");
+      expect(servers[0]!.client).toBe("windsurf");
     });
   });
 
@@ -546,7 +546,7 @@ describe("Config Parsing Functions", () => {
       const servers = await parseZedSettingsJson(filePath);
 
       expect(servers).toHaveLength(1);
-      expect(servers[0].client).toBe("zed");
+      expect(servers[0]!.client).toBe("zed");
     });
 
     it("handles missing context_servers key", async () => {
@@ -611,7 +611,7 @@ describe("Edge Cases and Error Handling", () => {
     const servers = await parseClaudeCodeSettingsJson(filePath);
 
     expect(servers).toHaveLength(1);
-    const c = servers[0].config as {
+    const c = servers[0]!.config as {
       command: string;
       args: string[];
       env: Record<string, string>;
@@ -644,7 +644,7 @@ describe("Edge Cases and Error Handling", () => {
     const servers = await parseVscodeMcpJson(filePath);
 
     expect(servers).toHaveLength(1);
-    const c = servers[0].config as {
+    const c = servers[0]!.config as {
       type: string;
       url: string;
       headers: Record<string, string>;
@@ -722,7 +722,7 @@ describe("Edge Cases and Error Handling", () => {
       JSON.stringify(config),
     );
     const servers = await parseClaudeCodeSettingsJson(filePath);
-    expect((servers[0].config as { args: string[] }).args).toEqual([
+    expect((servers[0]!.config as { args: string[] }).args).toEqual([
       "--path=/tmp/test dir/file.js",
       '--flag="quoted value"',
       "-e",
@@ -843,10 +843,10 @@ describe("JetBrains parsing", () => {
     const servers = await parseJetBrainsServersJson(filePath, "intellij");
 
     expect(servers).toHaveLength(1);
-    expect(servers[0].name).toBe("jb-server");
-    expect(servers[0].client).toBe("intellij");
-    expect(servers[0].source).toBe("user");
-    expect(servers[0].path).toBe(filePath);
+    expect(servers[0]!.name).toBe("jb-server");
+    expect(servers[0]!.client).toBe("intellij");
+    expect(servers[0]!.source).toBe("user");
+    expect(servers[0]!.path).toBe(filePath);
   });
 
   it("getJetBrainsMcpConfigPaths returns array", async () => {

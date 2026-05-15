@@ -582,7 +582,7 @@ app.on("second-instance", (_event, commandLine) => {
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
     app.setAsDefaultProtocolClient("edison-watch", process.execPath, [
-      process.argv[1],
+      process.argv[1]!,
     ]);
   }
 } else {

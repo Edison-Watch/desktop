@@ -105,7 +105,7 @@ function getConfigEntries(
       entries.push({
         context: "args",
         key: `arg[${i}]`,
-        rawValue: args[i],
+        rawValue: args[i]!,
         entryId: `args:arg[${i}]`,
       });
     }

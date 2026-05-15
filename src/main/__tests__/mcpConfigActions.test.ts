@@ -151,7 +151,7 @@ describe("mcpConfigActions", () => {
       expect(result).toEqual({ request_id: 42 });
       expect(mockFetch).toHaveBeenCalledTimes(1);
 
-      const [url, opts] = mockFetch.mock.calls[0];
+      const [url, opts] = mockFetch.mock.calls[0]!;
       expect(url).toContain("api.edison.watch");
       expect(opts.method).toBe("POST");
       expect(opts.headers["Authorization"]).toContain("test-api-key");
@@ -208,7 +208,7 @@ describe("mcpConfigActions", () => {
       );
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
-      const [url, opts] = mockFetch.mock.calls[0];
+      const [url, opts] = mockFetch.mock.calls[0]!;
       expect(url).toContain("api.edison.watch");
       expect(opts.method).toBe("POST");
     });

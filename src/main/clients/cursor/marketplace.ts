@@ -88,7 +88,7 @@ export async function discoverCursorMarketplaceMcps(): Promise<DiscoveredMcpServ
       const state = JSON.parse(raw) as Record<string, string>
       for (const [key, value] of Object.entries(state)) {
         const urlMatch = key.match(/^\[user-(.+?)\] mcp_server_url$/)
-        if (urlMatch && value) {
+        if (urlMatch?.[1] && value) {
           const serverName = urlMatch[1]
           results.push({
             name: serverName,

@@ -99,7 +99,7 @@ function looksLikeApiKey(value: string): boolean {
 function extractAuthToken(value: string): { prefix: string; token: string } | null {
   // Match "Authorization: Bearer xxx", "Authorization: Basic xxx", etc.
   const headerMatch = value.match(/^(.*?(?:Bearer|Basic)\s+)(.+)$/i)
-  if (headerMatch) {
+  if (headerMatch?.[1] !== undefined && headerMatch[2] !== undefined) {
     const token = headerMatch[2]
     // Only treat as secret if the token itself looks like a secret
     if (hasKnownSecretPrefix(token) || looksLikeApiKey(token) || token.length >= 8) {
@@ -155,7 +155,7 @@ function parseFlagValuePairs(args: string[]): ParsedFlag[] {
   const pairs: ParsedFlag[] = []
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
-    if (!arg.startsWith('-')) continue
+    if (arg === undefined || !arg.startsWith('-')) continue
 
     // --flag=value
     const eqIdx = arg.indexOf('=')
@@ -170,11 +170,12 @@ function parseFlagValuePairs(args: string[]): ParsedFlag[] {
     }
 
     // --flag value (next arg is the value, if it exists and doesn't look like a flag)
-    if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+    const nextVal = args[i + 1]
+    if (nextVal !== undefined && !nextVal.startsWith('-')) {
       pairs.push({
         index: i,
         flag: arg,
-        value: args[i + 1],
+        value: nextVal,
         nextArg: true
       })
     }
@@ -269,7 +270,7 @@ export function detectSecrets(server: DiscoveredMcpServer): TemplatizedConfig {
       for (let i = 0; i < clonedArgs.length; i++) {
         if (pairIndices.has(i)) continue
         const arg = clonedArgs[i]
-        if (arg.startsWith('-') || arg.startsWith('{')) continue
+        if (arg === undefined || arg.startsWith('-') || arg.startsWith('{')) continue
 
         // Check for embedded auth tokens in standalone args
         const authToken = extractAuthToken(arg)

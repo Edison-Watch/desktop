@@ -74,7 +74,7 @@ function hashColor(name: string): string {
   for (let i = 0; i < name.length; i++) {
     hash = (hash * 31 + name.charCodeAt(i)) | 0
   }
-  return MONOGRAM_COLORS[Math.abs(hash) % MONOGRAM_COLORS.length]
+  return MONOGRAM_COLORS[Math.abs(hash) % MONOGRAM_COLORS.length]!
 }
 
 function monogram(name: string): string {

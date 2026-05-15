@@ -41,8 +41,8 @@ function deriveCursorPluginDirPrefixes(server: DiscoveredMcpServer): string[] {
   const parts = splitPath(server.path)
   const cacheIdx = parts.indexOf('cache')
   if (cacheIdx !== -1 && cacheIdx + 2 < parts.length) {
-    const marketplace = stripDisabledPrefix(parts[cacheIdx + 1])
-    const pluginName = stripDisabledPrefix(parts[cacheIdx + 2])
+    const marketplace = stripDisabledPrefix(parts[cacheIdx + 1]!)
+    const pluginName = stripDisabledPrefix(parts[cacheIdx + 2]!)
     return [
       `plugin-${pluginName}-${pluginName}`,
       `plugin-${marketplace}-${pluginName}`,
@@ -110,7 +110,7 @@ export async function quarantineCursorPlugin(
     const parts = splitPath(server.path)
     const cacheIdx = parts.indexOf('cache')
     const pluginName = cacheIdx !== -1 && cacheIdx + 2 < parts.length
-      ? parts[cacheIdx + 2]       // from cache path: .../cache/<marketplace>/<name>/...
+      ? parts[cacheIdx + 2]!      // from cache path: .../cache/<marketplace>/<name>/...
       : server.name               // fallback
     await removeCursorPluginsFromServerConfig([pluginName, server.name])
   } catch { /* non-fatal */ }

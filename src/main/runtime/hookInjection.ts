@@ -189,10 +189,10 @@ async function checkCodexMcpEntry(
     if (!existsSync(configPath)) return false
     const content = await fs.readFile(configPath, 'utf-8')
     const sectionMatch = content.match(/\[mcp_servers\.edison-watch\][^\n]*\n((?:(?!\n\[)[\s\S])*?)(?=\n\[|\s*$)/)
-    if (!sectionMatch) return false
+    if (!sectionMatch?.[1]) return false
     const sectionBody = sectionMatch[1]
     const urlMatch = sectionBody.match(/url\s*=\s*"([^"]*)"/)
-    if (!urlMatch) return false
+    if (!urlMatch?.[1]) return false
     const unescaped = urlMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\')
     const strip = (u: string) => u.replace(/\?.*$/, '').replace(/\/+$/, '')
     return strip(unescaped) === strip(expectedMcpUrl)

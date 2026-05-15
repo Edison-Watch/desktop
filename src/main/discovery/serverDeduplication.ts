@@ -178,17 +178,18 @@ export function deduplicateServers(servers: DiscoveredMcpServer[]): DiscoveredMc
 
   const result: DiscoveredMcpServer[] = [];
   for (const [, group] of byName) {
+    const first = group[0]!;
     if (group.length === 1) {
-      result.push({ ...group[0], clients: group[0].clients ?? [group[0].client] });
+      result.push({ ...first, clients: first.clients ?? [first.client] });
       continue;
     }
 
     // Check if all configs in the group are identical
-    const allSame = group.every((s) => configsEqual(s.config, group[0].config));
+    const allSame = group.every((s) => configsEqual(s.config, first.config));
     if (allSame) {
       // Keep just the first one, merge all clients
       const clients = [...new Set(group.flatMap((s) => s.clients ?? [s.client]))];
-      result.push({ ...group[0], clients });
+      result.push({ ...first, clients });
     } else {
       // Configs differ - suffix each to disambiguate.
       // If all from different clients, use name_clientAlias.

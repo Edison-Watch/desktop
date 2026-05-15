@@ -9,6 +9,11 @@
   ],
   "compilerOptions": {
     "composite": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
     "types": ["electron-vite/node"],
     "paths": {
       "@edison/shared/*": ["../packages/shared/src/*"]

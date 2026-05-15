@@ -115,7 +115,7 @@ export default function FinishStep({
         apps: [appId],
       });
       if (result.success && result.modifiedConfigs.length > 0) {
-        const newBackupPath = result.modifiedConfigs[0].backupPath;
+        const newBackupPath = result.modifiedConfigs[0]!.backupPath;
         setRevertedPaths((prev) => {
           const next = new Set(prev);
           next.delete(configPath);

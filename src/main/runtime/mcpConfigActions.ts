@@ -207,7 +207,7 @@ export async function disableServerInConfig(server: DiscoveredMcpServer): Promis
 
     // Move to disabled key
     const disabledName = `_disabled_${configKey}`
-    servers[disabledName] = servers[configKey]
+    servers[disabledName] = servers[configKey]!
     delete servers[configKey]
 
     await fs.writeFile(server.path, JSON.stringify(config, null, 2), 'utf-8')
@@ -523,7 +523,7 @@ export async function quarantineServer(server: DiscoveredMcpServer): Promise<Qua
     // Check the server actually exists in the parsed config
     let servers = server.client === 'zed'
       ? parsed.assistant?.mcp_servers
-      : (parsed as Record<string, unknown>)[serversKey[0]] as Record<string, unknown> | undefined
+      : (parsed as Record<string, unknown>)[serversKey[0]!] as Record<string, unknown> | undefined
     let serverExists = servers && configKey in servers
 
     // If not found at top level, check project-scoped (.claude.json) and profile-scoped (settings.json)

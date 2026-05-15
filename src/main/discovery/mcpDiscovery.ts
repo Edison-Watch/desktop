@@ -168,7 +168,7 @@ export function deduplicateByNameAndConfig(servers: DiscoveredMcpServer[]): Disc
 
   const result: DiscoveredMcpServer[] = []
   for (const [, group] of byName) {
-    if (group.length === 1) { result.push({ ...group[0], clients: [group[0].client] }); continue }
+    if (group.length === 1) { result.push({ ...group[0]!, clients: [group[0]!.client] }); continue }
 
     // Collapse true duplicates (same name + same config), merging clients.
     const seen = new Map<string, DiscoveredMcpServer>()
@@ -186,7 +186,7 @@ export function deduplicateByNameAndConfig(servers: DiscoveredMcpServer[]): Disc
 
     const unique = [...seen.values()]
     if (unique.length === 1) {
-      result.push(unique[0])
+      result.push(unique[0]!)
     } else {
       // Different configs under the same name - rename to disambiguate.
       const clientSet = new Set(unique.map((e) => e.client))
