@@ -1,5 +1,5 @@
 /**
- * Codex CLI hook injection - inject/remove Edison Watch hooks from Codex config.toml.
+ * Codex hook injection - inject/remove Edison Watch hooks from Codex config.toml.
  */
 
 import { promises as fs, existsSync } from 'fs'
@@ -27,9 +27,9 @@ function buildCodexHookToml(scriptPath: string, sessionEndScriptPath: string): s
 }
 
 /**
- * Inject Edison Watch hooks into Codex CLI config.toml.
+ * Inject Edison Watch hooks into Codex config.toml.
  * Appends [[hooks.SessionStart]] (registration) and [[hooks.Stop]] (session end) entries.
- * Note: Codex CLI hooks are experimental (v0.114.0+). No PreToolUse/BeforeTool event
+ * Note: Codex hooks are experimental (v0.114.0+). No PreToolUse/BeforeTool event
  * exists, so session isolation is not possible.
  */
 export async function injectCodexHook(): Promise<boolean> {
@@ -59,13 +59,25 @@ export async function injectCodexHook(): Promise<boolean> {
   // Handle partial states: only one of the two hooks may already exist
   if (existing.includes('edison-hook') && !existing.includes('edison-session-end')) {
     // Has SessionStart but not Stop - append just the Stop hook
-    await fs.writeFile(configPath, existing + `\n[[hooks.Stop]]\ncommand = "${sessionEndScriptPath}"\n`, 'utf-8')
+    await fs.writeFile(
+      configPath,
+      existing + `\n[[hooks.Stop]]\ncommand = "${sessionEndScriptPath}"\n`,
+      'utf-8'
+    )
   } else if (!existing.includes('edison-hook') && existing.includes('edison-session-end')) {
     // Has Stop but not SessionStart - append just the SessionStart hook
-    await fs.writeFile(configPath, existing + `\n[[hooks.SessionStart]]\ncommand = "${scriptPath} codex"\n`, 'utf-8')
+    await fs.writeFile(
+      configPath,
+      existing + `\n[[hooks.SessionStart]]\ncommand = "${scriptPath} codex"\n`,
+      'utf-8'
+    )
   } else {
     // Neither hook exists - append both
-    await fs.writeFile(configPath, existing + buildCodexHookToml(scriptPath, sessionEndScriptPath), 'utf-8')
+    await fs.writeFile(
+      configPath,
+      existing + buildCodexHookToml(scriptPath, sessionEndScriptPath),
+      'utf-8'
+    )
   }
 
   console.log('[HookInjection] Injected Edison hooks into Codex config.toml')
@@ -75,7 +87,7 @@ export async function injectCodexHook(): Promise<boolean> {
 // ── Remove ──────────────────────────────────────────────────────────────────
 
 /**
- * Remove Edison Watch hooks from Codex CLI config.toml.
+ * Remove Edison Watch hooks from Codex config.toml.
  */
 export async function removeCodexHook(): Promise<boolean> {
   const configPath = getCodexConfigPath()

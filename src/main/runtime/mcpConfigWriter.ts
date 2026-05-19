@@ -26,14 +26,14 @@ import {
   getClaudeCoworkConfigPath,
   getWindsurfConfigPath,
   getZedConfigPath,
-  getJetBrainsMcpConfigPaths,
+  getJetBrainsMcpConfigPaths
 } from '../discovery/mcpDiscovery'
 import { getCodexConfigPath } from '../clients/codex/hooks'
 import {
   readConfigFile,
   getServersFromConfig,
   setServersInConfig,
-  type ConfigFileFormat,
+  type ConfigFileFormat
 } from './mcpConfigActions'
 import { logClaudeCmd } from './monitorLog'
 
@@ -87,7 +87,7 @@ const NEEDS_MCP_REMOTE_SHIM: ReadonlySet<McpClientId> = new Set(['claude-desktop
 function buildEdisonEntry(
   clientId: McpClientId,
   url: string,
-  headers?: Record<string, string>,
+  headers?: Record<string, string>
 ): Record<string, unknown> {
   if (NEEDS_MCP_REMOTE_SHIM.has(clientId)) {
     const headerArgs = headers
@@ -95,7 +95,7 @@ function buildEdisonEntry(
       : []
     return {
       command: 'npx',
-      args: ['-y', 'mcp-remote', url, ...headerArgs],
+      args: ['-y', 'mcp-remote', url, ...headerArgs]
     }
   }
   return { type: 'http', url, ...(headers && { headers }) }
@@ -124,7 +124,7 @@ export function extractEdisonUrl(entry: Record<string, unknown> | undefined | nu
 
 /** Map an appId string to its config path and client type. */
 async function getPathForApp(
-  appId: string,
+  appId: string
 ): Promise<{ configPath: string; clientId: McpClientId } | null> {
   // claude-code is handled separately via applyToClaudeCode() - not in this map.
   // claude-desktop and claude-cowork share the same config file
@@ -135,7 +135,7 @@ async function getPathForApp(
     'claude-desktop': getClaudeDesktopConfigPath,
     'claude-cowork': getClaudeCoworkConfigPath,
     windsurf: getWindsurfConfigPath,
-    zed: getZedConfigPath,
+    zed: getZedConfigPath
   }
 
   if (STATIC_MAP[appId]) {
@@ -216,11 +216,13 @@ async function cleanupCursorProjectMcpJson(): Promise<void> {
       // Use jsonc.modify + applyEdits to preserve comments, trailing commas,
       // and formatting in team-shared project configs checked into repos.
       const edits = jsonc.modify(raw, ['mcpServers', 'edison-watch'], undefined, {
-        formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' },
+        formattingOptions: { tabSize: 2, insertSpaces: true, eol: '\n' }
       })
       const updated = jsonc.applyEdits(raw, edits)
       await fs.writeFile(mcpPath, updated, 'utf-8')
-      console.log(`[mcpConfigWriter] Removed stale edison-watch from Cursor project config: ${mcpPath}`)
+      console.log(
+        `[mcpConfigWriter] Removed stale edison-watch from Cursor project config: ${mcpPath}`
+      )
     } catch {
       // Ignore - file may be malformed or inaccessible
     }
@@ -239,7 +241,7 @@ async function applyToClaudeCode(
   url: string,
   headers: Record<string, string> | undefined,
   timestamp: string,
-  dryRun: boolean,
+  dryRun: boolean
 ): Promise<ModifiedConfig | null> {
   if (dryRun) {
     console.log(`[dry-run] Would add edison-watch to Claude Code via CLI: ${url}`)
@@ -271,7 +273,17 @@ async function applyToClaudeCode(
   const headerArgs = headers
     ? Object.entries(headers).flatMap(([k, v]) => ['--header', `${k}: ${v}`])
     : []
-  const args = ['mcp', 'add', '--transport', 'http', '--scope', 'user', ...headerArgs, 'edison-watch', url]
+  const args = [
+    'mcp',
+    'add',
+    '--transport',
+    'http',
+    '--scope',
+    'user',
+    ...headerArgs,
+    'edison-watch',
+    url
+  ]
 
   logClaudeCmd(args)
   try {
@@ -291,7 +303,7 @@ async function applyToClaudeCode(
 async function applyToClaudeCodeFallback(
   url: string,
   headers: Record<string, string> | undefined,
-  timestamp: string,
+  timestamp: string
 ): Promise<ModifiedConfig> {
   const configPath = getClaudeCodeHomeJsonPath()
   const backupPath = `${configPath}.backup.${timestamp}.json`
@@ -320,7 +332,7 @@ async function applyToClaudeCodeFallback(
   return {
     appId: 'claude-code',
     configPath,
-    backupPath: existsSync(backupPath) ? backupPath : '',
+    backupPath: existsSync(backupPath) ? backupPath : ''
   }
 }
 
@@ -328,7 +340,7 @@ async function applyToClaudeCodeFallback(
 async function mergeEdisonEntry(
   configPath: string,
   clientId: McpClientId,
-  edisonEntry: Record<string, unknown>,
+  edisonEntry: Record<string, unknown>
 ): Promise<void> {
   let config: ConfigFileFormat = {}
   try {
@@ -344,14 +356,14 @@ async function mergeEdisonEntry(
 }
 
 /**
- * Apply Edison Watch MCP to Codex CLI by writing to ~/.codex/config.toml.
+ * Apply Edison Watch MCP to Codex by writing to ~/.codex/config.toml.
  * Merges with existing content (preserving hooks and other settings).
  */
 async function applyToCodex(
   url: string,
   headers: Record<string, string> | undefined,
   timestamp: string,
-  dryRun: boolean,
+  dryRun: boolean
 ): Promise<ModifiedConfig | null> {
   const configPath = getCodexConfigPath()
   const backupPath = `${configPath}.backup.${timestamp}.toml`
@@ -371,9 +383,11 @@ async function applyToCodex(
     await fs.copyFile(configPath, backupPath)
   }
 
-  // Remove any existing [mcp_servers.edison-watch] section
-  // Use negative lookahead to match section body (handles URLs with '[' e.g. IPv6)
-  const sectionRegex = /\n?\[mcp_servers\.edison-watch\][^\n]*\n(?:(?!\n\[)[\s\S])*?(?=\n\[|\s*$)/g
+  // Remove any existing [mcp_servers.edison-watch] section and sub-tables
+  // (e.g. [mcp_servers.edison-watch.http_headers]) to avoid duplicate key errors
+  // when Codex serializes headers as a separate TOML table.
+  const sectionRegex =
+    /\n?\[mcp_servers\.edison-watch(?:\.[^\]]+)?\][^\n]*\n(?:(?!\n\[)[\s\S])*?(?=\n\[|\s*$)/g
   let cleaned = existing.replace(sectionRegex, '')
 
   // Build the new TOML section (escape values for valid TOML)
@@ -395,7 +409,7 @@ async function applyToCodex(
   return {
     appId: 'codex',
     configPath,
-    backupPath: existsSync(backupPath) ? backupPath : '',
+    backupPath: existsSync(backupPath) ? backupPath : ''
   }
 }
 
@@ -405,14 +419,14 @@ async function applyToApp(
   url: string,
   headers: Record<string, string> | undefined,
   timestamp: string,
-  dryRun: boolean,
+  dryRun: boolean
 ): Promise<ModifiedConfig | null> {
   // Claude Code needs special handling: CLI-based add to ~/.claude.json
   if (appId === 'claude-code') {
     return applyToClaudeCode(url, headers, timestamp, dryRun)
   }
 
-  // Codex CLI needs special handling: TOML format config
+  // Codex needs special handling: TOML format config
   if (appId === 'codex') {
     return applyToCodex(url, headers, timestamp, dryRun)
   }
@@ -449,7 +463,7 @@ async function applyToApp(
   return {
     appId,
     configPath,
-    backupPath: existsSync(backupPath) ? backupPath : '',
+    backupPath: existsSync(backupPath) ? backupPath : ''
   }
 }
 
@@ -473,7 +487,7 @@ function stripQueryString(url: string): string {
  */
 export async function isEdisonWatchRegistered(
   appId: string,
-  expectedUrl?: string,
+  expectedUrl?: string
 ): Promise<boolean> {
   // Claude Code: use CLI check (already exists in setupConfig.ts)
   if (appId === 'claude-code') {
@@ -490,7 +504,8 @@ export async function isEdisonWatchRegistered(
       if (!mcpServers) return false
       const edisonWatch = mcpServers['edison-watch'] as Record<string, unknown> | undefined
       if (!edisonWatch || typeof edisonWatch.url !== 'string') return false
-      if (expectedUrl && stripQueryString(edisonWatch.url) !== stripQueryString(expectedUrl)) return false
+      if (expectedUrl && stripQueryString(edisonWatch.url) !== stripQueryString(expectedUrl))
+        return false
       return true
     } catch {
       return false
@@ -522,7 +537,7 @@ export async function isEdisonWatchRegistered(
  */
 export async function findAppsNeedingReRegistration(
   configuredApps: string[],
-  expectedUrl?: string,
+  expectedUrl?: string
 ): Promise<string[]> {
   const missing: string[] = []
   for (const appId of configuredApps) {
@@ -539,9 +554,7 @@ export async function findAppsNeedingReRegistration(
  * Find apps whose edison-watch URL is registered but missing the ?client= tag.
  * Used for one-time migration to add per-client identity to MCP URLs.
  */
-export async function findAppsMissingClientTag(
-  configuredApps: string[],
-): Promise<string[]> {
+export async function findAppsMissingClientTag(configuredApps: string[]): Promise<string[]> {
   const needsTag: string[] = []
   for (const appId of configuredApps) {
     // Claude Code: check ~/.claude.json top-level mcpServers
@@ -554,7 +567,9 @@ export async function findAppsMissingClientTag(
         if (ew && typeof ew.url === 'string' && !ew.url.includes('?client=')) {
           needsTag.push(appId)
         }
-      } catch { /* not registered */ }
+      } catch {
+        /* not registered */
+      }
       continue
     }
 
@@ -568,7 +583,9 @@ export async function findAppsMissingClientTag(
         if (ew && typeof ew.url === 'string' && !ew.url.includes('?client=')) {
           needsTag.push(appId)
         }
-      } catch { /* not registered */ }
+      } catch {
+        /* not registered */
+      }
       continue
     }
 
@@ -585,7 +602,9 @@ export async function findAppsMissingClientTag(
           needsTag.push(appId)
         }
       }
-    } catch { /* not registered */ }
+    } catch {
+      /* not registered */
+    }
   }
   return needsTag
 }
@@ -593,7 +612,7 @@ export async function findAppsMissingClientTag(
 // ── Main entry point ──────────────────────────────────────────────────
 
 export async function applyAppIntegrations(
-  args: ApplyIntegrationsArgs,
+  args: ApplyIntegrationsArgs
 ): Promise<ApplyIntegrationsResult> {
   const { mcpBaseUrl, apiKey, edisonSecretKey, apps, dryRun = false } = args
 
@@ -615,7 +634,7 @@ export async function applyAppIntegrations(
     '-',
     String(now.getHours()).padStart(2, '0'),
     String(now.getMinutes()).padStart(2, '0'),
-    String(now.getSeconds()).padStart(2, '0'),
+    String(now.getSeconds()).padStart(2, '0')
   ].join('')
 
   const modifiedConfigs: ModifiedConfig[] = []
@@ -638,6 +657,6 @@ export async function applyAppIntegrations(
   return {
     success: errors.length === 0,
     modifiedConfigs,
-    errors: errors.length > 0 ? errors : undefined,
+    errors: errors.length > 0 ? errors : undefined
   }
 }

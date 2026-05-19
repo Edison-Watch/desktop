@@ -15,7 +15,7 @@ import {
   getWatchablePaths,
   getCursorWorkspaceStoragePath,
   getCursorPluginCachePath,
-  type McpConfigEntry,
+  type McpConfigEntry
 } from '../clients/registry'
 import {
   discoverMcpServers,
@@ -86,7 +86,11 @@ export class McpConfigMonitor extends EventEmitter {
   /** Lookup map from path → entry metadata (for triggersDynamicRescan etc.) */
   private configEntryByPath: Map<string, McpConfigEntry> = new Map()
 
-  constructor(_seenStore: SeenServersStore, debounceMs = 500, rescanIntervalMs = DEFAULT_RESCAN_INTERVAL_MS) {
+  constructor(
+    _seenStore: SeenServersStore,
+    debounceMs = 500,
+    rescanIntervalMs = DEFAULT_RESCAN_INTERVAL_MS
+  ) {
     super()
     this.debounceMs = debounceMs
     this.rescanIntervalMs = rescanIntervalMs
@@ -97,7 +101,10 @@ export class McpConfigMonitor extends EventEmitter {
    */
   async start(): Promise<void> {
     mlog('[Monitor] start() called')
-    if (this.isRunning) { mlog('[Monitor] Already running, skipping'); return }
+    if (this.isRunning) {
+      mlog('[Monitor] Already running, skipping')
+      return
+    }
 
     // On startup, quarantine any existing non-Edison servers
     // This ensures all servers are secured even if they existed before the app started
@@ -168,7 +175,9 @@ export class McpConfigMonitor extends EventEmitter {
     // (e.g., Cursor's Extension API or deeplink installs).
     this.startRescanTimer()
 
-    mlog(`[Monitor] Started - watching ${existingPaths.length} paths, ${this.configFiles.size} config files, ${this.lastKnownServers.size} known servers`)
+    mlog(
+      `[Monitor] Started - watching ${existingPaths.length} paths, ${this.configFiles.size} config files, ${this.lastKnownServers.size} known servers`
+    )
   }
 
   /**
@@ -335,7 +344,9 @@ export class McpConfigMonitor extends EventEmitter {
 
     // Don't keep the process alive just for the rescan timer
     this.rescanTimer.unref()
-    console.log(`[McpConfigMonitor] Periodic rescan started (every ${this.rescanIntervalMs / 1000}s)`)
+    console.log(
+      `[McpConfigMonitor] Periodic rescan started (every ${this.rescanIntervalMs / 1000}s)`
+    )
   }
 
   /**
@@ -492,7 +503,9 @@ export class McpConfigMonitor extends EventEmitter {
     // Use raw (non-deduped) servers - quarantine handles each server individually,
     // dedup renaming is only for the onboarding UI.
     const { raw: servers } = await discoverMcpServers({ includeRaw: true })
-    mlog(`[Monitor] quarantineExistingServers: discovered ${servers.length} servers: ${servers.map(s => `${s.name}@${s.client}`).join(', ')}`)
+    mlog(
+      `[Monitor] quarantineExistingServers: discovered ${servers.length} servers: ${servers.map((s) => `${s.name}@${s.client}`).join(', ')}`
+    )
     const pendingEvents: PendingQuarantineEvent[] = []
 
     for (const server of servers) {
@@ -560,8 +573,10 @@ export class McpConfigMonitor extends EventEmitter {
       currentMap.set(fingerprint, server)
     }
 
-    mlog(`[Monitor] _checkForChangesImpl(${source}): discovered ${currentServers.length} servers, lastKnown=${this.lastKnownServers.size}`)
-    mlog(`[Monitor]   current: ${currentServers.map(s => `${s.name}@${s.client}`).join(', ')}`)
+    mlog(
+      `[Monitor] _checkForChangesImpl(${source}): discovered ${currentServers.length} servers, lastKnown=${this.lastKnownServers.size}`
+    )
+    mlog(`[Monitor]   current: ${currentServers.map((s) => `${s.name}@${s.client}`).join(', ')}`)
     mlog(`[Monitor]   lastKnown fingerprints: ${[...this.lastKnownServers.keys()].join(', ')}`)
     mlog(`[Monitor]   current fingerprints: ${[...currentMap.keys()].join(', ')}`)
 
@@ -628,7 +643,10 @@ export class McpConfigMonitor extends EventEmitter {
     this.lastKnownServers = currentMap
 
     if (pendingEvents.length > 0) {
-      console.log('[McpConfigMonitor] Servers pending quarantine:', pendingEvents.map(e => e.server.name))
+      console.log(
+        '[McpConfigMonitor] Servers pending quarantine:',
+        pendingEvents.map((e) => e.server.name)
+      )
       // Remove pending-quarantine servers from lastKnownServers so that when
       // Cursor reinstalls them (restoring the cache dir), the next scan sees
       // them as NEW and re-quarantines. Quarantine happens asynchronously in
@@ -712,7 +730,7 @@ export function getClientDisplayName(client: McpClientId): string {
     case 'zed':
       return 'Zed'
     case 'codex':
-      return 'Codex CLI'
+      return 'Codex'
     case 'intellij':
       return 'IntelliJ IDEA'
     case 'pycharm':

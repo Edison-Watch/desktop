@@ -38,7 +38,7 @@ const CLIENT_NAMES: Record<string, string> = {
   "claude-code": "Claude Code",
   cursor: "Cursor",
   windsurf: "Windsurf (early alpha)",
-  codex: "Codex CLI",
+  codex: "Codex",
   vscode: "VS Code",
   zed: "Zed (early alpha)",
   intellij: "IntelliJ IDEA (early alpha)",

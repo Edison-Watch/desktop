@@ -33,7 +33,7 @@ export const Zed: Story = {
 };
 
 export const Codex: Story = {
-  args: { id: 'codex', name: 'Codex CLI' },
+  args: { id: 'codex', name: 'Codex' },
 };
 
 export const UnknownApp: Story = {
@@ -52,7 +52,7 @@ export const AllLogos: Story = {
         { id: 'intellij', name: 'IntelliJ' },
         { id: 'pycharm', name: 'PyCharm' },
         { id: 'webstorm', name: 'WebStorm' },
-        { id: 'codex', name: 'Codex CLI' },
+        { id: 'codex', name: 'Codex' },
         { id: 'unknown', name: 'Unknown App' },
       ].map(({ id, name }) => (
         <div key={id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
