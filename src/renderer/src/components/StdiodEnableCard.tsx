@@ -22,7 +22,15 @@ function describeStatus(status: StdiodStatus): string {
   if (conn === 'needs_reauth') return 'Signed out - toggle off then on to refresh credentials.'
   if (conn === 'needs_upgrade')
     return 'Daemon needs to be updated to talk to the current backend.'
-  if (conn === 'reconnecting') return 'Reconnecting to the backend…'
+  if (conn === 'reconnecting') {
+    // The backend can push a friendly message via a device-wide tunnel_error
+    // frame (e.g. "Stdio servers are not enabled for your organisation.").
+    // The daemon persists that text into state.last_error, so prefer it over
+    // the generic reconnect line whenever it's present.
+    const friendly = status.state?.last_error?.trim()
+    if (friendly) return friendly
+    return 'Reconnecting to the backend…'
+  }
   if (conn === 'starting' || conn === undefined) return 'Starting the daemon…'
   // conn === 'connected'
   const servers = status.state?.servers ?? []
