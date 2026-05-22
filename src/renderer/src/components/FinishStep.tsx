@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Button, Card, Badge } from "@edison/shared/ui";
 
+import StdiodEnableCard from "./StdiodEnableCard";
+
 const APP_ID_TO_NAME: Record<string, string> = {
   vscode: "VS Code",
   cursor: "Cursor",
@@ -338,6 +340,12 @@ export default function FinishStep({
           )}
         </Card>
       )}
+
+      <StdiodEnableCard
+        apiBaseUrl={apiBaseUrl}
+        apiKey={apiKey}
+        edisonSecretKey={edisonSecretKey}
+      />
 
       <div className="flex flex-col gap-2">
         <Button

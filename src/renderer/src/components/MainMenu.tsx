@@ -5,6 +5,7 @@ import { clearCachedSecretKey } from "@edison/shared/crypto";
 import edisonIcon from "../assets/edison-icon.png";
 import ClientsView from "./ClientsView";
 import MyMcpsView from "./MyMcpsView";
+import StdiodEnableCard from "./StdiodEnableCard";
 
 type MenuTab = "home" | "clients" | "my-mcps";
 
@@ -34,6 +35,11 @@ export default function MainMenu(): React.ReactNode {
   const [showAccounts, setShowAccounts] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [activeTab, setActiveTab] = useState<MenuTab>("clients");
+  // Loaded once from the OS keychain so StdiodEnableCard can pass it to
+  // `stdiod login` if the user is enabling the daemon post-onboarding.
+  // EncryptionStep stashed it during setup; null if the user signed in
+  // pre-keychain-rollout or cleared their data.
+  const [edisonSecretKey, setEdisonSecretKey] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -53,6 +59,8 @@ export default function MainMenu(): React.ReactNode {
       setSetupData(mergedData);
       const saved = await window.api.accounts.list();
       setAccounts(saved);
+      const secret = await window.api.keychain.load();
+      setEdisonSecretKey(secret);
       // Default tab is "clients" which needs taller window for the list
       await window.api.menu.resizeWindow(461, 749);
     })();
@@ -333,6 +341,18 @@ export default function MainMenu(): React.ReactNode {
                 </div>
               </div>
             </button>
+          )}
+
+          {/* Local stdio tunnel toggle - same component as the onboarding
+              card, so a user who skipped the daemon during setup can enable
+              it here, and an enabled user can disable it without uninstalling
+              the app. */}
+          {setupData.apiBaseUrl && setupData.apiKey && (
+            <StdiodEnableCard
+              apiBaseUrl={setupData.apiBaseUrl}
+              apiKey={setupData.apiKey}
+              edisonSecretKey={edisonSecretKey ?? undefined}
+            />
           )}
 
           {/* Actions */}

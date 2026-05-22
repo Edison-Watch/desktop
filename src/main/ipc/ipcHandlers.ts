@@ -35,6 +35,7 @@ import { restoreAllQuarantinedServers } from '../runtime/mcpConfigActions'
 import { runDebugQuarantine, handleQuarantineDisabled } from '../quarantine/quarantineManager'
 import { applyAppIntegrations } from '../runtime/mcpConfigWriter'
 import { registerMcpSubmitHandlers } from './ipcHandlersMcpSubmit'
+import { registerStdiodHandlers } from './ipcHandlersStdiod'
 import {
   ENV_DOCS_URL,
   ALL_SUPPORTED_APPS,
@@ -372,6 +373,9 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
 
   // MCP discovery, submission, removal, and config management handlers
   registerMcpSubmitHandlers()
+
+  // edison-stdiod daemon control (install / login / uninstall / status).
+  registerStdiodHandlers()
 
   ipcMain.handle('mcp:injectHooks', async () => {
     return await injectAllHooks()
