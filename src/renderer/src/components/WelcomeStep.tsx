@@ -39,6 +39,127 @@ function MicrosoftIcon() {
   );
 }
 
+function MailIcon() {
+  return (
+    <svg
+      className="size-5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" />
+    </svg>
+  );
+}
+
+function SSOIcon() {
+  return (
+    <svg
+      className="size-5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4" />
+      <path d="m21 2-9.6 9.6" />
+      <circle cx="7.5" cy="15.5" r="5.5" />
+    </svg>
+  );
+}
+
+/** White provider button used for Google / Microsoft OAuth. */
+function ProviderButton({
+  onClick,
+  disabled,
+  icon,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="w-full flex items-center justify-center gap-2.5 bg-white text-gray-700 font-medium py-2 px-4 rounded-md border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+/** Red "cancel pending sign-in" button shown while waiting for a browser callback. */
+function CancelButton({
+  onClick,
+  className = "",
+  children,
+}: {
+  onClick: () => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full flex items-center justify-center gap-2.5 bg-[var(--danger)] text-white font-medium py-2 px-4 rounded-md border border-[var(--danger)] hover:opacity-90 transition-opacity text-sm ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Themed tile used for the SSO and Email options. */
+function ChoiceTile({
+  onClick,
+  disabled,
+  icon,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="w-full flex items-center justify-center gap-2.5 bg-[var(--bg-overlay)] text-[var(--text-primary)] font-medium py-2 px-4 rounded-md border border-[var(--border)] hover:border-[var(--accent-dim)] hover:bg-[var(--bg-raised)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+function Divider({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative my-3">
+      <div className="absolute inset-0 flex items-center">
+        <div className="w-full border-t border-[var(--border)]" />
+      </div>
+      <div className="relative flex justify-center text-xs">
+        <span className="bg-[var(--bg-raised)] px-2 text-[var(--text-muted)]">{children}</span>
+      </div>
+    </div>
+  );
+}
+
 interface WelcomeStepProps {
   auth: AuthState & {
     signInWithSSO: (email: string) => Promise<void>;
@@ -51,10 +172,21 @@ interface WelcomeStepProps {
   onNext: () => void;
 }
 
+type View = "select" | "email";
+
 export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.ReactNode {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [authMode, setAuthMode] = useState<"sso" | "password">("sso");
+  const [view, setView] = useState<View>("select");
+  const [ssoExpanded, setSsoExpanded] = useState(false);
+
+  const pendingGoogle = auth.awaitingBrowserCallback && auth.pendingAuthMethod === "google";
+  const pendingMicrosoft = auth.awaitingBrowserCallback && auth.pendingAuthMethod === "microsoft";
+  const pendingSso = auth.awaitingBrowserCallback && auth.pendingAuthMethod === "sso";
+
+  // Keep the SSO email box open while a SSO flow is pending so the user can cancel it,
+  // and force it open for SSO-only domains where SSO is the only path.
+  const showSsoBox = ssoExpanded || pendingSso || auth.ssoOnly;
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -62,15 +194,26 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
     auth.checkDomain(value);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSsoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
+    await auth.signInWithSSO(email);
+  };
 
-    if (authMode === "sso" || auth.ssoOnly) {
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
+    if (auth.ssoOnly) {
       await auth.signInWithSSO(email);
     } else {
       await auth.signInWithPassword(email, password);
     }
+  };
+
+  const backToSelect = () => {
+    setView("select");
+    setSsoExpanded(false);
+    setPassword("");
   };
 
   const hero = (
@@ -133,13 +276,22 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
     );
   }
 
+  const errorBox = auth.error && (
+    <div
+      className="text-xs text-[var(--danger)] bg-[var(--danger)]/10 border border-[var(--danger)]/30 rounded-lg p-3"
+      role="alert"
+    >
+      {auth.error}
+    </div>
+  );
+
   // Sign-in form
   return (
     <div className="flex flex-col gap-5">
       {hero}
 
       <p className="text-center text-xs text-[var(--text-secondary)]">
-        {authMode === "sso" ? "Sign in with your organization email" : "Sign in with email and password"}
+        {view === "email" ? "Sign in with email and password" : "Choose how you'd like to sign in"}
       </p>
 
       {/* Card */}
@@ -150,131 +302,149 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
           background: "linear-gradient(180deg, var(--bg-overlay) 0%, var(--bg-raised) 48px)",
         }}
       >
-        <form onSubmit={handleSubmit} className="px-5 py-5 flex flex-col gap-3" noValidate>
-          <div className="relative">
-            <Input
-              type="text"
-              label="Email"
-              placeholder="you@company.com"
-              autoComplete="email"
-              value={email}
-              onChange={handleEmailChange}
-              disabled={auth.loading}
-            />
-            {auth.loading && (
-              <div className="absolute right-2.5 bottom-2 h-4 w-4 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+        {/* Step 1: choose a sign-in method */}
+        {view === "select" && (
+          <div className="px-5 py-5 flex flex-col gap-2.5">
+            {/* OAuth providers - hidden when the domain requires SSO */}
+            {!auth.ssoOnly && (
+              <>
+                {/* Google */}
+                {pendingGoogle ? (
+                  <CancelButton onClick={auth.cancelPendingAuth}>Cancel Google sign-in</CancelButton>
+                ) : (
+                  <ProviderButton onClick={auth.signInWithGoogle} disabled={auth.loading} icon={<GoogleIcon />}>
+                    Sign in with Google
+                  </ProviderButton>
+                )}
+
+                {/* Microsoft */}
+                {pendingMicrosoft ? (
+                  <CancelButton onClick={auth.cancelPendingAuth}>Cancel Microsoft sign-in</CancelButton>
+                ) : (
+                  <ProviderButton onClick={auth.signInWithMicrosoft} disabled={auth.loading} icon={<MicrosoftIcon />}>
+                    Sign in with Microsoft
+                  </ProviderButton>
+                )}
+              </>
             )}
-          </div>
 
-          {authMode === "password" && !auth.ssoOnly && (
-            <Input
-              type="password"
-              label="Password"
-              placeholder="Enter your password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
-              disabled={auth.loading}
-            />
-          )}
-
-          {auth.error && (
-            <div
-              className="text-xs text-[var(--danger)] bg-[var(--danger)]/10 border border-[var(--danger)]/30 rounded-lg p-3"
-              role="alert"
+            {/* SSO */}
+            <ChoiceTile
+              onClick={() => setSsoExpanded((v) => !v)}
+              disabled={auth.loading && !pendingSso}
+              icon={<SSOIcon />}
             >
-              {auth.error}
-            </div>
-          )}
+              Sign in with SSO
+            </ChoiceTile>
 
-          {auth.awaitingBrowserCallback && auth.pendingAuthMethod === "sso" ? (
-            <Button
+            {showSsoBox && (
+              <form
+                onSubmit={handleSsoSubmit}
+                className="flex flex-col gap-3 rounded-md border border-[var(--border)] bg-[var(--bg-base)]/40 p-3"
+                noValidate
+              >
+                <div className="relative">
+                  <Input
+                    type="email"
+                    label="Work email"
+                    placeholder="you@company.com"
+                    autoComplete="email"
+                    value={email}
+                    onChange={handleEmailChange}
+                    disabled={auth.loading}
+                    autoFocus
+                  />
+                  {auth.loading && (
+                    <div className="absolute right-2.5 bottom-2 h-4 w-4 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+                  )}
+                </div>
+                {pendingSso ? (
+                  <Button type="button" variant="danger" onClick={auth.cancelPendingAuth} className="w-full">
+                    Cancel sign-in
+                  </Button>
+                ) : (
+                  <Button type="submit" variant="primary" disabled={!email || auth.loading} className="w-full">
+                    Continue with SSO
+                  </Button>
+                )}
+              </form>
+            )}
+
+            {/* Email + password - hidden when the domain requires SSO */}
+            {!auth.ssoOnly && (
+              <>
+                <Divider>or</Divider>
+
+                <ChoiceTile
+                  onClick={() => setView("email")}
+                  disabled={auth.loading}
+                  icon={<MailIcon />}
+                >
+                  Continue with Email
+                </ChoiceTile>
+              </>
+            )}
+
+            {errorBox}
+          </div>
+        )}
+
+        {/* Step 2: email / password */}
+        {view === "email" && (
+          <form onSubmit={handleEmailSubmit} className="px-5 py-5 flex flex-col gap-3" noValidate>
+            <div className="relative">
+              <Input
+                type="email"
+                label="Email"
+                placeholder="you@company.com"
+                autoComplete="email"
+                value={email}
+                onChange={handleEmailChange}
+                disabled={auth.loading}
+                autoFocus
+              />
+              {auth.loading && (
+                <div className="absolute right-2.5 bottom-2 h-4 w-4 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+              )}
+            </div>
+
+            {auth.ssoOnly ? (
+              <p className="text-xs text-[var(--text-secondary)]">
+                Your organization requires SSO sign-in. Continue with SSO using the email above.
+              </p>
+            ) : (
+              <Input
+                type="password"
+                label="Password"
+                placeholder="Enter your password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
+                disabled={auth.loading}
+              />
+            )}
+
+            {errorBox}
+
+            {pendingSso ? (
+              <Button type="button" variant="danger" onClick={auth.cancelPendingAuth} className="w-full mt-1">
+                Cancel sign-in
+              </Button>
+            ) : (
+              <Button type="submit" variant="primary" disabled={!email || auth.loading} className="w-full mt-1">
+                {auth.ssoOnly ? "Continue with SSO" : "Sign In"}
+              </Button>
+            )}
+
+            <button
               type="button"
-              variant="danger"
-              onClick={auth.cancelPendingAuth}
-              className="w-full mt-1"
+              onClick={backToSelect}
+              disabled={auth.loading}
+              className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors disabled:opacity-50 text-center"
             >
-              Cancel sign-in
-            </Button>
-          ) : (
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={!email || auth.loading}
-              className="w-full mt-1"
-            >
-              {authMode === "sso" || auth.ssoOnly ? "Continue with SSO" : "Sign In"}
-            </Button>
-          )}
-        </form>
-
-        {/* Google OAuth + mode toggle - hidden when SSO-only */}
-        {!auth.ssoOnly && (
-          <div className="px-5 pb-5">
-            {/* Divider */}
-            <div className="relative mb-3">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-[var(--border)]" />
-              </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="bg-[var(--bg-raised)] px-2 text-[var(--text-muted)]">or</span>
-              </div>
-            </div>
-
-            {/* Google Sign In - becomes Cancel while a Google flow is pending */}
-            {auth.awaitingBrowserCallback && auth.pendingAuthMethod === "google" ? (
-              <button
-                type="button"
-                onClick={auth.cancelPendingAuth}
-                className="w-full flex items-center justify-center gap-2.5 bg-[var(--danger)] text-white font-medium py-2 px-4 rounded-md border border-[var(--danger)] hover:opacity-90 transition-opacity text-sm"
-              >
-                Cancel Google sign-in
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={auth.signInWithGoogle}
-                disabled={auth.loading}
-                className="w-full flex items-center justify-center gap-2.5 bg-white text-gray-700 font-medium py-2 px-4 rounded-md border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-              >
-                <GoogleIcon />
-                Sign in with Google
-              </button>
-            )}
-
-            {/* Microsoft Sign In - becomes Cancel while a Microsoft flow is pending */}
-            {auth.awaitingBrowserCallback && auth.pendingAuthMethod === "microsoft" ? (
-              <button
-                type="button"
-                onClick={auth.cancelPendingAuth}
-                className="mt-2 w-full flex items-center justify-center gap-2.5 bg-[var(--danger)] text-white font-medium py-2 px-4 rounded-md border border-[var(--danger)] hover:opacity-90 transition-opacity text-sm"
-              >
-                Cancel Microsoft sign-in
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={auth.signInWithMicrosoft}
-                disabled={auth.loading}
-                className="mt-2 w-full flex items-center justify-center gap-2.5 bg-white text-gray-700 font-medium py-2 px-4 rounded-md border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-              >
-                <MicrosoftIcon />
-                Sign in with Microsoft
-              </button>
-            )}
-
-            {/* Toggle auth mode */}
-            <div className="mt-4 text-center">
-              <button
-                type="button"
-                onClick={() => setAuthMode(authMode === "sso" ? "password" : "sso")}
-                disabled={auth.loading}
-                className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors disabled:opacity-50"
-              >
-                {authMode === "sso" ? "Use email and password instead" : "Use SSO instead"}
-              </button>
-            </div>
-          </div>
+              ← Back to all sign-in options
+            </button>
+          </form>
         )}
       </div>
     </div>
