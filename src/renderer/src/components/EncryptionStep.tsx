@@ -1,10 +1,5 @@
 import { useState, useCallback } from "react";
-import { Button, Card, Input } from "@edison/shared/ui";
-import {
-  hashSecretKey,
-  buildCompositeKey,
-  cacheSecretKey,
-} from "@edison/shared/crypto";
+import { Button, Card } from "@edison/shared/ui";
 import { AGENT_REGISTRY, type AgentId } from "@edison/shared/agent-registry";
 import type { ModifiedConfig, DiscoveredServer, RemovalTarget } from "./AppsStep";
 import { AppLogo } from "./AppLogo";
@@ -29,14 +24,6 @@ interface EncryptionStepProps {
   onNext: (compositeKey: string, modifiedConfigs: ModifiedConfig[]) => void;
 }
 
-function CheckCircle({ className = "" }: { className?: string }) {
-  return (
-    <svg className={`h-4 w-4 shrink-0 ${className}`} viewBox="0 0 20 20" fill="currentColor">
-      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
-    </svg>
-  );
-}
-
 export default function EncryptionStep({
   mcpBaseUrl,
   apiBaseUrl,
@@ -54,21 +41,14 @@ export default function EncryptionStep({
   // include these changes (clean rebuild needed) or DevTools is closed.
   console.log("[EncryptionStep] render");
 
-  // Progressive reveal: 0=personal key, 1=org key, 2=register servers
+  // Progressive reveal: 0=personal key, 1=register servers.
+  // The org key was moved out of onboarding to the Config tab (OrgKeyCard).
   const [currentSubStep, setCurrentSubStep] = useState(0);
 
   // Personal-key state. The interactive UI + lifecycle live in PersonalKeyCard;
-  // here we only retain the materialized values we need for the org-key + scan
-  // sub-steps that follow.
-  const [rawPersonalKey, setRawPersonalKey] = useState("");
+  // here we only retain the materialized composite we need for the scan/submit
+  // sub-step that follows.
   const [compositeKey, setCompositeKey] = useState("");
-
-  // Org key state
-  const [orgKey, setOrgKey] = useState("");
-  const [orgKeySaved, setOrgKeySaved] = useState(false);
-  const [, setOrgKeySkipped] = useState(false);
-  const [orgKeySaving, setOrgKeySaving] = useState(false);
-  const [orgKeyError, setOrgKeyError] = useState("");
 
   // Scan & submit state
   const [scanning, setScanning] = useState(false);
@@ -100,46 +80,6 @@ export default function EncryptionStep({
   const visibleServers = discoveredServers.filter(
     (s) => !skipServers.includes(s.name)
   );
-
-  // ── Org key handlers ──
-
-  const handleSaveOrgKey = async () => {
-    const trimmedOrg = orgKey.trim();
-    if (!trimmedOrg) return;
-
-    setOrgKeySaving(true);
-    setOrgKeyError("");
-    try {
-      const userKeyHash = await hashSecretKey(rawPersonalKey);
-      const domainKeyHash = await hashSecretKey(trimmedOrg);
-      const url = `${apiBaseUrl.replace(/\/$/, "")}/api/v1/user/secret-key/register`;
-      const headers = { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` };
-
-      const res = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ user_key_hash: userKeyHash, domain_key_hash: domainKeyHash }),
-      });
-      if (!res.ok) {
-        setOrgKeyError("Organisation key was not accepted. Check with your admin that this is the correct key.");
-        return;
-      }
-      const key = buildCompositeKey(rawPersonalKey, trimmedOrg);
-      cacheSecretKey(key);
-      setCompositeKey(key);
-      setOrgKeySaved(true);
-      setCurrentSubStep(2);
-    } catch (err) {
-      setOrgKeyError(err instanceof Error ? err.message : "Failed to save organisation key");
-    } finally {
-      setOrgKeySaving(false);
-    }
-  };
-
-  const handleSkipOrgKey = () => {
-    setOrgKeySkipped(true);
-    setCurrentSubStep(2);
-  };
 
   // ── Server submission handlers ──
 
@@ -248,89 +188,23 @@ export default function EncryptionStep({
         </p>
       </div>
 
-      {currentSubStep < 2 && <KeyEncryptionAnimation />}
+      {currentSubStep < 1 && <KeyEncryptionAnimation />}
 
-      {/* ── Sub-step 1: Personal Key ── */}
+      {/* ── Sub-step 0: Personal Key ── */}
       <PersonalKeyCard
         apiBaseUrl={apiBaseUrl}
         apiKey={apiKey}
         done={currentSubStep > 0}
-        onReady={(rawKey, composite) => {
-          setRawPersonalKey(rawKey);
+        onReady={(_rawKey, composite) => {
           setCompositeKey(composite);
           if (currentSubStep < 1) setCurrentSubStep(1);
         }}
       />
 
-      {/* ── Sub-step 2: Organisation Key ── */}
+      {currentSubStep >= 1 && <EncryptionAnimation />}
+
+      {/* ── Sub-step 1: Register Servers ── */}
       {currentSubStep >= 1 && (
-        <Card>
-          {currentSubStep > 1 ? (
-            <div className="flex items-center gap-2 text-sm">
-              {orgKeySaved ? (
-                <>
-                  <CheckCircle className="text-emerald-400" />
-                  <span className="text-emerald-400">Organisation key saved</span>
-                </>
-              ) : (
-                <>
-                  <span className="h-4 w-4 shrink-0 text-center text-xs text-[var(--text-muted)]">-</span>
-                  <span className="text-[var(--text-muted)]">Organisation key skipped</span>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <div>
-                <p className="text-sm font-medium text-[var(--text-primary)]">
-                  Organisation Key
-                  <span className="ml-1.5 text-xs font-normal text-[var(--text-muted)]">(optional)</span>
-                </p>
-                <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                  If your organisation admin provided a shared encryption key, enter it below. If you haven't received one, you can skip this step.
-                </p>
-                <p className="text-xs text-orange-400/80 mt-1.5">
-                  Without this key, you won't be able to use MCP servers that your admin has configured with shared credentials for the organisation.
-                </p>
-              </div>
-              <Input
-                type="password"
-                placeholder="Paste the key your admin provided"
-                value={orgKey}
-                onChange={(e) => setOrgKey(e.target.value)}
-                autoComplete="off"
-              />
-              {orgKeyError && (
-                <p className="text-xs text-[var(--danger)]">{orgKeyError}</p>
-              )}
-              <div className="flex gap-2">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  loading={orgKeySaving}
-                  disabled={!orgKey.trim()}
-                  onClick={handleSaveOrgKey}
-                >
-                  Save & Continue
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={orgKeySaving}
-                  onClick={handleSkipOrgKey}
-                >
-                  Skip
-                </Button>
-              </div>
-            </div>
-          )}
-        </Card>
-      )}
-
-      {currentSubStep >= 2 && <EncryptionAnimation />}
-
-      {/* ── Sub-step 3: Register Servers ── */}
-      {currentSubStep >= 2 && (
         <>
           <Card>
             <div className="flex flex-col gap-3">

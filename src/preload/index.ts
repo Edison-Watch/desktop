@@ -15,8 +15,18 @@ const api = {
     getData: (): Promise<{ completed?: boolean; [key: string]: unknown }> =>
       ipcRenderer.invoke('setup:getData'),
     complete: (data: Record<string, unknown>): void => ipcRenderer.send('setup:complete', data),
+    update: (data: Record<string, unknown>): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('setup:update', data),
     reachedFinal: (): void => ipcRenderer.send('setup:reached-final'),
     reset: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('setup:reset')
+  },
+
+  /** Secret-key operations resolved against the active environment in main. */
+  secretKey: {
+    verify: (
+      key: string
+    ): Promise<{ ok: boolean; valid?: boolean; domainValid?: boolean | null }> =>
+      ipcRenderer.invoke('secretKey:verify', { key })
   },
 
   /** Authentication */
@@ -74,6 +84,12 @@ const api = {
       success: boolean
       modifiedConfigs: Array<{ appId: string; configPath: string; backupPath: string }>
     }> => ipcRenderer.invoke('mcp:applyAppIntegrations', args),
+    applyForSecretKey: (
+      edisonSecretKey: string
+    ): Promise<{
+      success: boolean
+      modifiedConfigs: Array<{ appId: string; configPath: string; backupPath: string }>
+    }> => ipcRenderer.invoke('mcp:applyForSecretKey', { edisonSecretKey }),
     revertAppIntegrations: (args: {
       configs: Array<{ configPath: string; backupPath: string; appId?: string }>
     }): Promise<{ reverted: number; errors: string[] }> =>

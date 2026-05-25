@@ -7,8 +7,12 @@ interface EdisonAPI {
   setup: {
     getData: () => Promise<{ completed?: boolean; [key: string]: unknown }>
     complete: (data: Record<string, unknown>) => void
+    update: (data: Record<string, unknown>) => Promise<{ ok: boolean }>
     reachedFinal: () => void
     reset: () => Promise<{ ok: boolean }>
+  }
+  secretKey: {
+    verify: (key: string) => Promise<{ ok: boolean; valid?: boolean; domainValid?: boolean | null }>
   }
   auth: {
     openSaml: (url: string) => void
@@ -46,6 +50,10 @@ interface EdisonAPI {
       edisonSecretKey?: string
       apps: string[]
     }) => Promise<{
+      success: boolean
+      modifiedConfigs: Array<{ appId: string; configPath: string; backupPath: string }>
+    }>
+    applyForSecretKey: (edisonSecretKey: string) => Promise<{
       success: boolean
       modifiedConfigs: Array<{ appId: string; configPath: string; backupPath: string }>
     }>

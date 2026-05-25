@@ -6,6 +6,7 @@ import edisonIcon from "../assets/edison-icon.png";
 import ClientsView from "./ClientsView";
 import MyMcpsView from "./MyMcpsView";
 import StdiodEnableCard from "./StdiodEnableCard";
+import OrgKeyCard from "./OrgKeyCard";
 
 type MenuTab = "home" | "clients" | "my-mcps";
 
@@ -16,6 +17,7 @@ interface SetupData {
   mcpBaseUrl?: string;
   apiBaseUrl?: string;
   apiKey?: string;
+  edisonSecretKey?: string;
 }
 
 interface SavedAccount {
@@ -352,6 +354,18 @@ export default function MainMenu(): React.ReactNode {
               apiBaseUrl={setupData.apiBaseUrl}
               apiKey={setupData.apiKey}
               edisonSecretKey={edisonSecretKey ?? undefined}
+            />
+          )}
+
+          {/* Organisation encryption key - paste a shared key from your admin.
+              Moved here from the onboarding wizard. */}
+          {setupData.apiKey && (
+            <OrgKeyCard
+              personalKey={edisonSecretKey}
+              currentComposite={setupData.edisonSecretKey}
+              onSaved={(composite) =>
+                setSetupData((prev) => (prev ? { ...prev, edisonSecretKey: composite } : prev))
+              }
             />
           )}
 

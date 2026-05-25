@@ -37,6 +37,7 @@ import { applyAppIntegrations } from '../runtime/mcpConfigWriter'
 import { registerMcpSubmitHandlers } from './ipcHandlersMcpSubmit'
 import { registerStdiodHandlers } from './ipcHandlersStdiod'
 import {
+  DRY_RUN,
   ENV_DOCS_URL,
   ALL_SUPPORTED_APPS,
   type SetupData,
@@ -178,6 +179,67 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   ipcMain.handle('setup:reset', () => {
     markSetupIncomplete()
     return { ok: true }
+  })
+
+  // Persist-only setup update. Unlike 'setup:complete' (the onboarding finish
+  // event), this does NOT restart background services, inject hooks, or
+  // hide/re-show the window. Used post-onboarding (e.g. saving an org key from
+  // the Config tab) where those lifecycle side effects would be wrong.
+  ipcMain.handle('setup:update', (_event, data: Partial<SetupData>) => {
+    markSetupComplete(data)
+    return { ok: true }
+  })
+
+  // Verify a composite secret key against the ACTIVE-environment backend.
+  // Runs in main so it always uses getCredentialsForEnv()/getApiBaseUrl() -
+  // a renderer doing this could authenticate to the active env with a stale
+  // top-level API key after an environment switch.
+  ipcMain.handle(
+    'secretKey:verify',
+    async (
+      _event,
+      args: { key: string }
+    ): Promise<{ ok: boolean; valid?: boolean; domainValid?: boolean | null }> => {
+      const apiBaseUrl = getApiBaseUrl()
+      const creds = getCredentialsForEnv()
+      if (!apiBaseUrl || !creds?.apiKey) return { ok: false }
+      try {
+        const res = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/v1/user/secret-key/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${creds.apiKey}` },
+          body: JSON.stringify({ key: args.key })
+        })
+        if (!res.ok) return { ok: false }
+        const data = (await res.json()) as { valid?: boolean; domain_valid?: boolean | null }
+        return { ok: true, valid: data.valid, domainValid: data.domain_valid }
+      } catch {
+        return { ok: false }
+      }
+    }
+  )
+
+  // Re-apply MCP client integrations after a secret-key change (e.g. org key
+  // added from the Config tab). Resolves URL/creds/apps in main so the renderer
+  // doesn't assemble them. Mirrors the "Update Keys" tray flow: a missing or
+  // empty configuredApps falls back to ALL_SUPPORTED_APPS, otherwise older
+  // setups would rewrite no client configs and the new key wouldn't take effect.
+  ipcMain.handle('mcp:applyForSecretKey', async (_event, args: { edisonSecretKey: string }) => {
+    const mcpBaseUrl = getMcpBaseUrl()
+    const creds = getCredentialsForEnv()
+    if (!mcpBaseUrl || !creds?.apiKey) {
+      return { success: false, modifiedConfigs: [] }
+    }
+    const setup = getSetupData()
+    const apps = setup.configuredApps?.length ? setup.configuredApps : ALL_SUPPORTED_APPS
+    console.log('[mcp:applyForSecretKey]', apps, DRY_RUN ? '(dry-run)' : '')
+    return await applyAppIntegrations({
+      serverAddress: setup.serverAddress ?? '',
+      mcpBaseUrl,
+      apiKey: creds.apiKey,
+      edisonSecretKey: args.edisonSecretKey,
+      apps,
+      dryRun: DRY_RUN
+    })
   })
 
   // Multi-account management
