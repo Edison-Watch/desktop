@@ -137,6 +137,10 @@ export function startEventSubscription(
         const data = JSON.parse(event.data);
         console.log(`[SSE] event received: type=${data.type}`);
         if (data.type === "mcp_pre_block") {
+          // mcp_pre_block is strictly user-scoped on the backend, so anything
+          // arriving here is targeted at this desktop's user. Admins observe
+          // other users' approvals via the org-scoped approval_state_changed
+          // channel, which only the dashboard's inline banner consumes.
           handleTrifectaEvent(data);
         } else if (data.type === "mcp_approve_or_deny_once") {
           handleRemoteApprovalDismiss(data);
