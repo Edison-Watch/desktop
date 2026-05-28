@@ -29,6 +29,8 @@ export interface AppMenuDeps {
 }
 
 export function buildAppMenu(deps: AppMenuDeps): Menu {
+  // Hide the Developer menu (which includes the env switcher) on release builds.
+  const showDeveloperMenu = getBuildDefaultEnv() !== 'release'
   const currentEnv = getDebugEnvOverride() ?? getBuildDefaultEnv()
   const envSubmenu: MenuItemConstructorOptions[] = DEBUG_ENV_NAMES.map((name) => ({
     label: name === 'dev' ? 'dev (localhost)' : name,
@@ -87,8 +89,9 @@ export function buildAppMenu(deps: AppMenuDeps): Menu {
               { role: 'hideOthers' },
               { role: 'unhide' },
               { type: 'separator' },
-              developerItem,
-              { type: 'separator' },
+              ...(showDeveloperMenu
+                ? ([developerItem, { type: 'separator' }] as MenuItemConstructorOptions[])
+                : []),
               { role: 'quit' }
             ]
           }
@@ -105,7 +108,7 @@ export function buildAppMenu(deps: AppMenuDeps): Menu {
         { role: 'copy' },
         { role: 'paste' },
         { role: 'selectAll' },
-        ...(process.platform !== 'darwin'
+        ...(process.platform !== 'darwin' && showDeveloperMenu
           ? ([{ type: 'separator' }, developerItem] as MenuItemConstructorOptions[])
           : [])
       ]
