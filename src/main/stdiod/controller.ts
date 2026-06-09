@@ -12,11 +12,12 @@
 // this controller only orchestrates the one-shot CLI subcommands.
 
 import { spawn } from 'node:child_process'
-import { promises as fs } from 'node:fs'
+import { promises as fs, readdirSync } from 'node:fs'
 
 import { getStdiodBinaryPath, stdiodBinaryExists } from '../runtime/stdiodBinary'
 
 import { configFileExists, readStateFile } from './state'
+import { stdiodLog } from './stdiodLog'
 import type { StdiodErrorCode, StdiodLoginInput, StdiodResult, StdiodStatus } from './types'
 
 // LaunchAgent label matches stdiod/crates/edison-stdiod/src/platform/macos.rs.
@@ -58,6 +59,39 @@ async function runStdiod(args: string[]): Promise<SpawnResult> {
       resolve({ code: code ?? -1, stdout, stderr })
     })
   })
+}
+
+// A snapshot of file-descriptor pressure, logged alongside a spawn
+// failure. `spawn EBADF` is, in practice, almost always fd exhaustion:
+// launchd-launched GUI apps on macOS start with a low soft RLIMIT_NOFILE
+// (historically 256), and a slow fd leak elsewhere in the app eventually
+// makes *every* spawn - including the stdiod one - fail with EBADF. A
+// count near the limit in the log is the tell-tale. Best-effort: returns
+// null if /dev/fd isn't readable.
+function fdDiagnostics(): string | null {
+  try {
+    const openFds = readdirSync('/dev/fd').length
+    return `openFds=${openFds}`
+  } catch {
+    return null
+  }
+}
+
+// Turn a thrown spawn error into a typed result with a message rich enough
+// to diagnose later: the errno code (e.g. EBADF), the failing syscall, and
+// the fd snapshot. Also writes the same detail to client.log so there's a
+// durable trace even though the renderer only shows a short hint.
+function describeSpawnError(op: string, err: unknown): StdiodResult {
+  const e = err as NodeJS.ErrnoException
+  const parts: string[] = []
+  if (e?.code) parts.push(e.code)
+  if (e?.syscall) parts.push(`syscall=${e.syscall}`)
+  const fds = fdDiagnostics()
+  if (fds) parts.push(fds)
+  const detail = parts.length ? ` (${parts.join(', ')})` : ''
+  const message = `${e?.message ?? String(err)}${detail}`
+  stdiodLog(`${op}: spawn failed: ${message}`)
+  return { ok: false, errorCode: 'spawn_failed', errorMessage: message }
 }
 
 function classifyError(stderr: string): StdiodErrorCode {
@@ -106,10 +140,12 @@ function invalidateInstalledCache(): void {
 
 async function ensureBinary(): Promise<StdiodResult | null> {
   if (!stdiodBinaryExists()) {
+    const path = getStdiodBinaryPath()
+    stdiodLog(`binary missing at ${path}`)
     return {
       ok: false,
       errorCode: 'binary_missing',
-      errorMessage: `edison-stdiod binary not found at ${getStdiodBinaryPath()}`
+      errorMessage: `edison-stdiod binary not found at ${path}`
     }
   }
   return null
@@ -142,8 +178,12 @@ export async function install(): Promise<StdiodResult> {
   const missing = await ensureBinary()
   if (missing) return missing
   invalidateInstalledCache()
+  stdiodLog(`install: binary=${getStdiodBinaryPath()}`)
   try {
     const result = await runStdiod(['install'])
+    stdiodLog(
+      `install: exit=${result.code}${result.stderr.trim() ? ` stderr=${result.stderr.trim()}` : ''}`
+    )
     if (result.code === 0) return { ok: true }
     return {
       ok: false,
@@ -151,11 +191,7 @@ export async function install(): Promise<StdiodResult> {
       errorMessage: result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`
     }
   } catch (err) {
-    return {
-      ok: false,
-      errorCode: 'spawn_failed',
-      errorMessage: err instanceof Error ? err.message : String(err)
-    }
+    return describeSpawnError('install', err)
   }
 }
 
@@ -171,8 +207,14 @@ export async function login(input: StdiodLoginInput): Promise<StdiodResult> {
   if (input.edisonSecretKey) args.push('--edison-secret-key', input.edisonSecretKey)
   if (input.deviceId) args.push('--device-id', input.deviceId)
   if (input.deviceLabel) args.push('--device-label', input.deviceLabel)
+  // Never log args: they carry the api key + edison_secret_key. Log only
+  // the non-secret shape so client.log stays safe to share.
+  stdiodLog(`login: backend=${input.backend} deviceId=${input.deviceId ?? '(default)'}`)
   try {
     const result = await runStdiod(args)
+    stdiodLog(
+      `login: exit=${result.code}${result.stderr.trim() ? ` stderr=${result.stderr.trim()}` : ''}`
+    )
     if (result.code === 0) return { ok: true }
     return {
       ok: false,
@@ -180,11 +222,7 @@ export async function login(input: StdiodLoginInput): Promise<StdiodResult> {
       errorMessage: result.stderr.trim() || `exit ${result.code}`
     }
   } catch (err) {
-    return {
-      ok: false,
-      errorCode: 'spawn_failed',
-      errorMessage: err instanceof Error ? err.message : String(err)
-    }
+    return describeSpawnError('login', err)
   }
 }
 
@@ -195,8 +233,12 @@ export async function uninstall(opts: { purge?: boolean } = {}): Promise<StdiodR
   invalidateInstalledCache()
   const args = ['uninstall']
   if (opts.purge) args.push('--purge')
+  stdiodLog(`uninstall: purge=${Boolean(opts.purge)}`)
   try {
     const result = await runStdiod(args)
+    stdiodLog(
+      `uninstall: exit=${result.code}${result.stderr.trim() ? ` stderr=${result.stderr.trim()}` : ''}`
+    )
     if (result.code === 0) return { ok: true }
     return {
       ok: false,
@@ -204,12 +246,58 @@ export async function uninstall(opts: { purge?: boolean } = {}): Promise<StdiodR
       errorMessage: result.stderr.trim() || `exit ${result.code}`
     }
   } catch (err) {
-    return {
-      ok: false,
-      errorCode: 'spawn_failed',
-      errorMessage: err instanceof Error ? err.message : String(err)
-    }
+    return describeSpawnError('uninstall', err)
   }
+}
+
+// Full reset of the local tunnel: tear the daemon down completely (stop
+// the launchd unit, wipe config.toml, state.json, and logs), then rebuild
+// it from scratch with the current credentials. This is the heavy-hammer
+// recovery for a wedged or half-installed daemon - e.g. a `spawn EBADF`
+// that left the unit unloaded, or a stale state.json the tray keeps
+// reporting from a dead supervisor.
+//
+// Device identity is preserved across the purge: we read the existing
+// device_id/device_label from state.json first and re-supply them to
+// `login`, so the dashboard keeps the same device entry instead of
+// registering a fresh one. (The daemon would otherwise fall back to the
+// machine hostname, which is usually - but not always - the same value.)
+export async function resetStdiod(input: StdiodLoginInput): Promise<StdiodResult> {
+  if (dryRun()) return { ok: true }
+  const missing = await ensureBinary()
+  if (missing) return missing
+
+  const { state } = await readStateFile()
+  const deviceId = input.deviceId ?? state?.device_id ?? undefined
+  const deviceLabel = input.deviceLabel ?? state?.device_label ?? undefined
+  stdiodLog(`reset: starting (preserving deviceId=${deviceId ?? '(default)'})`)
+
+  // 1. Stop + wipe everything stdiod-related. --purge also deletes the log
+  //    dir, so any client.log lines above are lost; the steps below run
+  //    after the purge and re-create the file, capturing the reset outcome.
+  const torn = await uninstall({ purge: true })
+  if (!torn.ok) {
+    stdiodLog(`reset: teardown failed: ${torn.errorCode ?? ''} ${torn.errorMessage ?? ''}`)
+    return torn
+  }
+
+  // 2. Re-write config.toml with current credentials + the prior identity.
+  const signedIn = await login({ ...input, deviceId, deviceLabel })
+  if (!signedIn.ok) {
+    stdiodLog(`reset: login failed: ${signedIn.errorCode ?? ''} ${signedIn.errorMessage ?? ''}`)
+    return signedIn
+  }
+
+  // 3. Re-register + (re)start the launchd unit.
+  const installed = await install()
+  if (!installed.ok) {
+    stdiodLog(`reset: install failed: ${installed.errorCode ?? ''} ${installed.errorMessage ?? ''}`)
+    return installed
+  }
+
+  invalidateInstalledCache()
+  stdiodLog('reset: complete')
+  return { ok: true }
 }
 
 // Tail of the daemon log, surfaced in the tray "View logs" action. We

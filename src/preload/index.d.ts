@@ -171,7 +171,10 @@ interface EdisonAPI {
     install: () => Promise<StdiodResult>
     login: (input: StdiodLoginInput) => Promise<StdiodResult>
     uninstall: (opts?: { purge?: boolean }) => Promise<StdiodResult>
+    reset: (input: StdiodLoginInput) => Promise<StdiodResult>
     getLogPath: () => Promise<string | null>
+    onResetting: (callback: () => void) => () => void
+    onChanged: (callback: () => void) => () => void
   }
   getVersion: () => string
 }

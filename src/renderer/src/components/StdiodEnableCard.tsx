@@ -20,8 +20,7 @@ function describeStatus(status: StdiodStatus): string {
     return 'Off. Toggle on to install the daemon and start tunneling local stdio MCP servers.'
   const conn = status.state?.connection_state
   if (conn === 'needs_reauth') return 'Signed out - toggle off then on to refresh credentials.'
-  if (conn === 'needs_upgrade')
-    return 'Daemon needs to be updated to talk to the current backend.'
+  if (conn === 'needs_upgrade') return 'Daemon needs to be updated to talk to the current backend.'
   if (conn === 'reconnecting') {
     // The backend can push a friendly message via a device-wide tunnel_error
     // frame (e.g. "Stdio servers are not enabled for your organisation.").
@@ -63,6 +62,11 @@ export default function StdiodEnableCard({
   const [status, setStatus] = useState<StdiodStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // True while a reset is in flight, including one started from the tray
+  // menu (signalled via stdiod.onResetting). Kept separate from `busy` so
+  // the card can show "Resetting…" even when this window didn't start it.
+  const [resetting, setResetting] = useState(false)
+  const [confirmingReset, setConfirmingReset] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -78,9 +82,23 @@ export default function StdiodEnableCard({
     // Mild polling so the row reflects the daemon's progress after
     // Enable is clicked (state.json may take a few seconds to appear).
     const handle = setInterval(refresh, 3000)
+    // Live signals from the main process so a tray-initiated reset is
+    // visible here immediately instead of being missed by the 3s poll.
+    const offResetting = window.api.stdiod.onResetting(() => {
+      if (!mounted) return
+      setResetting(true)
+      setError(null)
+    })
+    const offChanged = window.api.stdiod.onChanged(() => {
+      if (!mounted) return
+      setResetting(false)
+      void refresh()
+    })
     return () => {
       mounted = false
       clearInterval(handle)
+      offResetting()
+      offChanged()
     }
   }, [])
 
@@ -146,6 +164,35 @@ export default function StdiodEnableCard({
     }
   }
 
+  const handleReset = async () => {
+    setConfirmingReset(false)
+    setBusy(true)
+    setResetting(true)
+    setError(null)
+    try {
+      // Full teardown (purge) + re-login + reinstall, orchestrated in the
+      // main process. Same path the tray "Reset Local Tunnel" action uses.
+      const result = await window.api.stdiod.reset({
+        backend: apiBaseUrl,
+        apiKey,
+        edisonSecretKey
+      })
+      if (!result.ok) {
+        const code = result.errorCode ?? 'unknown'
+        setError(
+          result.errorMessage ? `${ERROR_HINTS[code]} ${result.errorMessage}` : ERROR_HINTS[code]
+        )
+      }
+      const fresh = await window.api.stdiod.status()
+      setStatus(fresh)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+      setResetting(false)
+    }
+  }
+
   if (status === null) {
     // First render before the initial fetch lands. Avoid flashing a
     // misleading "Not enabled" state on machines that *are* set up.
@@ -156,6 +203,13 @@ export default function StdiodEnableCard({
   // config.toml (loggedIn) is sticky across Disable so we can re-enable
   // in one click; it isn't a good signal for the toggle.
   const enabled = status.installed
+  // While a reset is in flight (from here or the tray) lock the controls and
+  // show a spinner, even though `busy` is only set for actions this window
+  // started.
+  const controlsDisabled = busy || resetting || !status.binaryAvailable
+  const spinning = busy || resetting
+  // Reset only makes sense when there's something to reset.
+  const canReset = status.binaryAvailable && (enabled || status.loggedIn)
   const handleToggle = (nextChecked: boolean): void => {
     if (nextChecked) {
       void handleEnable()
@@ -170,9 +224,7 @@ export default function StdiodEnableCard({
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-semibold text-[var(--text-primary)]">
-                Local stdio tunnel
-              </p>
+              <p className="text-sm font-semibold text-[var(--text-primary)]">Local stdio tunnel</p>
               <Badge variant="neutral" size="sm">
                 Optional
               </Badge>
@@ -185,10 +237,10 @@ export default function StdiodEnableCard({
             type="button"
             role="switch"
             aria-checked={enabled}
-            disabled={busy || !status.binaryAvailable}
+            disabled={controlsDisabled}
             onClick={() => handleToggle(!enabled)}
             className={`relative inline-flex h-7 w-16 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
-              busy || !status.binaryAvailable ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+              controlsDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
             } ${
               enabled
                 ? 'bg-[var(--accent)] border-[var(--accent)]'
@@ -218,7 +270,7 @@ export default function StdiodEnableCard({
                 enabled ? 'translate-x-[37px]' : 'translate-x-[3px]'
               }`}
             >
-              {busy && (
+              {spinning && (
                 <svg className="h-3 w-3 animate-spin text-gray-500" viewBox="0 0 24 24" fill="none">
                   <circle
                     cx="12"
@@ -241,7 +293,9 @@ export default function StdiodEnableCard({
           </button>
         </div>
 
-        <p className="text-xs font-medium text-[var(--text-primary)]">{describeStatus(status)}</p>
+        <p className="text-xs font-medium text-[var(--text-primary)]">
+          {resetting ? 'Resetting the local tunnel…' : describeStatus(status)}
+        </p>
 
         {enabled && status.state?.device_id && (
           <p className="text-xs text-[var(--text-primary)]/80">
@@ -251,6 +305,39 @@ export default function StdiodEnableCard({
             </code>
           </p>
         )}
+
+        {canReset &&
+          (confirmingReset ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[var(--text-primary)]/80">
+                Reset the tunnel? This rebuilds the daemon from scratch.
+              </span>
+              <button
+                type="button"
+                disabled={controlsDisabled}
+                onClick={() => void handleReset()}
+                className="text-xs font-semibold text-[var(--danger)] hover:underline disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingReset(false)}
+                className="text-xs text-[var(--text-primary)]/70 hover:underline"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={controlsDisabled}
+              onClick={() => setConfirmingReset(true)}
+              className="self-start text-xs font-medium text-[var(--text-primary)]/70 hover:text-[var(--text-primary)] hover:underline disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              Reset tunnel
+            </button>
+          ))}
 
         {error && (
           <p className="text-xs text-[var(--danger)] bg-[var(--danger)]/10 rounded px-2 py-1.5">

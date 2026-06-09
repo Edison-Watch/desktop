@@ -112,6 +112,8 @@ import { registerIpcHandlers } from './ipc/ipcHandlers'
 import { buildAppMenu as buildAppMenuFromDeps } from './menus/appMenu'
 import { refreshStdiodStatusCache, startStdiodStatusCacheRefresh } from './stdiod/trayCache'
 import { buildStdiodMenuItems } from './stdiod/trayMenu'
+import { uninstall as uninstallStdiod } from './stdiod/controller'
+import { handleStdiodReset } from './stdiod/trayReset'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import appIconPath from '../../resources/icon.png?asset'
@@ -210,7 +212,13 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
       }
     },
     { type: 'separator' },
-    ...buildStdiodMenuItems(trayIconPath),
+    ...buildStdiodMenuItems(trayIconPath, () => {
+      void handleStdiodReset({
+        getMainWindow: () => mainWindow,
+        updateTrayMenu,
+        trayIconPath
+      })
+    }),
     { type: 'separator' },
     { label: getHookStatusLabel(), enabled: false },
     {
@@ -406,6 +414,11 @@ function stopAllServices(): void {
 async function handleLogoutAndRestart(): Promise<void> {
   console.log('[Logout] Signing out...')
   stopAllServices()
+  // Remove the stdiod LaunchAgent so the daemon doesn't keep running (and
+  // relaunching via launchd) under a signed-out app. purge=false keeps
+  // config.toml, mirroring how logout keeps accounts.json - the LaunchAgent
+  // is only ever re-added by an explicit toggle-on or reset.
+  await uninstallStdiod({ purge: false }).catch(() => {})
   markSetupIncomplete()
   updateTrayMenu()
   await rerunWizard()
@@ -431,6 +444,13 @@ async function handleClearDataAndRestart(): Promise<void> {
   const userDataPath = app.getPath('userData')
   slog(`[clear-data] Clearing app data at: ${userDataPath}`)
   stopAllServices()
+  // A full wipe deletes accounts.json + storage, so tear the daemon down
+  // completely too: purge removes the LaunchAgent, config.toml, state.json,
+  // and logs. Otherwise launchd would keep the daemon alive (and restart it)
+  // with credentials the app no longer has. Best-effort - never block the
+  // wipe on it. Awaited so it finishes before app.exit().
+  await uninstallStdiod({ purge: true }).catch(() => {})
+  slog('[clear-data] Tore down stdiod daemon')
   for (const file of CLEAR_DATA_FILES) {
     try {
       unlinkSync(join(userDataPath, file))

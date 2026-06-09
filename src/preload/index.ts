@@ -212,7 +212,24 @@ const api = {
       ipcRenderer.invoke('stdiod:login', input),
     uninstall: (opts?: { purge?: boolean }): Promise<StdiodResult> =>
       ipcRenderer.invoke('stdiod:uninstall', opts),
-    getLogPath: (): Promise<string | null> => ipcRenderer.invoke('stdiod:getLogPath')
+    reset: (input: StdiodLoginInput): Promise<StdiodResult> =>
+      ipcRenderer.invoke('stdiod:reset', input),
+    getLogPath: (): Promise<string | null> => ipcRenderer.invoke('stdiod:getLogPath'),
+    // Fired by the main process when a tray/menu-initiated reset starts, so
+    // an open config card can show a "Resetting…" state instead of relying
+    // on its 3s status poll (which misses the fast off→on transition).
+    onResetting: (callback: () => void): (() => void) => {
+      const handler = (): void => callback()
+      ipcRenderer.on('stdiod:resetting', handler)
+      return () => ipcRenderer.removeListener('stdiod:resetting', handler)
+    },
+    // Fired when the main process has mutated daemon state (e.g. a reset
+    // finished, or it reconnected) so the card should refresh immediately.
+    onChanged: (callback: () => void): (() => void) => {
+      const handler = (): void => callback()
+      ipcRenderer.on('stdiod:changed', handler)
+      return () => ipcRenderer.removeListener('stdiod:changed', handler)
+    }
   },
 
   /** App version */

@@ -14,7 +14,10 @@ const CONNECTION_LABELS: Record<string, string> = {
   needs_upgrade: 'needs upgrade (update Edison Watch)'
 }
 
-export function buildStdiodMenuItems(trayIconPath: string): MenuItemConstructorOptions[] {
+export function buildStdiodMenuItems(
+  trayIconPath: string,
+  onReset?: () => void
+): MenuItemConstructorOptions[] {
   const status = getCachedStdiodStatus()
   const items: MenuItemConstructorOptions[] = []
 
@@ -22,6 +25,28 @@ export function buildStdiodMenuItems(trayIconPath: string): MenuItemConstructorO
     items.push({ label: 'Local tunnel: binary missing', enabled: false })
     return items
   }
+
+  // Shared "View logs / Reset" footer, appended to whichever status branch
+  // we end up in. Reset is the heavy-hammer recovery, so it's offered
+  // whenever there's anything to reset (signed in or running) - including
+  // the "off" branch below, where a wedged half-install is exactly the
+  // case a reset is meant to clear.
+  const buildActions = (): MenuItemConstructorOptions[] => {
+    const actions: MenuItemConstructorOptions[] = [
+      {
+        label: 'Open logs folder',
+        click: () => {
+          const logDir = `${process.env.HOME}/Library/Logs/edison-stdiod`
+          shell.openPath(logDir).catch(() => {})
+        }
+      }
+    ]
+    if (onReset && (status.installed || status.loggedIn)) {
+      actions.push({ label: 'Reset Local Tunnel…', click: onReset })
+    }
+    return actions
+  }
+
   // installed (launchctl) is the source of truth for "is the daemon on".
   // loggedIn (config.toml present) is sticky across Disable so re-enable is
   // one click - checking it first would mislead users into seeing
@@ -31,6 +56,7 @@ export function buildStdiodMenuItems(trayIconPath: string): MenuItemConstructorO
       label: status.loggedIn ? 'Local tunnel: off' : 'Local tunnel: not signed in',
       enabled: false
     })
+    if (status.loggedIn) items.push(...buildActions())
     return items
   }
 
@@ -73,13 +99,7 @@ export function buildStdiodMenuItems(trayIconPath: string): MenuItemConstructorO
     items.push({ label: `Last error: ${status.state.last_error}`, enabled: false })
   }
 
-  items.push({
-    label: 'View daemon logs',
-    click: () => {
-      const logPath = `${process.env.HOME}/Library/Logs/edison-stdiod/daemon.log`
-      shell.openPath(logPath).catch(() => {})
-    }
-  })
+  items.push(...buildActions())
 
   return items
 }
