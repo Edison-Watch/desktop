@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 import type { StdiodLoginInput, StdiodResult, StdiodStatus } from '../main/stdiod/types'
+import type { UpdateState } from '../main/infra/updateManager'
+import type { UpdateSettings } from '../main/infra/updateSettings'
 
 /**
  * Typed IPC API exposed to the renderer via contextBridge.
@@ -189,6 +191,23 @@ const api = {
     getVersion: (): Promise<string> => ipcRenderer.invoke('menu:getVersion'),
     getMcpConfig: (): Promise<string | null> => ipcRenderer.invoke('menu:getMcpConfig'),
     getMcpUrl: (): Promise<string | null> => ipcRenderer.invoke('menu:getMcpUrl')
+  },
+
+  /** Auto-updater: state, manual actions, settings, and live status events. */
+  updates: {
+    getState: (): Promise<UpdateState> => ipcRenderer.invoke('update:getState'),
+    check: (): Promise<UpdateState> => ipcRenderer.invoke('update:check'),
+    download: (): Promise<void> => ipcRenderer.invoke('update:download'),
+    install: (): Promise<void> => ipcRenderer.invoke('update:install'),
+    getSettings: (): Promise<UpdateSettings> => ipcRenderer.invoke('update:getSettings'),
+    setSettings: (patch: Partial<UpdateSettings>): Promise<UpdateSettings> =>
+      ipcRenderer.invoke('update:setSettings', patch),
+    onStatus: (callback: (state: UpdateState) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, state: UpdateState): void =>
+        callback(state)
+      ipcRenderer.on('update:status', handler)
+      return () => ipcRenderer.removeListener('update:status', handler)
+    }
   },
 
   /** OS keychain (safeStorage) - store/load the personal encryption key */

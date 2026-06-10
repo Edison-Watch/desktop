@@ -24,6 +24,13 @@ export function initSentry(): void {
     console.log('[Sentry] Disabled in development mode')
     return
   }
+  // Skip during the local auto-update test: the native crash handler (crashpad)
+  // can race with Squirrel's quitAndInstall teardown, and we don't want test
+  // crashes in Sentry anyway. See scripts/test-autoupdate.sh.
+  if (process.env.EW_UPDATE_TEST) {
+    console.log('[Sentry] Disabled for auto-update test')
+    return
+  }
 
   const Sentry = getSentry()
   if (!Sentry) return
@@ -50,7 +57,9 @@ export function initSentry(): void {
 
 export function captureError(error: unknown, context?: Record<string, unknown>): void {
   if (SENTRY_ENABLED) {
-    getSentry()?.captureException(error instanceof Error ? error : new Error(String(error)), { extra: context })
+    getSentry()?.captureException(error instanceof Error ? error : new Error(String(error)), {
+      extra: context
+    })
   } else {
     console.error('[sentry] Error captured:', error, context)
   }
@@ -68,6 +77,6 @@ export function submitUserFeedback(comments: string, email?: string): void {
   getSentry()?.captureFeedback({
     message: comments,
     name: email ?? 'Edison Watch User',
-    email: email ?? 'unknown@edisonwatch.app',
+    email: email ?? 'unknown@edisonwatch.app'
   })
 }

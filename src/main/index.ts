@@ -53,12 +53,14 @@ import {
   getHookStatusLabel
 } from './runtime/hookHealthMonitor'
 import {
-  startUpdateChecker,
-  stopUpdateChecker,
-  getAvailableUpdate,
-  openUpdateDownload,
-  checkForUpdateNow
-} from './infra/updateChecker'
+  initUpdateManager,
+  stopUpdateManager,
+  checkForUpdates,
+  downloadUpdate,
+  quitAndInstall,
+  isUpdateDownloaded,
+  getPendingUpdateVersion
+} from './infra/updateManager'
 import { showDebugWindow } from './dialogs/debugWindow'
 import { showFeedbackWindow } from './dialogs/feedbackWindow'
 import { showServerRegistrationDialog } from './dialogs/mcpServerActionDialog'
@@ -229,40 +231,43 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
     }
   ]
 
-  const availableUpdate = getAvailableUpdate()
-  if (availableUpdate) {
+  const pendingVersion = getPendingUpdateVersion()
+  if (isUpdateDownloaded() && pendingVersion) {
     items.push({
-      label: `Update available: v${availableUpdate.version}`,
-      click: () => openUpdateDownload()
+      label: `Restart to update (v${pendingVersion})`,
+      click: () => quitAndInstall()
+    })
+  } else if (pendingVersion) {
+    // Available but not downloaded yet (demo default: download on demand).
+    items.push({
+      label: `Download update (v${pendingVersion})`,
+      click: () => {
+        downloadUpdate().catch((err) => console.error('[update] download failed:', err))
+        updateTrayMenu()
+      }
     })
   } else {
     items.push({
       label: 'Check for Updates',
       click: async () => {
-        try {
-          const update = await checkForUpdateNow(trayIconPath)
-          if (Notification.isSupported()) {
-            if (update) {
-              const notification = new Notification({
-                title: 'Edison Watch',
-                body: `Version ${update.version} is available. Click to download.`,
-                ...(process.platform !== 'darwin' && { icon: trayIconPath })
-              })
-              notification.on('click', () => openUpdateDownload())
-              notification.show()
-            } else {
-              new Notification({
-                title: 'Edison Watch',
-                body: "You're already on the latest version.",
-                ...(process.platform !== 'darwin' && { icon: trayIconPath })
-              }).show()
-            }
-          }
-        } catch {
-          if (Notification.isSupported()) {
+        const state = await checkForUpdates()
+        if (Notification.isSupported()) {
+          if (state.version && state.status !== 'idle' && state.status !== 'error') {
+            new Notification({
+              title: 'Edison Watch',
+              body: `Version ${state.version} is available.`,
+              ...(process.platform !== 'darwin' && { icon: trayIconPath })
+            }).show()
+          } else if (state.status === 'error') {
             new Notification({
               title: 'Edison Watch',
               body: 'Update check failed. Please check your connection.',
+              ...(process.platform !== 'darwin' && { icon: trayIconPath })
+            }).show()
+          } else {
+            new Notification({
+              title: 'Edison Watch',
+              body: "You're already on the latest version.",
               ...(process.platform !== 'darwin' && { icon: trayIconPath })
             }).show()
           }
@@ -403,7 +408,7 @@ async function rerunWizard(): Promise<void> {
 
 function stopAllServices(): void {
   stopServerStatusChecks()
-  stopUpdateChecker()
+  stopUpdateManager()
   stopEventSubscription()
   stopHookHealthMonitor()
   stopQuarantineMonitor()
@@ -628,6 +633,10 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('app:clearDataAndRestart', () => handleClearDataAndRestart())
 
+  // Auto-updater: start regardless of setup state (updates are independent of
+  // auth). Polling only runs in packaged/test builds; see updateManager.
+  initUpdateManager({ onStateChange: updateTrayMenu, getMainWindow: () => mainWindow })
+
   if (isSetupComplete()) {
     slog('setup complete, creating tray')
     createTray()
@@ -635,7 +644,6 @@ app.whenReady().then(async () => {
     startHookHealthMonitor()
     // Await hook injection before quarantine monitor to avoid config file races
     await injectAllHooks().catch((err) => console.error('[HookInjection] Failed:', err))
-    startUpdateChecker()
 
     await warmOrgIdCacheOnStartup()
     startQuarantineMonitorIfEnabled().catch((err) => console.error('[Quarantine] Failed:', err))

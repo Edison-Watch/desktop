@@ -323,6 +323,17 @@ export function getMcpBaseUrl(): string | null {
   return url;
 }
 
+/**
+ * Base URL of the desktop release bucket for the active environment, used as
+ * the electron-updater feed host (demo -> demo-releases, release -> releases).
+ * Respects the debug env override so a switched build checks the right channel.
+ * Returns null for "dev" (auto-update is disabled in unpackaged/dev builds).
+ */
+export function getReleasesBaseUrl(): string | null {
+  const env = getDebugEnvOverride() ?? getActiveEnv();
+  return getEnvByName(env)?.RELEASES_BASE_URL ?? null;
+}
+
 export function getEventsUrl(apiKey: string): string | null {
   const baseUrl = getApiBaseUrl();
   if (!baseUrl) return null;

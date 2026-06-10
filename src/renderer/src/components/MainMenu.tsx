@@ -7,6 +7,8 @@ import ClientsView from "./ClientsView";
 import MyMcpsView from "./MyMcpsView";
 import StdiodEnableCard from "./StdiodEnableCard";
 import OrgKeyCard from "./OrgKeyCard";
+import UpdateBanner from "./UpdateBanner";
+import UpdateSettingsCard from "./UpdateSettingsCard";
 
 type MenuTab = "home" | "clients" | "my-mcps";
 
@@ -166,6 +168,7 @@ export default function MainMenu(): React.ReactNode {
 
   return (
     <div className="flex h-screen flex-col bg-[var(--bg-base)]">
+      <UpdateBanner />
       <div className="flex-1 overflow-y-auto p-5">
         <div className="mx-auto flex max-w-sm flex-col gap-4">
           {/* Header */}
@@ -368,6 +371,9 @@ export default function MainMenu(): React.ReactNode {
               }
             />
           )}
+
+          {/* Auto-update preferences */}
+          <UpdateSettingsCard />
 
           {/* Actions */}
           <div className="flex flex-col gap-2">

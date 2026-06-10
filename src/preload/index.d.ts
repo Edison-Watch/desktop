@@ -1,6 +1,8 @@
 import type { ElectronAPI } from '@electron-toolkit/preload'
 
 import type { StdiodLoginInput, StdiodResult, StdiodStatus } from '../main/stdiod/types'
+import type { UpdateState } from '../main/infra/updateManager'
+import type { UpdateSettings } from '../main/infra/updateSettings'
 
 /** Typed IPC API matching the api object in preload/index.ts */
 interface EdisonAPI {
@@ -157,6 +159,15 @@ interface EdisonAPI {
     getVersion: () => Promise<string>
     getMcpConfig: () => Promise<string | null>
     getMcpUrl: () => Promise<string | null>
+  }
+  updates: {
+    getState: () => Promise<UpdateState>
+    check: () => Promise<UpdateState>
+    download: () => Promise<void>
+    install: () => Promise<void>
+    getSettings: () => Promise<UpdateSettings>
+    setSettings: (patch: Partial<UpdateSettings>) => Promise<UpdateSettings>
+    onStatus: (callback: (state: UpdateState) => void) => () => void
   }
   keychain: {
     save: (plaintext: string) => Promise<{ ok: boolean; error?: string }>

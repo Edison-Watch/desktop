@@ -29,7 +29,14 @@ import {
   getCodexConfigPath
 } from '../runtime/hookInjection'
 import { startHookHealthMonitor } from '../runtime/hookHealthMonitor'
-import { startUpdateChecker as _startUpdateChecker } from '../infra/updateChecker'
+import {
+  getUpdateState,
+  checkForUpdates,
+  downloadUpdate,
+  quitAndInstall,
+  getSettings as getUpdateSettings,
+  updateSettings as setUpdateSettings
+} from '../infra/updateManager'
 import { showFeedbackWindow } from '../dialogs/feedbackWindow'
 import { restoreAllQuarantinedServers } from '../runtime/mcpConfigActions'
 import { runDebugQuarantine, handleQuarantineDisabled } from '../quarantine/quarantineManager'
@@ -160,7 +167,6 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     startEventSubscription()
     startHookHealthMonitor()
     injectAllHooks().catch((err) => console.error('[HookInjection] Failed to inject hooks:', err))
-    _startUpdateChecker()
     startQuarantineMonitorIfEnabled().catch((err) =>
       console.error('[Quarantine] Failed to start monitor after setup:', err)
     )
@@ -261,7 +267,6 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     // Restart background services for the new account
     startEventSubscription()
     startHookHealthMonitor()
-    _startUpdateChecker()
     startQuarantineMonitorIfEnabled().catch((err) =>
       console.error('[Quarantine] Failed to start monitor on account switch:', err)
     )
@@ -340,6 +345,18 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   ipcMain.handle('menu:getVersion', () => {
     return app.getVersion()
   })
+
+  // Auto-update: state, manual check/download/install, and settings.
+  ipcMain.handle('update:getState', () => getUpdateState())
+  ipcMain.handle('update:check', () => checkForUpdates())
+  ipcMain.handle('update:download', () => downloadUpdate())
+  ipcMain.handle('update:install', () => quitAndInstall())
+  ipcMain.handle('update:getSettings', () => getUpdateSettings())
+  ipcMain.handle(
+    'update:setSettings',
+    (_event, patch: { autoDownload?: boolean; autoInstallOnQuit?: boolean }) =>
+      setUpdateSettings(patch)
+  )
 
   // Get MCP config as VSCode JSON
   ipcMain.handle('menu:getMcpConfig', () => {

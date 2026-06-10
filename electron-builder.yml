@@ -7,9 +7,21 @@ directories:
   buildResources: build
   output: dist
 files:
+  # Exclude build output dirs so a prior build's artifacts are never packed into
+  # the asar. electron-builder auto-excludes `directories.output`, but a custom
+  # `-c.directories.output=...` (e.g. the local auto-update test harness) leaves
+  # the default `dist/` un-excluded - without this it recursively bundles old
+  # builds and the app balloons to >1GB (which then breaks Squirrel auto-update).
+  - '!dist'
+  - '!dist-*'
   - '!**/.vscode/*'
   - '!**/.storybook/*'
   - '!src/*'
+  - '!tests'
+  - '!e2e'
+  - '!scripts'
+  - '!**/*.{map,tsbuildinfo}'
+  - '!{vitest.config.ts,playwright.config.ts,playwright.visual.config.ts}'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
@@ -85,8 +97,12 @@ linux:
         - arm64
 electronVersion: 40.8.0
 npmRebuild: false
+# Generic provider so electron-updater fetches latest-mac.yml + the zip from our
+# R2 release bucket (co-located under client/latest/). This bakes a default
+# app-update.yml pointing at the release channel; the demo CI build overrides
+# the URL via `-c.publish.url=...`, and the running app additionally calls
+# autoUpdater.setFeedURL() per environment (see infra/updateManager.ts).
 publish:
-  provider: github
-  owner: Edison-Watch
-  repo: edison-watch
-  releaseType: release
+  provider: generic
+  url: https://releases.edison.watch/client/latest
+  channel: latest
