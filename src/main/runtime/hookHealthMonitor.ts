@@ -7,12 +7,21 @@
 
 import { watch } from 'chokidar'
 import { promises as fs, existsSync } from 'fs'
-import { getHookStatus, getPendingErrorsDir, getPendingRegistrationsDir } from './hookInjection'
+import { basename, join } from 'path'
+import {
+  getEdisonWatchDir,
+  getHookStatus,
+  getPendingErrorsDir,
+  getPendingRegistrationsDir
+} from './hookInjection'
 import type { HookStatusEntry } from './hookInjection'
 import { captureError } from '../infra/sentry'
 import { getMcpUrl, getIsServerOnline } from '../infra/setupConfig'
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
+
+/** Pending files are fire-and-forget events; anything this old was never picked up. */
+const PENDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 export type { HookStatusEntry }
 
@@ -21,6 +30,7 @@ let errorsWatcher: ReturnType<typeof watch> | null = null
 let pendingWatcher: ReturnType<typeof watch> | null = null
 let lastKnownStatus: HookStatusEntry[] = []
 let onHooksMissing: ((entries: HookStatusEntry[]) => void) | null = null
+let monitorActive = false
 
 /**
  * Register a callback when hooks are detected as missing (e.g. to show a notification).
@@ -41,7 +51,9 @@ export function getHookStatusLabel(): string {
   // Hook-based clients: hooks present. Hookless clients: MCP entry configured.
   // Uses mcpConfigured (not mcpConnected) because the label reflects "installed" state
   // (config on disk), not live connection - matching hasHook semantics for hook clients.
-  const withEdison = installed.filter((e) => e.hooksApplicable ? e.hasHook : e.mcpConfigured).length
+  const withEdison = installed.filter((e) =>
+    e.hooksApplicable ? e.hasHook : e.mcpConfigured
+  ).length
   const total = installed.length
   if (withEdison === total) return 'All MCP clients have Edison installed'
   if (withEdison === 0) return '0 MCP clients have Edison installed'
@@ -56,9 +68,17 @@ async function processSessionEndFile(filePath: string): Promise<void> {
     const raw = await fs.readFile(filePath, 'utf-8')
     const parsed = JSON.parse(raw) as { event?: string; conversation_id?: string; reason?: string }
     if (parsed.event === 'session_end' && parsed.conversation_id) {
-      console.log('[HookHealthMonitor] Session ended: %s (reason: %s)', parsed.conversation_id, parsed.reason ?? 'unknown')
+      console.log(
+        '[HookHealthMonitor] Session ended: %s (reason: %s)',
+        parsed.conversation_id,
+        parsed.reason ?? 'unknown'
+      )
     } else {
-      console.warn('[HookHealthMonitor] session-end file has unexpected shape, discarding:', filePath, parsed)
+      console.warn(
+        '[HookHealthMonitor] session-end file has unexpected shape, discarding:',
+        filePath,
+        parsed
+      )
     }
   } catch {
     // Likely a race condition where chokidar fired before the file was fully written.
@@ -73,7 +93,85 @@ async function processSessionEndFile(filePath: string): Promise<void> {
 }
 
 /**
- * Start watching the pending directory for session-end files.
+ * Discard a processed pending-queue file. Registration files
+ * ({ts}-{rand}-{client}.json, written by edison-hook.sh on session start)
+ * currently carry no consumer-side action - they exist so the queue has a
+ * single lifecycle: every event file is consumed and removed once seen.
+ */
+async function discardPendingFile(filePath: string): Promise<void> {
+  try {
+    await fs.unlink(filePath)
+  } catch {
+    // ignore - already consumed by a concurrent sweep or another instance
+  }
+}
+
+/**
+ * Delete pending-queue files older than PENDING_MAX_AGE_MS.
+ * Safety net for files that accumulate while the app is not running and
+ * for any the watcher fails to report; runs before the watcher starts so
+ * a large backlog does not all flow through chokidar's initial scan.
+ */
+async function sweepStalePendingFiles(): Promise<void> {
+  const pendingDir = getPendingRegistrationsDir()
+  if (!existsSync(pendingDir)) return
+
+  let swept = 0
+  const now = Date.now()
+  const entries = await fs.readdir(pendingDir)
+  for (const entry of entries) {
+    if (!entry.endsWith('.json') || entry.startsWith('.')) continue
+    const filePath = join(pendingDir, entry)
+    try {
+      const stat = await fs.stat(filePath)
+      if (now - stat.mtimeMs > PENDING_MAX_AGE_MS) {
+        await fs.unlink(filePath)
+        swept++
+      }
+    } catch {
+      // ignore - file vanished or unreadable; the watcher will handle it
+    }
+  }
+  if (swept > 0) {
+    console.log('[HookHealthMonitor] Swept %d stale pending file(s)', swept)
+  }
+}
+
+/**
+ * Delete PID-scoped active_session_<pid>.json files whose process is gone.
+ * The SessionEnd hook normally removes them, but sessions that crash or are
+ * killed never fire it, so the files leak.
+ */
+async function sweepOrphanedActiveSessionFiles(): Promise<void> {
+  const edisonDir = getEdisonWatchDir()
+  if (!existsSync(edisonDir)) return
+
+  let swept = 0
+  const entries = await fs.readdir(edisonDir)
+  for (const entry of entries) {
+    const match = /^active_session_(\d+)\.json$/.exec(entry)
+    if (!match) continue
+    const pid = Number(match[1])
+    if (!Number.isSafeInteger(pid) || pid <= 0) continue
+    try {
+      process.kill(pid, 0) // throws ESRCH if the process is gone
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ESRCH') {
+        await fs.unlink(join(edisonDir, entry)).catch(() => {})
+        swept++
+      }
+      // EPERM means the PID is alive but owned by someone else - keep the file
+    }
+  }
+  if (swept > 0) {
+    console.log('[HookHealthMonitor] Swept %d orphaned active-session file(s)', swept)
+  }
+}
+
+/**
+ * Start watching the pending directory and consume every event file.
+ * Session-end files get parsed and logged; everything else is discarded.
+ * ignoreInitial: false means the existing backlog drains on startup.
  */
 function startPendingDirWatcher(): void {
   const pendingDir = getPendingRegistrationsDir()
@@ -90,8 +188,15 @@ function startPendingDirWatcher(): void {
   })
 
   pendingWatcher.on('add', (path) => {
-    if (!path.endsWith('-session-end.json')) return
-    processSessionEndFile(path).catch(() => {})
+    const name = basename(path)
+    // Dot-prefixed files are in-flight temp writes (hook scripts write
+    // .<name>.tmp then rename); never touch them.
+    if (!name.endsWith('.json') || name.startsWith('.')) return
+    if (name.endsWith('-session-end.json')) {
+      processSessionEndFile(path).catch(() => {})
+    } else {
+      discardPendingFile(path).catch(() => {})
+    }
   })
 
   pendingWatcher.on('error', (err: unknown) => {
@@ -206,8 +311,21 @@ export function startHookHealthMonitor(): void {
     })
   }, CHECK_INTERVAL_MS)
 
-  startErrorsDirWatcher()
-  startPendingDirWatcher()
+  monitorActive = true
+  const sweepError = (context: string) => (err: unknown) => {
+    captureError(err instanceof Error ? err : new Error(String(err)), { context })
+  }
+  // Sweep before watching so the backlog does not all flow through chokidar
+  sweepStalePendingFiles()
+    .catch(sweepError('hookHealthMonitor_sweepStalePendingFiles'))
+    .finally(() => {
+      if (!monitorActive) return // stopped while the sweep was in flight
+      startErrorsDirWatcher()
+      startPendingDirWatcher()
+    })
+  sweepOrphanedActiveSessionFiles().catch(
+    sweepError('hookHealthMonitor_sweepOrphanedActiveSessionFiles')
+  )
   console.log('[HookHealthMonitor] Started (interval %d ms)', CHECK_INTERVAL_MS)
 }
 
@@ -215,6 +333,7 @@ export function startHookHealthMonitor(): void {
  * Stop periodic checks and the errors-dir watcher.
  */
 export async function stopHookHealthMonitor(): Promise<void> {
+  monitorActive = false
   if (statusCheckTimer) {
     clearInterval(statusCheckTimer)
     statusCheckTimer = null

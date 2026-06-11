@@ -9,6 +9,15 @@ import { join, dirname } from 'path'
 import { captureError } from '../infra/sentry'
 
 /**
+ * Get the path to the Edison Watch home directory (~/.edison-watch).
+ * Holds the hook scripts, the pending/errors queues, and PID-scoped
+ * active_session_<pid>.json files written by the SessionStart hook.
+ */
+export function getEdisonWatchDir(): string {
+  return join(homedir(), '.edison-watch')
+}
+
+/**
  * Get the path to the Edison Watch pending registrations directory.
  * Hook scripts write JSON files here, and the Electron app watches for new files.
  */
@@ -144,7 +153,8 @@ export async function ensureHookScript(): Promise<string> {
  * Get the path to the Edison Watch session start hook script.
  */
 function getSessionStartHookScriptPath(): string {
-  const scriptName = process.platform === 'win32' ? 'edison-session-start.cmd' : 'edison-session-start.py'
+  const scriptName =
+    process.platform === 'win32' ? 'edison-session-start.cmd' : 'edison-session-start.py'
   return join(homedir(), '.edison-watch', scriptName)
 }
 
@@ -224,7 +234,8 @@ export async function ensureSessionStartHookScript(): Promise<string> {
  * Get the path to the Edison Watch session end hook script.
  */
 function getSessionEndHookScriptPath(): string {
-  const scriptName = process.platform === 'win32' ? 'edison-session-end.cmd' : 'edison-session-end.py'
+  const scriptName =
+    process.platform === 'win32' ? 'edison-session-end.cmd' : 'edison-session-end.py'
   return join(homedir(), '.edison-watch', scriptName)
 }
 
@@ -309,7 +320,8 @@ export async function ensureSessionEndHookScript(): Promise<string> {
  * Get the path to the Edison Watch session hook script (beforeMCPExecution: inject conversation_id).
  */
 function getSessionHookScriptPath(): string {
-  const scriptName = process.platform === 'win32' ? 'edison-session-hook.cmd' : 'edison-session-hook.py'
+  const scriptName =
+    process.platform === 'win32' ? 'edison-session-hook.cmd' : 'edison-session-hook.py'
   return join(homedir(), '.edison-watch', scriptName)
 }
 
@@ -422,4 +434,3 @@ export async function ensureSessionHookScript(): Promise<string> {
     throw err
   }
 }
-
