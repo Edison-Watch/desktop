@@ -16,6 +16,7 @@ import { promises as fs, readdirSync } from 'node:fs'
 
 import { getStdiodBinaryPath, stdiodBinaryExists } from '../runtime/stdiodBinary'
 
+import { writeInstallStamp } from './installStamp'
 import { configFileExists, readStateFile } from './state'
 import { stdiodLog } from './stdiodLog'
 import type { StdiodErrorCode, StdiodLoginInput, StdiodResult, StdiodStatus } from './types'
@@ -111,7 +112,7 @@ function classifyError(stderr: string): StdiodErrorCode {
 // hammer it. Invalidated explicitly after install/uninstall calls so
 // the UI reflects the change immediately instead of waiting for the
 // next cache window.
-async function isLaunchAgentLoaded(): Promise<boolean> {
+export async function isLaunchAgentLoaded(): Promise<boolean> {
   const now = Date.now()
   if (cachedInstalled && now - cachedInstalled.at < INSTALLED_CACHE_TTL_MS) {
     return cachedInstalled.value
@@ -184,7 +185,12 @@ export async function install(): Promise<StdiodResult> {
     stdiodLog(
       `install: exit=${result.code}${result.stderr.trim() ? ` stderr=${result.stderr.trim()}` : ''}`
     )
-    if (result.code === 0) return { ok: true }
+    if (result.code === 0) {
+      // Record what was installed so installRefresh.ts can detect a stale
+      // launchd unit after the next app auto-update or bundle move.
+      writeInstallStamp()
+      return { ok: true }
+    }
     return {
       ok: false,
       errorCode: classifyError(result.stderr),

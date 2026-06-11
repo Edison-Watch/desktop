@@ -115,6 +115,7 @@ import { buildAppMenu as buildAppMenuFromDeps } from './menus/appMenu'
 import { refreshStdiodStatusCache, startStdiodStatusCacheRefresh } from './stdiod/trayCache'
 import { buildStdiodMenuItems } from './stdiod/trayMenu'
 import { uninstall as uninstallStdiod } from './stdiod/controller'
+import { maybeRefreshStdiodInstall } from './stdiod/installRefresh'
 import { handleStdiodReset } from './stdiod/trayReset'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -636,6 +637,10 @@ app.whenReady().then(async () => {
   // Auto-updater: start regardless of setup state (updates are independent of
   // auth). Polling only runs in packaged/test builds; see updateManager.
   initUpdateManager({ onStateChange: updateTrayMenu, getMainWindow: () => mainWindow })
+
+  // The stdiod daemon survives app auto-updates as a stale launchd process;
+  // restart it onto the freshly shipped binary when the bundle changed.
+  maybeRefreshStdiodInstall().catch((err) => console.error('[Stdiod] install refresh failed:', err))
 
   if (isSetupComplete()) {
     slog('setup complete, creating tray')
