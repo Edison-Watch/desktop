@@ -13,6 +13,8 @@
 
 import { spawn } from 'node:child_process'
 import { promises as fs, readdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 
 import { getStdiodBinaryPath, stdiodBinaryExists } from '../runtime/stdiodBinary'
 
@@ -25,6 +27,8 @@ import type { StdiodErrorCode, StdiodLoginInput, StdiodResult, StdiodStatus } fr
 // Hardcoded so we can ask launchctl directly without spawning the daemon
 // binary just to read a string.
 const LAUNCHD_LABEL = 'watch.edison.stdiod'
+// Scheduled Task name matches platform/windows.rs TASK_NAME.
+const WIN_TASK_NAME = 'Edison Watch stdiod'
 
 let cachedInstalled: { value: boolean; at: number } | null = null
 const INSTALLED_CACHE_TTL_MS = 5_000
@@ -118,6 +122,15 @@ export async function isLaunchAgentLoaded(): Promise<boolean> {
     return cachedInstalled.value
   }
   const value = await new Promise<boolean>((resolve) => {
+    if (process.platform === 'win32') {
+      // `schtasks /query /tn <name>` exits 0 if the task exists.
+      const child = spawn('schtasks', ['/query', '/tn', WIN_TASK_NAME], {
+        stdio: ['ignore', 'ignore', 'ignore']
+      })
+      child.on('error', () => resolve(false))
+      child.on('close', (code) => resolve(code === 0))
+      return
+    }
     const uid = process.getuid?.() ?? -1
     if (uid < 0) {
       resolve(false)
@@ -312,10 +325,15 @@ export async function resetStdiod(input: StdiodLoginInput): Promise<StdiodResult
 // stays in one place. Returns null if no log exists yet.
 export async function getLogPath(): Promise<string | null> {
   if (dryRun()) return null
-  const macLog = `${process.env.HOME}/Library/Logs/edison-stdiod/daemon.log`
+  // Matches paths::daemon_log_file() in the daemon: macOS uses ~/Library/Logs;
+  // Windows has no XDG state dir so it falls back to ~/.local/state.
+  const logPath =
+    process.platform === 'win32'
+      ? join(homedir(), '.local', 'state', 'edison-stdiod', 'daemon.log')
+      : `${process.env.HOME}/Library/Logs/edison-stdiod/daemon.log`
   try {
-    await fs.access(macLog)
-    return macLog
+    await fs.access(logPath)
+    return logPath
   } catch {
     return null
   }

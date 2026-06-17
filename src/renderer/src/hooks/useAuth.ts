@@ -94,6 +94,10 @@ export default function useAuth() {
   // onCallback listener closure (which captures stale state otherwise).
   // Bumped to false on cancel/timeout so late callbacks are ignored.
   const awaitingBrowserCallbackRef = useRef(false);
+  // Mirror of state.signedIn + single-flight guard for the onAuthStateChange
+  // listener (avoids racing fetchApiKey's getSessionState mutex).
+  const signedInRef = useRef(false);
+  const completeSignInInFlight = useRef<Promise<boolean> | null>(null);
 
   const update = useCallback((patch: Partial<AuthState>) => {
     setState((prev) => ({ ...prev, ...patch }));
@@ -203,14 +207,53 @@ export default function useAuth() {
     return true;
   }, [checkHealth, update]);
 
-  // Resolve the OAuth redirect URL: use dev localhost server in dev mode,
-  // fall back to the custom protocol for production/packaged builds.
+  // Single-flight sign-in completion so the callback handler and onAuthStateChange
+  // listener don't race two fetchApiKey() calls into a spurious sign-out.
+  const completeSignIn = useCallback((): Promise<boolean> => {
+    if (completeSignInInFlight.current) return completeSignInInFlight.current;
+    const p = (async () => {
+      try {
+        return await fetchServerUrls();
+      } finally {
+        completeSignInInFlight.current = null;
+      }
+    })();
+    completeSignInInFlight.current = p;
+    return p;
+  }, [fetchServerUrls]);
+
+  // Keep the ref in sync for the long-lived listener closures.
+  useEffect(() => {
+    signedInRef.current = state.signedIn;
+  }, [state.signedIn]);
+
+  // Authoritative completion: finish sign-in whenever Supabase emits SIGNED_IN, so a
+  // valid session is never left stuck on the waiting screen (the Windows SSO bug).
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && !signedInRef.current && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
+        console.log(`[useAuth] onAuthStateChange ${event} -> completing sign-in`);
+        void completeSignIn();
+      } else if (event === "SIGNED_OUT") {
+        signedInRef.current = false;
+        update({ signedIn: false, apiKey: "", email: "", userId: "" });
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [completeSignIn, update]);
+
+  // Resolve the OAuth/SSO redirect URL: prefer the loopback 127.0.0.1 callback
+  // (dev AND packaged - Chrome won't launch edison-watch:// without a user
+  // gesture), falling back to the custom protocol only if the loopback server
+  // didn't start. See login_sso_chrome_issue.md.
   const getRedirectTo = useCallback(async (): Promise<string> => {
     try {
-      const devUrl = await window.api.auth.getDevCallbackUrl();
-      if (devUrl) return devUrl;
+      const loopbackUrl = await window.api.auth.getLoopbackUrl();
+      if (loopbackUrl) return loopbackUrl;
     } catch {
-      // Not available (production build) - fall through
+      // Loopback server not available - fall through to the protocol handler.
     }
     return "edison-watch://auth/callback";
   }, []);
@@ -238,8 +281,17 @@ export default function useAuth() {
 
   // Let the user cancel a pending OAuth/SSO flow (e.g. they dismissed the browser)
   const cancelPendingAuth = useCallback(() => {
+    console.log(
+      `[useAuth] cancelPendingAuth (was awaiting=${awaitingBrowserCallbackRef.current})`,
+    );
     clearAuthBrowserTimeout();
     awaitingBrowserCallbackRef.current = false;
+    // Discard any session a racing callback established, so Cancel truly cancels
+    // (not let onAuthStateChange complete it).
+    void supabase.auth.signOut();
+    // Drop any callback main buffered, so a late callback can't be replayed via
+    // consumePending / re-pushed on reload after the user cancelled.
+    void window.api.auth.clearPending();
     update({
       loading: false,
       error: "",
@@ -272,6 +324,7 @@ export default function useAuth() {
     }
 
     if (data?.url) {
+      console.log(`[useAuth] signInWithSSO -> opening browser for domain=${domain}`);
       window.api.shell.openExternal(data.url);
       awaitingBrowserCallbackRef.current = true;
       update({ awaitingBrowserCallback: true, pendingAuthMethod: "sso" });
@@ -312,12 +365,17 @@ export default function useAuth() {
     const redirectTo = await getRedirectTo();
 
     // `email` scope is required by Supabase; `offline_access` returns a refresh token.
+    // `prompt: select_account` forces Azure's account picker every time, even with
+    // a live session. That click is the transient user activation Chrome requires
+    // before it will launch the edison-watch:// callback (gesture-less redirects to
+    // custom protocols are silently blocked). See login_sso_chrome_issue.md.
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "azure",
       options: {
         redirectTo,
         skipBrowserRedirect: true,
         scopes: "email offline_access",
+        queryParams: { prompt: "select_account" },
       },
     });
 
@@ -361,11 +419,11 @@ export default function useAuth() {
     }
 
     update({ email });
-    const ok = await fetchServerUrls();
+    const ok = await completeSignIn();
     if (!ok) {
       update({ loading: false });
     }
-  }, [fetchServerUrls, update]);
+  }, [completeSignIn, update]);
 
   // Check domain for SSO-only (debounced)
   const checkDomain = useCallback((email: string) => {
@@ -394,10 +452,24 @@ export default function useAuth() {
 
   // Listen for auth callbacks from main process
   useEffect(() => {
-    const unsubscribe = window.api.auth.onCallback(async (url: string) => {
-      // Ignore late callbacks: the user cancelled, the flow timed out,
-      // or no auth flow was in progress to begin with.
-      if (!awaitingBrowserCallbackRef.current) return;
+    // De-dupe: main may both push and (via the mount pull) hand us the same URL.
+    let lastHandledUrl: string | null = null;
+
+    const handleAuthCallback = async (url: string, viaPull: boolean): Promise<void> => {
+      console.log(
+        `[useAuth] auth callback (viaPull=${viaPull}, awaiting=${awaitingBrowserCallbackRef.current})`,
+      );
+      if (url === lastHandledUrl) {
+        console.log("[useAuth] duplicate auth callback ignored");
+        return;
+      }
+      // Pushed callbacks honour the awaiting gate; pulled (buffered protocol)
+      // callbacks are always processed (cold start).
+      if (!viaPull && !awaitingBrowserCallbackRef.current) {
+        console.log("[useAuth] auth callback ignored (no flow awaiting)");
+        return;
+      }
+      lastHandledUrl = url;
       awaitingBrowserCallbackRef.current = false;
       clearAuthBrowserTimeout();
       update({
@@ -417,12 +489,13 @@ export default function useAuth() {
           refresh_token: refreshToken,
         });
         if (error) {
+          console.error("[useAuth] setSession failed:", error.message);
           update({ loading: false, error: error.message });
           return false;
         }
         const { data: { user } } = await supabase.auth.getUser();
         update({ email: user?.email || "", userId: user?.id || "" });
-        const ok = await fetchServerUrls();
+        const ok = await completeSignIn();
         if (!ok) update({ loading: false });
         return ok;
       };
@@ -453,18 +526,32 @@ export default function useAuth() {
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (error) {
+          console.error("[useAuth] exchangeCodeForSession failed:", error.message);
           update({ loading: false, error: error.message });
           return;
         }
         const { data: { user } } = await supabase.auth.getUser();
         update({ email: user?.email || "", userId: user?.id || "" });
-        const ok = await fetchServerUrls();
+        const ok = await completeSignIn();
         if (!ok) update({ loading: false });
         return;
       }
 
+      console.error("[useAuth] auth callback had no credentials:", parsed.search, parsed.hash);
       update({ loading: false, error: "Auth callback did not contain valid credentials." });
+    };
+
+    const unsubscribe = window.api.auth.onCallback((url: string) => {
+      void handleAuthCallback(url, false);
     });
+
+    // Claim any callback main buffered before this listener was live (cold start / race).
+    window.api.auth
+      .consumePending()
+      .then((url) => {
+        if (url) void handleAuthCallback(url, true);
+      })
+      .catch(() => {});
 
     return () => {
       unsubscribe();
@@ -473,7 +560,7 @@ export default function useAuth() {
       if (domainTimeout.current) clearTimeout(domainTimeout.current);
       domainAbort.current?.abort();
     };
-  }, [clearAuthBrowserTimeout, fetchServerUrls, update]);
+  }, [clearAuthBrowserTimeout, completeSignIn, update]);
 
   // Restore existing session on mount
   useEffect(() => {
@@ -481,10 +568,10 @@ export default function useAuth() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         update({ email: user.email || "", userId: user.id });
-        await fetchServerUrls();
+        await completeSignIn();
       }
     })();
-  }, [fetchServerUrls, update]);
+  }, [completeSignIn, update]);
 
   return {
     ...state,

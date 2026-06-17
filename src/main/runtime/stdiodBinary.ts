@@ -12,13 +12,14 @@ import { app } from 'electron'
 // full package build - the dev workflow expects the developer to have run
 // `cargo build --release` (or the build-stdiod.sh script) at least once.
 export function getStdiodBinaryPath(): string {
+  const exe = process.platform === 'win32' ? 'edison-stdiod.exe' : 'edison-stdiod'
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'bin', 'edison-stdiod')
+    return path.join(process.resourcesPath, 'bin', exe)
   }
   // __dirname in dev is <repo>/client_2/out/main; three steps up reaches
   // the repo root (out/main -> out -> client_2 -> <repo>).
   const repoRoot = path.resolve(__dirname, '..', '..', '..')
-  return path.join(repoRoot, 'stdiod', 'target', 'release', 'edison-stdiod')
+  return path.join(repoRoot, 'stdiod', 'target', 'release', exe)
 }
 
 export function stdiodBinaryExists(): boolean {

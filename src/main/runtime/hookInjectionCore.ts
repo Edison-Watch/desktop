@@ -7,6 +7,18 @@ import { promises as fs, existsSync } from 'fs'
 import { homedir, platform } from 'os'
 import { join, dirname } from 'path'
 import { captureError } from '../infra/sentry'
+import { getBundledPythonPath } from './pythonBinary'
+
+// Python invocation for a Windows .cmd hook: bundled interpreter by absolute path,
+// else PATH (python/python3/py). %~dp0 = the .cmd's dir.
+function winPythonInvocation(scriptFileName: string): string {
+  const target = `"%~dp0${scriptFileName}"`
+  const bundled = getBundledPythonPath()
+  if (bundled) {
+    return `"${bundled}" ${target}`
+  }
+  return `python ${target} 2>nul || python3 ${target} 2>nul || py ${target}`
+}
 
 /**
  * Get the path to the Edison Watch home directory (~/.edison-watch).
@@ -189,7 +201,7 @@ function generateSessionStartHookScript(): string {
   if (process.platform === 'win32') {
     return `@echo off
 REM Edison Watch - Session start hook: persist session_id to PID-scoped file
-python "%~dp0edison-session-start.py" 2>nul || python3 "%~dp0edison-session-start.py"
+${winPythonInvocation('edison-session-start.py')}
 exit /b 0
 `
   }
@@ -275,7 +287,7 @@ function generateSessionEndHookScript(): string {
   if (process.platform === 'win32') {
     return `@echo off
 REM Edison Watch - Session end hook: write session end event
-python "%~dp0edison-session-end.py" 2>nul || python3 "%~dp0edison-session-end.py"
+${winPythonInvocation('edison-session-end.py')}
 exit /b 0
 `
   }
@@ -395,7 +407,7 @@ function generateSessionHookScript(): string {
   if (process.platform === 'win32') {
     return `@echo off
 REM Edison Watch - Session hook: inject conversation_id into MCP tool args
-python "%~dp0edison-session-hook.py" 2>nul || python3 "%~dp0edison-session-hook.py"
+${winPythonInvocation('edison-session-hook.py')}
 exit /b 0
 `
   }

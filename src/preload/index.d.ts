@@ -6,6 +6,7 @@ import type { UpdateSettings } from '../main/infra/updateSettings'
 
 /** Typed IPC API matching the api object in preload/index.ts */
 interface EdisonAPI {
+  platform: NodeJS.Platform
   setup: {
     getData: () => Promise<{ completed?: boolean; [key: string]: unknown }>
     complete: (data: Record<string, unknown>) => void
@@ -19,7 +20,9 @@ interface EdisonAPI {
   auth: {
     openSaml: (url: string) => void
     onCallback: (callback: (url: string) => void) => () => void
-    getDevCallbackUrl: () => Promise<string | null>
+    getLoopbackUrl: () => Promise<string | null>
+    consumePending: () => Promise<string | null>
+    clearPending: () => Promise<void>
   }
   health: {
     check: () => Promise<boolean>
@@ -159,6 +162,7 @@ interface EdisonAPI {
     getVersion: () => Promise<string>
     getMcpConfig: () => Promise<string | null>
     getMcpUrl: () => Promise<string | null>
+    popupApp: () => Promise<void>
   }
   updates: {
     getState: () => Promise<UpdateState>

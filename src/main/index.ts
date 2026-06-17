@@ -13,12 +13,14 @@ import {
 } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 import { join } from 'path'
+import { tmpdir } from 'os'
 import { appendFileSync, unlinkSync } from 'fs'
 import { installMonitorTee } from './runtime/monitorLog'
 
 installMonitorTee()
 
-const LOG_FILE = '/tmp/ew-startup.log'
+// os.tmpdir() = %TEMP% on Windows, /tmp on Unix (a hardcoded '/tmp' silently no-ops on Windows).
+const LOG_FILE = join(tmpdir(), 'ew-startup.log')
 function slog(msg: string) {
   const line = `[${new Date().toISOString()}] ${msg}\n`
   try {
@@ -26,7 +28,8 @@ function slog(msg: string) {
   } catch {}
   console.log(msg)
 }
-import { startDevAuthServer, getDevAuthCallbackUrl } from './runtime/devAuthServer'
+import { startAuthLoopbackServer, getAuthLoopbackUrl } from './runtime/authLoopbackServer'
+import { initDeepLinkAuth, deliverAuthCallback, flushBufferedAuthCallback } from './runtime/deepLinkAuth'
 // Inline replacements for @electron-toolkit/utils (removed due to Electron 40 compat issue:
 // it evaluates electron.app.isPackaged at module load time, crashing before app.ready)
 const is = {
@@ -511,6 +514,9 @@ function createWindow(): void {
   mainWindow.webContents.on('did-finish-load', () => {
     slog('did-finish-load')
     logEnvConfig('startup')
+    // Push any callback buffered before the page loaded (left buffered so the
+    // renderer mount-pull can also claim it; renderer de-dupes).
+    flushBufferedAuthCallback()
   })
   mainWindow.webContents.on('did-fail-load', (_e, code, desc) =>
     slog(`did-fail-load code=${code} desc=${desc}`)
@@ -532,7 +538,7 @@ function createWindow(): void {
   mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
     if (navigationUrl.includes('/auth/callback') || navigationUrl.includes('code=')) {
       event.preventDefault()
-      mainWindow?.webContents.send('auth:callback', navigationUrl)
+      deliverAuthCallback(navigationUrl, 'will-navigate')
     }
   })
 
@@ -543,32 +549,9 @@ function createWindow(): void {
   }
 }
 
-// ── Deep link protocol ──────────────────────────────────────────────
-
-app.on('open-url', (_event, url) => {
-  if (url.startsWith('edison-watch://')) {
-    mainWindow?.webContents.send('auth:callback', url)
-  }
-})
-
-app.on('second-instance', (_event, commandLine) => {
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) mainWindow.restore()
-    mainWindow.focus()
-  }
-  const url = commandLine.find((arg) => arg.startsWith('edison-watch://'))
-  if (url && mainWindow) {
-    mainWindow.webContents.send('auth:callback', url)
-  }
-})
-
-if (process.defaultApp) {
-  if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient('edison-watch', process.execPath, [process.argv[1]!])
-  }
-} else {
-  app.setAsDefaultProtocolClient('edison-watch')
-}
+// Single-instance lock + edison-watch:// deep-link callback wiring (see deepLinkAuth).
+// Returns false for a doomed second instance - whenReady early-returns on it below.
+const gotSingleInstanceLock = initDeepLinkAuth({ getMainWindow: () => mainWindow, log: slog })
 
 // ── App lifecycle ───────────────────────────────────────────────────
 
@@ -600,21 +583,30 @@ initApprovalsHandler(
 )
 
 app.whenReady().then(async () => {
+  // Doomed second instance (lost the lock) - already forwarded its argv and
+  // quitting; never build a window.
+  if (!gotSingleInstanceLock) return
   slog('app.whenReady fired')
   electronApp.setAppUserModelId('com.edisonwatch.desktop')
   updateAppMenu()
 
-  if (is.dev) {
-    try {
-      await Promise.race([
-        startDevAuthServer(() => mainWindow),
-        new Promise<void>((_, reject) =>
-          setTimeout(() => reject(new Error('DevAuthServer listen timeout')), 5_000)
-        )
-      ])
-    } catch (err) {
-      console.error('[App] Failed to start dev auth server, falling back to protocol handler:', err)
-    }
+  // Loopback auth-callback server - started in dev AND packaged builds. Chrome
+  // silently blocks gesture-less redirects to custom protocols (edison-watch://),
+  // but a plain http://127.0.0.1 navigation has no such gate, so we prefer the
+  // loopback for the SSO/OAuth callback (getRedirectTo picks it up automatically).
+  // edison-watch:// stays registered as a fallback if the server can't start.
+  // See login_sso_chrome_issue.md.
+  try {
+    await Promise.race([
+      startAuthLoopbackServer(() => mainWindow),
+      new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error('auth loopback server listen timeout')), 5_000)
+      )
+    ])
+    slog(`auth loopback server listening at ${getAuthLoopbackUrl() ?? '(unknown)'}`)
+  } catch (err) {
+    slog(`auth loopback server failed to start; falling back to edison-watch://: ${err}`)
+    console.error('[App] Auth loopback server failed to start, falling back to protocol:', err)
   }
 
   app.on('browser-window-created', (_, window) => {
@@ -624,7 +616,7 @@ app.whenReady().then(async () => {
   slog('calling registerIpcHandlers')
   registerIpcHandlers({
     getMainWindow: () => mainWindow,
-    getDevAuthCallbackUrl: () => getDevAuthCallbackUrl(),
+    getAuthLoopbackUrl: () => getAuthLoopbackUrl(),
     createTray,
     startEventSubscription,
     startQuarantineMonitorIfEnabled,

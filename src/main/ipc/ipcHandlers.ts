@@ -67,7 +67,7 @@ import { handleApproval, pendingApprovals } from './approvalsHandler'
 
 export interface IpcHandlerDeps {
   getMainWindow: () => BrowserWindow | null
-  getDevAuthCallbackUrl: () => string | null
+  getAuthLoopbackUrl: () => string | null
   createTray: () => void
   startEventSubscription: () => void
   startQuarantineMonitorIfEnabled: () => Promise<void>
@@ -77,7 +77,7 @@ export interface IpcHandlerDeps {
 export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   const {
     getMainWindow,
-    getDevAuthCallbackUrl,
+    getAuthLoopbackUrl,
     createTray,
     startEventSubscription,
     startQuarantineMonitorIfEnabled,
@@ -125,7 +125,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   })
 
   // Auth: expose dev localhost callback URL (null in production)
-  ipcMain.handle('auth:getDevCallbackUrl', () => getDevAuthCallbackUrl())
+  ipcMain.handle('auth:getLoopbackUrl', () => getAuthLoopbackUrl())
 
   // Config: active env name (for renderer to sync its localStorage/Supabase creds)
   ipcMain.handle('config:getActiveEnv', () => getActiveEnv())

@@ -31,6 +31,18 @@ asarUnpack:
 win:
   executableName: Edison Watch
   icon: resources/icon.ico
+  # Bundled Python for the session hooks, staged by scripts/stage-python.ps1.
+  # e.g. bin/python/x64 -> resources/python/python.exe
+  extraResources:
+    - from: bin/python/${arch}
+      to: python
+    # stdiod daemon (staged by scripts/build-stdiod-win.sh) -> resources/bin/.
+    - from: bin/stdiod/${arch}/edison-stdiod.exe
+      to: bin/edison-stdiod.exe
+    # Node (npx) + uv (uvx) for the daemon's child MCP servers, staged by
+    # scripts/stage-runtimes.ps1 -> resources/runtimes/{node,uv}.
+    - from: bin/runtimes/${arch}
+      to: runtimes
   target:
     - target: nsis
       arch:

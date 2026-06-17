@@ -12,6 +12,9 @@ import type { UpdateSettings } from '../main/infra/updateSettings'
  * Extend this as new IPC handlers are added to the main process.
  */
 const api = {
+  /** Host platform, e.g. 'win32' | 'darwin' | 'linux'. */
+  platform: process.platform as NodeJS.Platform,
+
   /** Setup wizard lifecycle */
   setup: {
     getData: (): Promise<{ completed?: boolean; [key: string]: unknown }> =>
@@ -39,7 +42,11 @@ const api = {
       ipcRenderer.on('auth:callback', handler)
       return () => ipcRenderer.removeListener('auth:callback', handler)
     },
-    getDevCallbackUrl: (): Promise<string | null> => ipcRenderer.invoke('auth:getDevCallbackUrl')
+    getLoopbackUrl: (): Promise<string | null> => ipcRenderer.invoke('auth:getLoopbackUrl'),
+    /** Pull a callback that main buffered before this renderer's listener was live. */
+    consumePending: (): Promise<string | null> => ipcRenderer.invoke('auth:consumePending'),
+    /** Drop any buffered callback in main so a cancelled flow can't be replayed. */
+    clearPending: (): Promise<void> => ipcRenderer.invoke('auth:clearPending')
   },
 
   /** Server health */
@@ -190,7 +197,9 @@ const api = {
       ipcRenderer.invoke('menu:resizeWindow', width, height),
     getVersion: (): Promise<string> => ipcRenderer.invoke('menu:getVersion'),
     getMcpConfig: (): Promise<string | null> => ipcRenderer.invoke('menu:getMcpConfig'),
-    getMcpUrl: (): Promise<string | null> => ipcRenderer.invoke('menu:getMcpUrl')
+    getMcpUrl: (): Promise<string | null> => ipcRenderer.invoke('menu:getMcpUrl'),
+    /** Pop up the native app menu (Windows body right-click entry point). */
+    popupApp: (): Promise<void> => ipcRenderer.invoke('menu:popupApp')
   },
 
   /** Auto-updater: state, manual actions, settings, and live status events. */

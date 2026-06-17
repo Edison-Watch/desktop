@@ -3,6 +3,8 @@
 
 import { clipboard, Notification, shell } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 
 import { getCachedStdiodStatus } from './trayCache'
 
@@ -36,7 +38,10 @@ export function buildStdiodMenuItems(
       {
         label: 'Open logs folder',
         click: () => {
-          const logDir = `${process.env.HOME}/Library/Logs/edison-stdiod`
+          const logDir =
+            process.platform === 'win32'
+              ? join(homedir(), '.local', 'state', 'edison-stdiod')
+              : join(homedir(), 'Library', 'Logs', 'edison-stdiod')
           shell.openPath(logDir).catch(() => {})
         }
       }

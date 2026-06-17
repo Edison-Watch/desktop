@@ -15,7 +15,7 @@ import '../src/renderer/src/assets/main.css';
   },
   auth: {
     onCallback: (_cb: (url: string) => void) => () => {},
-    getDevCallbackUrl: async () => '',
+    getLoopbackUrl: async () => '',
   },
   config: {
     getEffectiveBaseUrls: async () => ({ mcpBaseUrl: '', apiBaseUrl: '' }),

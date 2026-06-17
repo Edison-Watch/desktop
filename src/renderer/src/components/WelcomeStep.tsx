@@ -196,18 +196,29 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
 
   const handleSsoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("[WelcomeStep] handleSsoSubmit fired");
     if (!email) return;
     await auth.signInWithSSO(email);
   };
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("[WelcomeStep] handleEmailSubmit fired");
     if (!email) return;
     if (auth.ssoOnly) {
       await auth.signInWithSSO(email);
     } else {
       await auth.signInWithPassword(email, password);
     }
+  };
+
+  // Cancel lives in the same form slot as the "Continue with SSO" submit button.
+  // Cancelling flips pendingSso, so React re-renders mid-click and morphs this
+  // very <button> into type="submit", which then submits the form and re-fires
+  // the SSO redirect. preventDefault stops that stray submission.
+  const handleCancel = (e: React.MouseEvent) => {
+    e.preventDefault();
+    auth.cancelPendingAuth();
   };
 
   const backToSelect = () => {
@@ -359,7 +370,7 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
                   )}
                 </div>
                 {pendingSso ? (
-                  <Button type="button" variant="danger" onClick={auth.cancelPendingAuth} className="w-full">
+                  <Button type="button" variant="danger" onClick={handleCancel} className="w-full">
                     Cancel sign-in
                   </Button>
                 ) : (
@@ -427,7 +438,7 @@ export default function WelcomeStep({ auth, onNext }: WelcomeStepProps): React.R
             {errorBox}
 
             {pendingSso ? (
-              <Button type="button" variant="danger" onClick={auth.cancelPendingAuth} className="w-full mt-1">
+              <Button type="button" variant="danger" onClick={handleCancel} className="w-full mt-1">
                 Cancel sign-in
               </Button>
             ) : (

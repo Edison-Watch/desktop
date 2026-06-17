@@ -39,6 +39,21 @@ export default function App(): React.ReactNode {
     })();
   }, []);
 
+  // Windows: right-click in the app body opens the app menu (skip editable
+  // fields/selections); the title bar keeps the OS system menu.
+  useEffect(() => {
+    if (window.api.platform !== "win32") return;
+    const onContextMenu = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || el.closest("input, textarea"))) return;
+      if ((window.getSelection()?.toString().length ?? 0) > 0) return;
+      e.preventDefault();
+      void window.api.menu.popupApp();
+    };
+    window.addEventListener("contextmenu", onContextMenu);
+    return () => window.removeEventListener("contextmenu", onContextMenu);
+  }, []);
+
   const handleWelcomeNext = () => {
     if (auth.signedIn) goToStep(1);
   };

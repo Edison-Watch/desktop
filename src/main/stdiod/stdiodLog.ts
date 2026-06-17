@@ -20,7 +20,13 @@ import path from 'node:path'
 // folder holds the full picture: what the controller asked for (client.log)
 // and what the daemon did about it (daemon.log).
 export function getClientLogPath(): string {
-  return path.join(os.homedir(), 'Library', 'Logs', 'edison-stdiod', 'client.log')
+  // Mirrors the daemon log dir (controller.getLogPath): ~/Library/Logs on macOS,
+  // ~/.local/state on Windows (no XDG state dir there).
+  const dir =
+    process.platform === 'win32'
+      ? path.join(os.homedir(), '.local', 'state', 'edison-stdiod')
+      : path.join(os.homedir(), 'Library', 'Logs', 'edison-stdiod')
+  return path.join(dir, 'client.log')
 }
 
 export function stdiodLog(msg: string): void {
