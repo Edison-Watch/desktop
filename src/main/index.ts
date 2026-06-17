@@ -8,6 +8,7 @@ import {
   Menu,
   Notification,
   nativeImage,
+  nativeTheme,
   clipboard,
   dialog
 } from 'electron'
@@ -125,6 +126,10 @@ import { handleStdiodReset } from './stdiod/trayReset'
 import appIconPath from '../../resources/icon.png?asset'
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import trayIconPath from '../../resources/icon_tray.png?asset'
+// Multi-resolution .ico for the Windows taskbar/window icon (PNG renders blurry
+// at small sizes and isn't picked up unpackaged). macOS/Linux use the exe/.icns.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import winIconPath from '../../resources/icon.ico?asset'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -143,6 +148,8 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
   const userDisplayName = setupData.userEmail || 'Not signed in'
 
   const items: MenuItemConstructorOptions[] = [
+    { label: 'Open Edison Watch', click: () => showMainWindow() },
+    { type: 'separator' },
     { label: 'Enabled', type: 'checkbox', checked: true, click: () => {} },
     { label: getIsServerOnline() ? 'Backend: Connected' : 'Backend: Disconnected', enabled: false },
     {
@@ -356,7 +363,9 @@ function createTray(): void {
     tray.popUpContextMenu(buildTrayMenu())
   }
 
-  tray.on('click', showMenu)
+  // Windows/Linux convention: left-click opens the app, right-click shows the menu.
+  // macOS menu-bar convention: any click shows the menu (the dock icon reopens the window).
+  tray.on('click', process.platform === 'darwin' ? showMenu : showMainWindow)
   tray.on('right-click', showMenu)
 
   startServerStatusChecks(updateTrayMenu)
@@ -478,6 +487,9 @@ async function handleClearDataAndRestart(): Promise<void> {
 
 function createWindow(): void {
   slog('createWindow: start')
+  // The renderer is dark-mode only; force the OS chrome to match so the Windows
+  // title bar (and any native widgets) render dark instead of clashing white.
+  nativeTheme.themeSource = 'dark'
   const mainWindowState = windowStateKeeper({
     defaultWidth: 461,
     defaultHeight: 605
@@ -492,6 +504,9 @@ function createWindow(): void {
     minHeight: 500,
     show: false,
     autoHideMenuBar: true,
+    // Match the renderer's dark background to avoid a white flash before paint.
+    backgroundColor: '#1C1C1C',
+    ...(process.platform === 'win32' ? { icon: winIconPath } : {}),
     ...(process.platform === 'linux' ? { icon: join(__dirname, '../../build/icon.png') } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -549,9 +564,26 @@ function createWindow(): void {
   }
 }
 
+// Bring the GUI back to the foreground. Closing the window destroys it (mainWindow
+// = null) but the app keeps running in the tray, so recreate it when it's gone -
+// otherwise there is no way to reopen on Windows/Linux (macOS uses 'activate').
+function showMainWindow(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  } else {
+    createWindow()
+  }
+}
+
 // Single-instance lock + edison-watch:// deep-link callback wiring (see deepLinkAuth).
 // Returns false for a doomed second instance - whenReady early-returns on it below.
-const gotSingleInstanceLock = initDeepLinkAuth({ getMainWindow: () => mainWindow, log: slog })
+const gotSingleInstanceLock = initDeepLinkAuth({
+  getMainWindow: () => mainWindow,
+  showMainWindow,
+  log: slog
+})
 
 // ── App lifecycle ───────────────────────────────────────────────────
 

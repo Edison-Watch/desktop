@@ -42,9 +42,11 @@ export function flushBufferedAuthCallback(): void {
  */
 export function initDeepLinkAuth(deps: {
   getMainWindow: () => BrowserWindow | null
+  showMainWindow: () => void
   log: (msg: string) => void
 }): boolean {
   getMainWindow = deps.getMainWindow
+  const showMainWindow = deps.showMainWindow
   log = deps.log
 
   const gotLock = app.requestSingleInstanceLock()
@@ -89,11 +91,9 @@ export function initDeepLinkAuth(deps: {
   })
 
   app.on('second-instance', (_event, commandLine) => {
-    const win = getMainWindow()
-    if (win) {
-      if (win.isMinimized()) win.restore()
-      win.focus()
-    }
+    // Relaunching while the app lives in the tray: reopen the GUI, recreating the
+    // window if it was destroyed on close (showMainWindow handles both cases).
+    showMainWindow()
     const url = commandLine.find((arg) => arg.startsWith('edison-watch://'))
     if (url) deliverAuthCallback(url, 'second-instance')
     else log('second-instance fired with no edison-watch:// url in argv')
