@@ -50,7 +50,7 @@ interface SpawnResult {
 async function runStdiod(args: string[]): Promise<SpawnResult> {
   const binary = getStdiodBinaryPath()
   return new Promise<SpawnResult>((resolve, reject) => {
-    const child = spawn(binary, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(binary, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
     let stdout = ''
     let stderr = ''
     child.stdout.on('data', (chunk: Buffer) => {
@@ -125,7 +125,8 @@ export async function isLaunchAgentLoaded(): Promise<boolean> {
     if (process.platform === 'win32') {
       // `schtasks /query /tn <name>` exits 0 if the task exists.
       const child = spawn('schtasks', ['/query', '/tn', WIN_TASK_NAME], {
-        stdio: ['ignore', 'ignore', 'ignore']
+        stdio: ['ignore', 'ignore', 'ignore'],
+        windowsHide: true
       })
       child.on('error', () => resolve(false))
       child.on('close', (code) => resolve(code === 0))
