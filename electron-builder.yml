@@ -51,6 +51,7 @@ win:
 nsis:
   oneClick: false
   perMachine: false
+  allowElevation: false
   allowToChangeInstallationDirectory: true
   artifactName: EdisonWatch-${version}-${arch}-setup.${ext}
   shortcutName: Edison Watch

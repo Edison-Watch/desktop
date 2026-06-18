@@ -1,3 +1,7 @@
+!macro customInstallMode
+  StrCpy $isForceCurrentInstall "1"
+!macroend
+
 ; Edison Watch uninstall hook: on an interactive uninstall, offer to clear app data
 ; (always clears the temp log). No-op during silent runs so auto-update keeps data.
 !macro customUnInstall

@@ -11,7 +11,7 @@
 // `edison-stdiod install`) is what actually keeps the daemon running -
 // this controller only orchestrates the one-shot CLI subcommands.
 
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { promises as fs, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -27,8 +27,29 @@ import type { StdiodErrorCode, StdiodLoginInput, StdiodResult, StdiodStatus } fr
 // Hardcoded so we can ask launchctl directly without spawning the daemon
 // binary just to read a string.
 const LAUNCHD_LABEL = 'watch.edison.stdiod'
-// Scheduled Task name matches platform/windows.rs TASK_NAME.
-const WIN_TASK_NAME = 'Edison Watch stdiod'
+// Scheduled Task name matches platform/windows.rs task_name(): the base name
+// plus the current user's SID, so accounts on a shared machine don't collide.
+// Derived once (the user is fixed for the process) and cached; falls back to the
+// bare base name if the SID can't be resolved - matching the daemon's fallback.
+const WIN_TASK_BASENAME = 'Edison Watch stdiod'
+let cachedWinTaskName: string | null = null
+
+function winTaskName(): string {
+  if (cachedWinTaskName) return cachedWinTaskName
+  let name = WIN_TASK_BASENAME
+  try {
+    // `whoami /user /fo csv /nh` -> "DOMAIN\user","S-1-5-21-..."; take the SID.
+    const out = execFileSync('whoami', ['/user', '/fo', 'csv', '/nh'], {
+      windowsHide: true
+    }).toString()
+    const sid = out.trim().split(',').pop()?.trim().replace(/^"|"$/g, '')
+    if (sid && sid.startsWith('S-')) name = `${WIN_TASK_BASENAME} ${sid}`
+  } catch {
+    // keep the bare base name
+  }
+  cachedWinTaskName = name
+  return name
+}
 
 let cachedInstalled: { value: boolean; at: number } | null = null
 const INSTALLED_CACHE_TTL_MS = 5_000
@@ -124,7 +145,7 @@ export async function isLaunchAgentLoaded(): Promise<boolean> {
   const value = await new Promise<boolean>((resolve) => {
     if (process.platform === 'win32') {
       // `schtasks /query /tn <name>` exits 0 if the task exists.
-      const child = spawn('schtasks', ['/query', '/tn', WIN_TASK_NAME], {
+      const child = spawn('schtasks', ['/query', '/tn', winTaskName()], {
         stdio: ['ignore', 'ignore', 'ignore'],
         windowsHide: true
       })
