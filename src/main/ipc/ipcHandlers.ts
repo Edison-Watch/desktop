@@ -63,7 +63,7 @@ import {
   removeAccount,
   getCredentialsForEnv
 } from '../infra/setupConfig'
-import { handleApproval, pendingApprovals } from './approvalsHandler'
+import { handleApproval, pendingApprovals, resizeApprovalWindow } from './approvalsHandler'
 
 export interface IpcHandlerDeps {
   getMainWindow: () => BrowserWindow | null
@@ -314,6 +314,11 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
 
   ipcMain.handle('approval:deny', async (_event, approvalId: string) => {
     await handleApproval(approvalId, 'deny')
+  })
+
+  // Renderer reports its content height so the window can fit the approval list.
+  ipcMain.on('approval:resize', (_event, contentHeight: number) => {
+    resizeApprovalWindow(contentHeight)
   })
 
   // Server health check

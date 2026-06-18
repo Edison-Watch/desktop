@@ -39,6 +39,10 @@ function escapeHtml(s: string | null | undefined): string {
     .replace(/'/g, '&#39;')
 }
 
+// Auto-deny window the countdown bar runs against. Must match APPROVAL_EXPIRY_MS
+// in ipc/approvalsHandler.ts (and the backend EDISON_APPROVAL_TIMEOUT_S default).
+const APPROVAL_TIMEOUT_MS = 30_000
+
 // The three trifecta legs, in display order, with their literal colors
 // (the dialog runs raw HTML without the dashboard's CSS color tokens).
 const RISK_LEG_DEFS: ReadonlyArray<readonly [keyof RiskLegs, string, string]> = [
@@ -105,6 +109,18 @@ function renderArgumentsHtml(argsPreview: string | undefined): string {
   )
 }
 
+/** Auto-deny countdown bar (mirrors renderCountdown in the embedded script). The
+ *  embedded updateCountdowns() ticks the seconds + bar width off data-timestamp. */
+function renderCountdownHtml(timestamp: number): string {
+  return (
+    `<div class="approval-expiry" data-timestamp="${escapeHtml(String(timestamp))}">` +
+    `<div class="approval-expiry-note">Auto-denies in ` +
+    `<span class="approval-expiry-secs"></span> if you don&#39;t respond.</div>` +
+    `<div class="approval-expiry-bar"><div class="approval-expiry-bar-fill"></div></div>` +
+    `</div>`
+  )
+}
+
 /** Server-rendered markup for one approval card. */
 function renderApprovalItem(a: PendingApproval): string {
   const toolName = a.name.replace(/^agent_/, '').replace(/_/g, ' ')
@@ -127,7 +143,7 @@ function renderApprovalItem(a: PendingApproval): string {
             <button class="button button-deny" data-command="deny">Deny - block</button>
             <button class="button button-approve" data-command="approve">Approve once</button>
           </div>
-          <div class="approval-expiry-note">Auto-denies if you don&#39;t respond.</div>
+          ${renderCountdownHtml(a.timestamp)}
         </div>`
 }
 
@@ -323,10 +339,29 @@ const APPROVAL_DIALOG_CSS = `
   margin-bottom: 10px;
 }
 
+.approval-expiry {
+  margin-top: 10px;
+}
+
 .approval-expiry-note {
   font-size: 10px;
   color: var(--text-muted);
-  margin-top: 8px;
+  margin-bottom: 5px;
+}
+
+.approval-expiry-bar {
+  height: 2px;
+  width: 100%;
+  background: var(--border);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.approval-expiry-bar-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--accent);
+  transition: width 0.2s linear;
 }
 
 .approval-actions {
@@ -365,11 +400,16 @@ const APPROVAL_DIALOG_CSS = `
 // (via the approval:added IPC) look identical to the initial render.
 const APPROVAL_DIALOG_SCRIPT = `
 const{ipcRenderer}=require('electron');
+function requestResize(){try{ipcRenderer.send('approval:resize',document.documentElement.scrollHeight)}catch(e){}}
 function updateHeaderCount(){const r=document.querySelectorAll('.approval-item').length;const h=document.querySelector('h1');if(h)h.innerHTML='Pending Approvals <span class="count">('+r+')</span>'}
 function formatTimestamp(ts){const d=new Date(ts),now=new Date(),diff=Math.floor((now-d)/1000);const ds=d.toLocaleDateString('en-US',{month:'short',day:'numeric'});const ts2=d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});let rel='';if(diff<60)rel=diff+' second'+(diff!==1?'s':'')+' ago';else if(diff<3600){const m=Math.floor(diff/60);rel=m+' minute'+(m!==1?'s':'')+' ago'}else if(diff<86400){const h=Math.floor(diff/3600);rel=h+' hour'+(h!==1?'s':'')+' ago'}else{const dy=Math.floor(diff/86400);rel=dy+' day'+(dy!==1?'s':'')+' ago'}return ds+', '+ts2+' ('+rel+')'}
 function updateTimestamps(){document.querySelectorAll('.approval-timestamp').forEach(el=>{const t=parseInt(el.getAttribute('data-timestamp'));if(t)el.textContent=formatTimestamp(t)})}
 setInterval(updateTimestamps,1000);updateTimestamps();
-function removeApprovalItem(id){const item=document.querySelector('[data-approval-id="'+CSS.escape(id)+'"]');if(!item)return;item.style.transition='all .4s cubic-bezier(.4,0,.2,1)';item.style.transform='translateX(-100%)';item.style.opacity='0';item.style.maxHeight=item.offsetHeight+'px';setTimeout(()=>{item.style.maxHeight='0';item.style.marginBottom='0';item.style.paddingTop='0';item.style.paddingBottom='0';item.style.borderWidth='0'},100);setTimeout(()=>{item.remove();updateHeaderCount();if(document.querySelectorAll('.approval-item').length===0)setTimeout(()=>window.close(),300)},400)}
+var APPROVAL_TIMEOUT_MS=${APPROVAL_TIMEOUT_MS};
+function renderCountdown(ts){return '<div class="approval-expiry" data-timestamp="'+escapeHtml(ts)+'"><div class="approval-expiry-note">Auto-denies in <span class="approval-expiry-secs"></span> if you don&#39;t respond.</div><div class="approval-expiry-bar"><div class="approval-expiry-bar-fill"></div></div></div>'}
+function updateCountdowns(){const now=Date.now();document.querySelectorAll('.approval-expiry').forEach(el=>{const t=parseInt(el.getAttribute('data-timestamp'));if(!t)return;const left=Math.max(0,APPROVAL_TIMEOUT_MS-(now-t));const secs=Math.ceil(left/1000);const sEl=el.querySelector('.approval-expiry-secs');if(sEl)sEl.textContent=secs+'s';const fill=el.querySelector('.approval-expiry-bar-fill');if(fill)fill.style.width=(left/APPROVAL_TIMEOUT_MS*100)+'%'})}
+setInterval(updateCountdowns,200);updateCountdowns();requestResize();
+function removeApprovalItem(id){const item=document.querySelector('[data-approval-id="'+CSS.escape(id)+'"]');if(!item)return;item.style.transition='all .4s cubic-bezier(.4,0,.2,1)';item.style.transform='translateX(-100%)';item.style.opacity='0';item.style.maxHeight=item.offsetHeight+'px';setTimeout(()=>{item.style.maxHeight='0';item.style.marginBottom='0';item.style.paddingTop='0';item.style.paddingBottom='0';item.style.borderWidth='0'},100);setTimeout(()=>{item.remove();updateHeaderCount();requestResize();if(document.querySelectorAll('.approval-item').length===0)setTimeout(()=>window.close(),300)},400)}
 document.addEventListener('click',e=>{const btn=e.target.closest('button');if(!btn)return;const item=btn.closest('.approval-item');if(!item)return;const aId=item.dataset.approvalId,cmd=btn.dataset.command;if(aId&&cmd){item.querySelectorAll('button').forEach(b=>{b.disabled=true;b.style.opacity='0.5'});const ch='approval:'+cmd;ipcRenderer.invoke(ch,aId).catch(err=>{alert('Failed: '+(err.message||String(err)));item.querySelectorAll('button').forEach(b=>{b.disabled=false;b.style.opacity='1'})})}});
 function escapeHtml(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 var RISK_LEGS=[['private','Read private data','#f59e0b'],['untrusted','Saw untrusted content','#3b82f6'],['external','Can send data out','#ef4444']];
@@ -377,7 +417,7 @@ var RISK_LEVELS={low:['Low risk','#10b981'],medium:['Medium risk','#f59e0b'],hig
 function riskBadge(l){var d=l&&RISK_LEVELS[l];if(!d)return'';return '<span class="risk-badge" style="color:'+d[1]+';background:'+d[1]+'29"><span class="risk-badge-dot" style="background:'+d[1]+'"></span>'+escapeHtml(d[0])+'</span>'}
 function renderArgs(p){if(!p)return'';return '<details class="approval-args"><summary>View tool call details</summary><pre class="approval-args-pre">'+escapeHtml(p)+'</pre></details>'}
 function renderRisk(risk){if(!risk)return'';var rows='';if(risk.legs){for(var i=0;i<RISK_LEGS.length;i++){var k=RISK_LEGS[i][0],lbl=RISK_LEGS[i][1],col=RISK_LEGS[i][2];var src=risk.legs[k];if(src===undefined)continue;var s=src?'<span class="risk-leg-source">· '+escapeHtml(src)+'</span>':'';rows+='<li class="risk-leg"><span class="risk-dot" style="background:'+col+'"></span><span class="risk-leg-label">'+escapeHtml(lbl)+'</span>'+s+'</li>'}}var legs=rows?'<ul class="risk-legs">'+rows+'</ul>':'';var bdg=riskBadge(risk.risk_level);var head=(risk.headline||bdg)?'<div class="risk-headline">'+(risk.headline?escapeHtml(risk.headline):'')+bdg+'</div>':'';var ai=risk.source==='llm'?'<span class="risk-ai">✦ AI</span>':'';var sum=risk.summary?'<p class="risk-summary">'+escapeHtml(risk.summary)+ai+'</p>':'';return '<div class="risk-block">'+head+legs+sum+'</div>'}
-function addApprovalItem(a){const c=document.getElementById('approvals');if(!c)return;const tn=(a.name||'').replace(/^agent_/,'').replace(/_/g,' ');const rn=tn.split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');const hdr=(a.risk&&a.risk.title)?a.risk.title:rn;const icon=a.agentIconSvg||'';const item=document.createElement('div');item.className='approval-item';item.setAttribute('data-approval-id',a.id);item.style.opacity='0';item.style.transform='translateY(-20px)';item.innerHTML='<div class="approval-header"><div class="approval-title">'+icon+'<strong>'+escapeHtml(hdr)+'</strong></div><span class="approval-kind">'+escapeHtml(a.kind)+'</span></div><div class="approval-risk">'+renderRisk(a.risk)+'</div>'+renderArgs(a.argumentsPreview)+'<div class="approval-timestamp" data-timestamp="'+escapeHtml(a.timestamp)+'"></div><div class="approval-actions"><button class="button button-deny" data-command="deny">Deny - block</button><button class="button button-approve" data-command="approve">Approve once</button></div><div class="approval-expiry-note">Auto-denies if you don&#39;t respond.</div>';c.appendChild(item);setTimeout(()=>{item.style.transition='all .3s cubic-bezier(.4,0,.2,1)';item.style.opacity='1';item.style.transform='translateY(0)'},10);const tel=item.querySelector('.approval-timestamp');if(tel)tel.textContent=formatTimestamp(a.timestamp);updateHeaderCount()}
+function addApprovalItem(a){const c=document.getElementById('approvals');if(!c)return;const tn=(a.name||'').replace(/^agent_/,'').replace(/_/g,' ');const rn=tn.split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');const hdr=(a.risk&&a.risk.title)?a.risk.title:rn;const icon=a.agentIconSvg||'';const item=document.createElement('div');item.className='approval-item';item.setAttribute('data-approval-id',a.id);item.style.opacity='0';item.style.transform='translateY(-20px)';item.innerHTML='<div class="approval-header"><div class="approval-title">'+icon+'<strong>'+escapeHtml(hdr)+'</strong></div><span class="approval-kind">'+escapeHtml(a.kind)+'</span></div><div class="approval-risk">'+renderRisk(a.risk)+'</div>'+renderArgs(a.argumentsPreview)+'<div class="approval-timestamp" data-timestamp="'+escapeHtml(a.timestamp)+'"></div><div class="approval-actions"><button class="button button-deny" data-command="deny">Deny - block</button><button class="button button-approve" data-command="approve">Approve once</button></div>'+renderCountdown(a.timestamp)+'';c.appendChild(item);setTimeout(()=>{item.style.transition='all .3s cubic-bezier(.4,0,.2,1)';item.style.opacity='1';item.style.transform='translateY(0)'},10);const tel=item.querySelector('.approval-timestamp');if(tel)tel.textContent=formatTimestamp(a.timestamp);updateCountdowns();updateHeaderCount();requestResize()}
 ipcRenderer.on('approval:removed',(_e,id)=>removeApprovalItem(id));
 ipcRenderer.on('approval:added',(_e,a)=>addApprovalItem(a));
 document.getElementById('approve-all')?.addEventListener('click',()=>{document.querySelectorAll('.approval-item').forEach(item=>{const b=item.querySelector('.button-approve');if(b&&!b.disabled)b.click()})});

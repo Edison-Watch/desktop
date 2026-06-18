@@ -161,7 +161,7 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
     {
       label: pendingCount > 0 ? `Pending Approvals (${pendingCount})` : 'No Pending Approvals',
       enabled: pendingCount > 0,
-      click: pendingCount > 0 ? () => showPendingApprovalsDialog(mainWindow) : undefined
+      click: pendingCount > 0 ? () => showPendingApprovalsDialog() : undefined
     },
     {
       label: 'Register MCP Servers',

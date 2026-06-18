@@ -27,8 +27,18 @@ let reconnectAttempts = 0
 const MAX_RECONNECT_ATTEMPTS = 10
 let desktopLoginRegistered = false
 const RECONNECT_DELAY_MS = 1000
-const APPROVAL_EXPIRY_MS = 2 * 60 * 1000 // 2 minutes - matches backend pending cutoff
+// Backend auto-denies a pending approval after EDISON_APPROVAL_TIMEOUT_S (default
+// 30s); a later click would act on an already-denied request, so expire locally to
+// match. Keep in sync with APPROVAL_TIMEOUT_MS in dialogs/approvalDialogView.ts.
+const APPROVAL_EXPIRY_MS = 30_000
 let expiryTimer: ReturnType<typeof setInterval> | null = null
+
+// Approval window sizing. The window fits its rendered content (variable per
+// approval: risk block, args inspector, countdown bar) and only starts scrolling
+// past MAX. The renderer reports its content height via the 'approval:resize' IPC.
+const APPROVAL_WINDOW_WIDTH = 500
+const APPROVAL_WINDOW_MIN_HEIGHT = 180
+const APPROVAL_WINDOW_MAX_HEIGHT = 680
 
 // SSE connection status - exposed for tray menu
 let sseConnected = false
@@ -327,7 +337,7 @@ function handleTrifectaEvent(data: TrifectaEventData): void {
     }
 
     notification.on('click', () => {
-      showPendingApprovalsDialog(_getMainWindow())
+      showPendingApprovalsDialog()
     })
 
     console.log(`[SSE] Showing notification for: ${readableName}`)
@@ -340,7 +350,7 @@ function handleTrifectaEvent(data: TrifectaEventData): void {
   }
 
   // Always pop the approval dialog as a reliable fallback - macOS can silently suppress notifications
-  showPendingApprovalsDialog(_getMainWindow())
+  showPendingApprovalsDialog()
 }
 
 function handleRemoteApprovalDismiss(data: {
@@ -506,7 +516,21 @@ export async function handleApproval(
 
 // ── Pending approvals dialog ────────────────────────────────────────
 
-export function showPendingApprovalsDialog(mainWindow: BrowserWindow | null): void {
+/** Resize the approval window to fit its rendered content, clamped to
+ *  [MIN, MAX]. Beyond MAX the document scrolls. Called from the renderer's
+ *  'approval:resize' IPC on load and whenever items are added/removed. */
+export function resizeApprovalWindow(contentHeight: number): void {
+  const w = _getApprovalWindow()
+  if (!isAlive(w) || !Number.isFinite(contentHeight)) return
+  const clamped = Math.round(
+    Math.max(APPROVAL_WINDOW_MIN_HEIGHT, Math.min(APPROVAL_WINDOW_MAX_HEIGHT, contentHeight))
+  )
+  const [curW] = w.getContentSize()
+  // Anchor the top-left so growing the list doesn't jump the window around.
+  w.setContentSize(curW || APPROVAL_WINDOW_WIDTH, clamped, false)
+}
+
+export function showPendingApprovalsDialog(): void {
   const approvalWindow = _getApprovalWindow()
   const approvals = Array.from(pendingApprovals.values())
   if (approvals.length === 0) return
@@ -517,14 +541,20 @@ export function showPendingApprovalsDialog(mainWindow: BrowserWindow | null): vo
   }
 
   const newApprovalWindow = new BrowserWindow({
-    width: 500,
-    height: Math.min(600, 200 + approvals.length * 80),
+    width: APPROVAL_WINDOW_WIDTH,
+    // Provisional; corrected to the true content height before the window is
+    // shown (see did-finish-load below) and again live via 'approval:resize'.
+    height: APPROVAL_WINDOW_MIN_HEIGHT,
+    minHeight: APPROVAL_WINDOW_MIN_HEIGHT,
     show: false,
     autoHideMenuBar: true,
     resizable: true,
     minimizable: false,
     maximizable: false,
-    parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
+    // Intentionally NOT parented to the main window: a child window drags its
+    // parent to the front (and reveals it if hidden) when shown on macOS, so a
+    // trifecta notification would pop the whole client open. Standalone keeps
+    // only the approval dialog focused.
     modal: false,
     webPreferences: {
       sandbox: false,
@@ -537,7 +567,19 @@ export function showPendingApprovalsDialog(mainWindow: BrowserWindow | null): vo
   const html = buildApprovalDialogHtml(approvals)
 
   newApprovalWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
-  newApprovalWindow.once('ready-to-show', () => newApprovalWindow.show())
+  // Measure the real content height before first paint so the window opens at
+  // the right size instead of flashing the provisional one.
+  newApprovalWindow.webContents.once('did-finish-load', async () => {
+    try {
+      const h = await newApprovalWindow.webContents.executeJavaScript(
+        'document.documentElement.scrollHeight'
+      )
+      resizeApprovalWindow(typeof h === 'number' ? h : APPROVAL_WINDOW_MAX_HEIGHT)
+    } catch {
+      // Measurement is best-effort; fall back to the provisional size.
+    }
+    if (!newApprovalWindow.isDestroyed()) newApprovalWindow.show()
+  })
   newApprovalWindow.on('closed', () => {
     // Snapshot and clear pending approvals atomically before firing async
     // denials. This prevents a new SSE event from re-opening the window
