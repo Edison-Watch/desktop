@@ -347,6 +347,13 @@ function buildTrayMenu(): Menu {
 }
 
 function createTray(): void {
+  // Guard against duplicate trays: sign-out re-runs the wizard, which fires
+  // `setup:reached-final` and calls createTray() again. Without this check the
+  // previous Tray stays alive, leaving two Edison icons in the menu bar / system tray.
+  if (tray) {
+    updateTrayMenu()
+    return
+  }
   // macOS/Linux: use the dedicated tray icon (transparent, works with light+dark menu bars)
   // Windows: resize the main app icon (transparent icons look bad on Windows system tray)
   let trayIconToUse: string | Electron.NativeImage = trayIconPath
