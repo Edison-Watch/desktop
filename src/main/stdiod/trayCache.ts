@@ -25,6 +25,16 @@ export function getCachedStdiodStatus(): StdiodStatus {
   return cached
 }
 
+// Fingerprint of the status fields that actually affect the rendered menu.
+// `stateAgeMs` is deliberately excluded: it's a wall-clock age that changes
+// on every refresh, so including it would force a menu rebuild every tick and
+// defeat the change-gate below. Every other field reflects a real daemon
+// state change (connection, login, servers, error) worth re-rendering for.
+function statusFingerprint(s: StdiodStatus): string {
+  const { stateAgeMs: _ageMs, ...rest } = s
+  return JSON.stringify(rest)
+}
+
 export async function refreshStdiodStatusCache(): Promise<StdiodStatus> {
   try {
     cached = await getStatus()
@@ -39,7 +49,14 @@ export function startStdiodStatusCacheRefresh(intervalMs: number, onUpdate?: () 
   if (refreshTimer) return
   // Kick an immediate refresh so the cache isn't stale at first popup.
   refreshStdiodStatusCache().then(() => onUpdate?.())
-  refreshTimer = setInterval(() => {
-    refreshStdiodStatusCache().then(() => onUpdate?.())
+  // Change-gate the periodic refresh: only rebuild menus when the status
+  // actually changed. `onUpdate` (updateTrayMenu) rebuilds the dock + app
+  // menus from scratch, allocating native Menu/MenuItem trees that Electron
+  // releases slowly; firing it unconditionally every `intervalMs` while idle
+  // (status constant) accumulated those native objects into a large RAM leak.
+  refreshTimer = setInterval(async () => {
+    const before = statusFingerprint(cached)
+    await refreshStdiodStatusCache()
+    if (onUpdate && statusFingerprint(cached) !== before) onUpdate()
   }, intervalMs)
 }
