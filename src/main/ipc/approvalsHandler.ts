@@ -344,7 +344,7 @@ function handleTrifectaEvent(data: TrifectaEventData): void {
     notification.show()
     // Bounce dock icon so the user notices even if macOS suppresses the notification banner
     if (!isAlive(mainWindow) || !mainWindow.isFocused()) app.dock?.bounce('informational')
-    setTimeout(() => notification.close(), 60000)
+    setTimeout(() => notification.close(), 5000)
   } catch (err) {
     console.error('Failed to show notification:', err)
   }
