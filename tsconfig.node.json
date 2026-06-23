@@ -4,8 +4,8 @@
     "src/main/**/*",
     "src/shared/**/*",
     "src/preload/**/*",
-    "../packages/shared/src/config/**/*",
-    "../packages/shared/src/agent-registry/**/*"
+    "shared/src/config/**/*",
+    "shared/src/agent-registry/**/*"
   ],
   "compilerOptions": {
     "composite": true,
@@ -16,7 +16,7 @@
     "noImplicitReturns": true,
     "types": ["electron-vite/node"],
     "paths": {
-      "@edison/shared/*": ["../packages/shared/src/*"]
+      "@edison/shared/*": ["shared/src/*"]
     }
   }
 }

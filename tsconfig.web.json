@@ -18,8 +18,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/renderer/src/*"],
-      "@edison/shared": ["../packages/shared/src/index.ts"],
-      "@edison/shared/*": ["../packages/shared/src/*/index.ts"]
+      "@edison/shared": ["shared/src/index.ts"],
+      "@edison/shared/*": ["shared/src/*/index.ts"]
     }
   }
 }

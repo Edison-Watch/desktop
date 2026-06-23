@@ -40,7 +40,7 @@
     "smol-toml": "^1.6.1"
   },
   "devDependencies": {
-    "@edison/shared": "*",
+    "@edison/shared": "file:shared",
     "@electron-toolkit/tsconfig": "^1.0.1",
     "@playwright/test": "^1.58.2",
     "@storybook/addon-a11y": "^10.2.14",

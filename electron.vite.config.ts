@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => {
       },
       resolve: {
         alias: {
-          "@edison/shared": resolve(projectRoot, "packages/shared/src"),
+          "@edison/shared": resolve(projectRoot, "shared/src"),
         },
       },
     },
@@ -36,7 +36,7 @@ export default defineConfig(({ mode }) => {
       resolve: {
         alias: {
           "@": resolve(__dirname, "src/renderer/src"),
-          "@edison/shared": resolve(projectRoot, "packages/shared/src"),
+          "@edison/shared": resolve(projectRoot, "shared/src"),
         },
         dedupe: ["@supabase/supabase-js"],
       },
