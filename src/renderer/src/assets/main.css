@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "@edison/shared/theme/tokens.css";
+@import "@edison-watch/shared/theme/tokens.css";
 
 body {
   margin: 0;

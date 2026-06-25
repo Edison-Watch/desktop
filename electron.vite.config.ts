@@ -14,17 +14,12 @@ export default defineConfig(({ mode }) => {
 
   return {
     main: {
-      plugins: [externalizeDepsPlugin({ exclude: ["@edison/shared"] })],
+      plugins: [externalizeDepsPlugin({ exclude: ["@edison-watch/shared"] })],
       // Expose env vars to the main process at build time.
       define: {
         "import.meta.env.VITE_DEPLOY_ENV": JSON.stringify(env["VITE_DEPLOY_ENV"] ?? ""),
         "import.meta.env.VITE_API_BASE_URL": JSON.stringify(env["VITE_API_BASE_URL"] ?? ""),
         "import.meta.env.VITE_MCP_BASE_URL": JSON.stringify(env["VITE_MCP_BASE_URL"] ?? ""),
-      },
-      resolve: {
-        alias: {
-          "@edison/shared": resolve(projectRoot, "shared/src"),
-        },
       },
     },
     preload: {
@@ -36,7 +31,6 @@ export default defineConfig(({ mode }) => {
       resolve: {
         alias: {
           "@": resolve(__dirname, "src/renderer/src"),
-          "@edison/shared": resolve(projectRoot, "shared/src"),
         },
         dedupe: ["@supabase/supabase-js"],
       },

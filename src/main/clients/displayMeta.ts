@@ -1,7 +1,7 @@
 /**
  * Display metadata (name + brand color) for every supported client.
  *
- * Mirrors the entries in `@edison/shared/agent-registry`. Duplicated here so
+ * Mirrors the entries in `@edison-watch/shared/agent-registry`. Duplicated here so
  * main-process code can build ClientIntegration objects without dragging the
  * shared package into test module graphs (vitest can't resolve subpath
  * exports of an unbuilt package). Keep in sync with the shared registry.

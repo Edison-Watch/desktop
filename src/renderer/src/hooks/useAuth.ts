@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { supabase, fetchApiKey } from "@edison/shared/auth";
-import { getEnv, STORAGE_KEY } from "@edison/shared/config";
+import { supabase, fetchApiKey } from "@edison-watch/shared/auth";
+import { getEnv, STORAGE_KEY } from "@edison-watch/shared/config";
 
 // Sync active env from main process on startup - reload if it differs from localStorage
 // so Supabase is initialised with the correct credentials.

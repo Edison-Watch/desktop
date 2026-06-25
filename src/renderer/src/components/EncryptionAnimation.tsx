@@ -1,1 +1,1 @@
-export { EdisonMCPProxyAnimation as default } from "@edison/shared/animations";
+export { EdisonMCPProxyAnimation as default } from "@edison-watch/shared/animations";

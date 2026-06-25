@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { Button, Badge } from "@edison/shared/ui";
-import { supabase } from "@edison/shared/auth";
-import { clearCachedSecretKey } from "@edison/shared/crypto";
+import { Button, Badge } from "@edison-watch/shared/ui";
+import { supabase } from "@edison-watch/shared/auth";
+import { clearCachedSecretKey } from "@edison-watch/shared/crypto";
 import edisonIcon from "../assets/edison-icon.png";
 import ClientsView from "./ClientsView";
 import MyMcpsView from "./MyMcpsView";

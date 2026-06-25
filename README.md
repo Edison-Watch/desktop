@@ -55,15 +55,13 @@ AI clients on your machine ──▶ Edison Watch desktop (discover · quarantin
 
 ## Build from source
 
-You'll need [Node.js 22+](https://nodejs.org/) and npm. The app depends on the [`@edison/shared`](https://github.com/Edison-Watch/shared) package, wired in as a Git submodule, so clone recursively:
+You'll need [Node.js 22+](https://nodejs.org/) and npm. The app depends on [`@edison-watch/shared`](https://www.npmjs.com/package/@edison-watch/shared), published to npm, so a plain clone and install pulls everything in:
 
 ```sh
-git clone --recurse-submodules https://github.com/Edison-Watch/desktop.git
+git clone https://github.com/Edison-Watch/desktop.git
 cd desktop
-npm ci
+npm install
 ```
-
-(Already cloned without submodules? Run `git submodule update --init --recursive`.)
 
 Then:
 
@@ -85,13 +83,12 @@ src/preload/     Context-isolated bridge
 src/renderer/    React 19 UI (setup wizard, views, components)
 resources/       Icons, entitlements, bundled assets
 scripts/         Build/staging scripts (stdiod, Python, runtimes)
-shared/          @edison/shared submodule (UI, auth, config, crypto)
 ```
 
 ## Related repositories
 
 - [**Edison-Watch/stdiod**](https://github.com/Edison-Watch/stdiod) — the `edison-stdiod` tunnel daemon bundled with this app.
-- [**Edison-Watch/shared**](https://github.com/Edison-Watch/shared) — shared React components, design tokens, and client utilities (consumed here as a submodule).
+- [**Edison-Watch/shared**](https://github.com/Edison-Watch/shared) — shared React components, design tokens, and client utilities, consumed here as the [`@edison-watch/shared`](https://www.npmjs.com/package/@edison-watch/shared) npm package.
 
 ## Security
 

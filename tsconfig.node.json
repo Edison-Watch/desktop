@@ -3,9 +3,7 @@
   "include": [
     "src/main/**/*",
     "src/shared/**/*",
-    "src/preload/**/*",
-    "shared/src/config/**/*",
-    "shared/src/agent-registry/**/*"
+    "src/preload/**/*"
   ],
   "compilerOptions": {
     "composite": true,
@@ -14,9 +12,8 @@
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
-    "types": ["electron-vite/node"],
-    "paths": {
-      "@edison/shared/*": ["shared/src/*"]
-    }
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["electron-vite/node"]
   }
 }

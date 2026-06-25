@@ -1,4 +1,4 @@
-import { AGENT_REGISTRY, type AgentId } from '@edison/shared/agent-registry'
+import { AGENT_REGISTRY, type AgentId } from '@edison-watch/shared/agent-registry'
 import type { McpClientId } from '../discovery/mcpDiscovery'
 
 /** Escape HTML special characters to prevent XSS injection. */

@@ -1,7 +1,7 @@
 /**
  * App logos for MCP client discovery.
  *
- * Icon data sourced from @edison/shared/agent-registry (simple-icons, MIT license).
+ * Icon data sourced from @edison-watch/shared/agent-registry (simple-icons, MIT license).
  * Claude Cowork and VS Code use local PNG assets for best rendering quality in the
  * Electron context (VS Code's SVG path exists in the registry but the PNG looks
  * better at the 32 px display size used here).
@@ -9,7 +9,7 @@
 import {
   AGENT_REGISTRY,
   type AgentId,
-} from "@edison/shared/agent-registry";
+} from "@edison-watch/shared/agent-registry";
 import vscodePng from "../assets/logo-vscode.png";
 import claudeCoworkPng from "../assets/logo-claude-cowork.png";
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Card, Badge } from "@edison/shared/ui";
+import { Button, Card, Badge } from "@edison-watch/shared/ui";
 
 import StdiodEnableCard from "./StdiodEnableCard";
 

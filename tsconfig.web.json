@@ -17,9 +17,7 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/renderer/src/*"],
-      "@edison/shared": ["shared/src/index.ts"],
-      "@edison/shared/*": ["shared/src/*/index.ts"]
+      "@/*": ["./src/renderer/src/*"]
     }
   }
 }

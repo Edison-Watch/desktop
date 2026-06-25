@@ -90,7 +90,7 @@ export interface ClientHookStatus {
 export interface ClientIntegration {
   id: McpClientId
 
-  /** Display metadata mirrored from @edison/shared agent-registry. */
+  /** Display metadata mirrored from @edison-watch/shared agent-registry. */
   display: {
     name: string
     brandColor: string

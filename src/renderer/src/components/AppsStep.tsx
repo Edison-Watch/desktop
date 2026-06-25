@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Button, Card } from "@edison/shared/ui";
+import { Button, Card } from "@edison-watch/shared/ui";
 import { AppLogo } from "./AppLogo";
 
 interface DetectedClient {
