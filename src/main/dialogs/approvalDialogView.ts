@@ -7,7 +7,7 @@
  * CI limit. No Electron window/state lives here - callers own the BrowserWindow.
  */
 
-import { AGENT_REGISTRY, resolveAgentId } from '@edison/shared/agent-registry'
+import { AGENT_REGISTRY, resolveAgentId } from '@edison-watch/shared/agent-registry'
 
 import { BASE_CSS, HEADER_CSS, BUTTON_CSS } from './dialogStyles'
 import type { PendingApproval, RiskInfo, RiskLegs, RiskLevel } from '../ipc/approvalsHandler'

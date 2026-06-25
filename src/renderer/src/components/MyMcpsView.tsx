@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Badge } from '@edison/shared/ui'
+import { Badge } from '@edison-watch/shared/ui'
 import ServerIcon from './ServerIcon'
 
 // Mirrors fields from ServerSummary in src/api/v1/schemas/servers.py.

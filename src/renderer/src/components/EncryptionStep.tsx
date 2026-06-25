@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
-import { Button, Card } from "@edison/shared/ui";
-import { AGENT_REGISTRY, type AgentId } from "@edison/shared/agent-registry";
+import { Button, Card } from "@edison-watch/shared/ui";
+import { AGENT_REGISTRY, type AgentId } from "@edison-watch/shared/agent-registry";
 import type { ModifiedConfig, DiscoveredServer, RemovalTarget } from "./AppsStep";
 import { AppLogo } from "./AppLogo";
 import EncryptionAnimation from "./EncryptionAnimation";

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { Badge, Card } from '@edison/shared/ui'
+import { Badge, Card } from '@edison-watch/shared/ui'
 
 import type { StdiodErrorCode, StdiodStatus } from '../../../main/stdiod/types'
 

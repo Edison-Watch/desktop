@@ -9,7 +9,7 @@ import { existsSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import { join } from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { getEnvByName } from "@edison/shared/config";
+import { getEnvByName } from "@edison-watch/shared/config";
 import { logClaudeCmd } from "../runtime/monitorLog";
 
 const execFileAsync = promisify(execFile);

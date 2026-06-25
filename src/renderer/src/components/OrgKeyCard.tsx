@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Button, Card, Input } from "@edison/shared/ui";
+import { Button, Card, Input } from "@edison-watch/shared/ui";
 import {
   buildCompositeKey,
   parseCompositeKey,
   cacheSecretKey,
-} from "@edison/shared/crypto";
+} from "@edison-watch/shared/crypto";
 
 function Chevron({ open }: { open: boolean }) {
   return (

@@ -8,8 +8,8 @@ vi.mock("electron", () => ({
   },
 }));
 
-// Mock @edison/shared/config (not resolvable in CI without workspace linking)
-vi.mock("@edison/shared/config", () => ({
+// Mock @edison-watch/shared/config (not resolvable in CI without workspace linking)
+vi.mock("@edison-watch/shared/config", () => ({
   getEnvByName: () => ({}),
 }));
 

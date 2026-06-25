@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Button, Input, Badge } from "@edison/shared/ui";
-import { supabase } from "@edison/shared/auth";
-import { clearCachedSecretKey } from "@edison/shared/crypto";
+import { Button, Input, Badge } from "@edison-watch/shared/ui";
+import { supabase } from "@edison-watch/shared/auth";
+import { clearCachedSecretKey } from "@edison-watch/shared/crypto";
 import PromptInjectionAnimation from "./PromptInjectionAnimation";
 import type { AuthState } from "../hooks/useAuth";
 

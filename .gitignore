@@ -4,9 +4,12 @@ node_modules/
 .pnp.js
 
 # Build output
-out/            # electron-vite renderer/main/preload bundles
-dist/           # electron-builder installers/packages
-dist-*/         # alternate electron-builder outputs (e.g. auto-update test harness)
+# out/    = electron-vite renderer/main/preload bundles
+# dist/   = electron-builder installers
+# dist-*/ = alternate electron-builder outputs (auto-update test harness)
+out/
+dist/
+dist-*/
 *.tsbuildinfo
 .vite/
 

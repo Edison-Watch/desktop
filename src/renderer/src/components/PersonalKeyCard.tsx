@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Card, Input } from "@edison/shared/ui";
+import { Button, Card, Input } from "@edison-watch/shared/ui";
 import {
   generateSecretKey,
   hashSecretKey,
   buildCompositeKey,
   cacheSecretKey,
   parseCompositeKey,
-} from "@edison/shared/crypto";
+} from "@edison-watch/shared/crypto";
 
 /**
  * Personal-key sub-step of the onboarding wizard.
