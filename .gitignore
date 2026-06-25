@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+out/            # electron-vite renderer/main/preload bundles
+dist/           # electron-builder installers/packages
+dist-*/         # alternate electron-builder outputs (e.g. auto-update test harness)
+*.tsbuildinfo
+.vite/
+
+# Test / tooling artifacts
+coverage/
+storybook-static/
+playwright-report/
+test-results/
+blob-report/
+.eslintcache
+
+# Local runtime / staged binaries are handled by bin/.gitignore
+# (Python, edison-stdiod, and node/uv runtimes are staged into bin/ at build time)
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+dev-app-update.yml
+
+# Editor / OS
+.DS_Store
+*.log
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
