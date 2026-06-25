@@ -22,6 +22,8 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
+    "check:em-dash": "node scripts/check-em-dashes.mjs",
+    "ci": "npm run check:em-dash && npm run typecheck && npm run test",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "npx playwright test --config playwright.config.ts",
