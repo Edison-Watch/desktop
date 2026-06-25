@@ -1,9 +1,9 @@
 <div align="center">
 
-# Edison Watch — Desktop
+# Edison Watch - Desktop
 
 **The local control plane for [Edison Watch](https://edison.watch).**
-Discover the MCP servers wired into your AI tools, quarantine the risky ones, keep your credentials encrypted, and bridge local servers to the Edison Watch gateway — all from your machine.
+Discover the MCP servers wired into your AI tools, quarantine the risky ones, keep your credentials encrypted, and bridge local servers to the Edison Watch gateway - all from your machine.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 [![Built with Electron](https://img.shields.io/badge/built%20with-Electron-47848F.svg?logo=electron&logoColor=white)](https://www.electronjs.org/)
@@ -16,16 +16,16 @@ Discover the MCP servers wired into your AI tools, quarantine the risky ones, ke
   <div align="center"><img width="70%" src="resources/screenshot.png" alt="Edison Watch desktop"></div>
 -->
 
-> **Status: experimental.** This is early software under active development and has **not** had an independent security audit. The desktop app is a **client for the Edison Watch platform** — it requires an Edison Watch account and connects to the Edison backend. UI, on-disk formats, and behavior may change before a 1.0 release.
+> **Status: experimental.** This is early software under active development and has **not** had an independent security audit. The desktop app is a **client for the Edison Watch platform** - it requires an Edison Watch account and connects to the Edison backend. UI, on-disk formats, and behavior may change before a 1.0 release.
 
 ## What it does
 
 Modern AI tools (Claude, Cursor, VS Code, and friends) connect to [MCP](https://modelcontextprotocol.io/) servers that can read your files, hold credentials, and reach the network. They're configured in a dozen different places and are easy to lose track of. The Edison Watch desktop app gives you one place to see and control them:
 
-- **Discover** every MCP server configured across the AI clients installed on your machine — no manual inventory.
+- **Discover** every MCP server configured across the AI clients installed on your machine - no manual inventory.
 - **Quarantine** newly-appeared or unapproved servers ("shadow MCPs") before they can run, with a review-and-approve flow.
 - **Encrypt** credentials with zero-knowledge keys (personal and organization), so secrets never leave your device in the clear.
-- **Bridge** local stdio MCP servers to the Edison Watch gateway through the bundled [`edison-stdiod`](https://github.com/Edison-Watch/stdiod) daemon — a single outbound, no-inbound-ports tunnel — so they're reachable and governed without being exposed.
+- **Bridge** local stdio MCP servers to the Edison Watch gateway through the bundled [`edison-stdiod`](https://github.com/Edison-Watch/stdiod) daemon - a single outbound, no-inbound-ports tunnel - so they're reachable and governed without being exposed.
 - **Stay current** with in-app auto-updates.
 
 ### Supported AI clients
@@ -49,7 +49,7 @@ AI clients on your machine ──▶ Edison Watch desktop (discover · quarantin
 
 | Platform | Format |
 | --- | --- |
-| macOS | `.dmg` (universal — Apple Silicon + Intel) |
+| macOS | `.dmg` (universal - Apple Silicon + Intel) |
 | Windows | `.exe` installer (x64, arm64) |
 | Linux | `.AppImage` (x64, arm64) |
 
@@ -77,7 +77,7 @@ Packaging installers also bundles the `edison-stdiod` daemon and per-platform ru
 ## Project structure
 
 ```
-src/main/        Electron main process — discovery, quarantine, daemon supervision, IPC
+src/main/        Electron main process - discovery, quarantine, daemon supervision, IPC
 src/main/clients/  Per-AI-client adapters (Cursor, VS Code, Claude, …)
 src/preload/     Context-isolated bridge
 src/renderer/    React 19 UI (setup wizard, views, components)
@@ -87,8 +87,8 @@ scripts/         Build/staging scripts (stdiod, Python, runtimes)
 
 ## Related repositories
 
-- [**Edison-Watch/stdiod**](https://github.com/Edison-Watch/stdiod) — the `edison-stdiod` tunnel daemon bundled with this app.
-- [**Edison-Watch/shared**](https://github.com/Edison-Watch/shared) — shared React components, design tokens, and client utilities, consumed here as the [`@edison-watch/shared`](https://www.npmjs.com/package/@edison-watch/shared) npm package.
+- [**Edison-Watch/stdiod**](https://github.com/Edison-Watch/stdiod) - the `edison-stdiod` tunnel daemon bundled with this app.
+- [**Edison-Watch/shared**](https://github.com/Edison-Watch/shared) - shared React components, design tokens, and client utilities, consumed here as the [`@edison-watch/shared`](https://www.npmjs.com/package/@edison-watch/shared) npm package.
 
 ## Security
 
