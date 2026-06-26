@@ -34,6 +34,12 @@ jobs:
       CSC_FOR_PULL_REQUEST: true
       # gh CLI auth for cross-repo public release download.
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Demo backend config. Vite's loadEnv() also reads matching keys from the
+      # environment, so these flow into the bundle even without ../frontend-v2.
+      # Set the DEMO_VITE_* repository variables (Settings > Variables).
+      VITE_DEPLOY_ENV: ${{ vars.DEMO_VITE_DEPLOY_ENV }}
+      VITE_API_BASE_URL: ${{ vars.DEMO_VITE_API_BASE_URL }}
+      VITE_MCP_BASE_URL: ${{ vars.DEMO_VITE_MCP_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
 
