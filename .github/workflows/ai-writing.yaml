@@ -1,0 +1,12 @@
+name: AI Writing Check
+on:
+  workflow_dispatch:
+  pull_request:
+jobs:
+  ai-writing-check:
+    name: AI Writing Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: bun scripts/check-ai-writing.ts
