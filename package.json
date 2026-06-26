@@ -41,7 +41,7 @@
   },
   "devDependencies": {
     "@edison-watch/shared": "^0.1.0",
-    "@electron-toolkit/tsconfig": "^1.0.1",
+    "@electron-toolkit/tsconfig": "^2.0.0",
     "@playwright/test": "^1.58.2",
     "@supabase/supabase-js": "^2.90.0",
     "@storybook/addon-a11y": "^10.2.14",
