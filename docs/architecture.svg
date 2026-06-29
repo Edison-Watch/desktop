@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="900" height="770" viewBox="0 0 900 770" font-family="Archivo, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-label="Edison Watch Desktop architecture: AI clients, the renderer, the main process and the edison-stdiod daemon all run locally on your machine; only the Edison Watch gateway is remote, reached over a single outbound tunnel.">
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="804" viewBox="0 0 900 804" font-family="Archivo, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-label="Edison Watch Desktop architecture: AI clients, the renderer, the main process and the edison-stdiod daemon run locally on your machine. Two outbound-initiated but bidirectional links reach the remote Edison Watch cloud: a control-plane link over which the backend pushes events to the app (trifecta / pre-block approvals, quarantine state) and the app replies over REST, and an MCP-bridge link from edison-stdiod to the MCP gateway.">
   <defs>
     <marker id="cyanArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#C3FFFD"/>
@@ -6,14 +6,14 @@
   </defs>
 
   <!-- Void Black background -->
-  <rect x="0" y="0" width="900" height="770" fill="#000000"/>
+  <rect x="0" y="0" width="900" height="804" fill="#000000"/>
 
   <!-- grid markers -->
   <g stroke="#C3FFFD" stroke-width="1.5" opacity="0.45">
     <path d="M30,40 h12 M36,34 v12"/>
     <path d="M858,40 h12 M864,34 v12"/>
-    <path d="M30,724 h12 M36,718 v12"/>
-    <path d="M858,724 h12 M864,718 v12"/>
+    <path d="M30,758 h12 M36,752 v12"/>
+    <path d="M858,758 h12 M864,752 v12"/>
   </g>
 
   <!-- ===================== THE LAPTOP (your machine) ===================== -->
@@ -62,7 +62,7 @@
   <text x="450" y="300" text-anchor="middle" font-size="10.5" fill="#9BA4A6">IPC over</text>
   <text x="450" y="328" text-anchor="middle" font-size="10.5" fill="#9BA4A6">preload bridge</text>
 
-  <!-- arrow: desktop -> daemon -->
+  <!-- arrow: desktop -> daemon (supervises) -->
   <line x1="450" y1="402" x2="450" y2="444" stroke="#C3FFFD" stroke-width="2" marker-end="url(#cyanArrow)"/>
   <text x="462" y="426" font-size="12" fill="#9BA4A6">supervises</text>
 
@@ -73,14 +73,25 @@
   <text x="450" y="490" text-anchor="middle" font-size="16" font-weight="700" fill="#FFFFFF">edison-stdiod</text>
   <text x="450" y="510" text-anchor="middle" font-size="11.5" fill="#9BA4A6">bridges local stdio MCP servers</text>
 
-  <!-- ===================== OUTBOUND TUNNEL (leaves the machine) ===================== -->
-  <line x1="450" y1="524" x2="450" y2="654" stroke="#C3FFFD" stroke-width="2" marker-end="url(#cyanArrow)"/>
-  <text x="462" y="628" font-size="12" fill="#9BA4A6">single outbound tunnel (no inbound ports)</text>
+  <!-- ============ TWO CROSS-BOUNDARY LINKS (outbound-initiated, bidirectional) ============ -->
+  <!-- control plane: desktop app <-> backend (server pushes events down) -->
+  <line x1="200" y1="402" x2="200" y2="704" stroke="#C3FFFD" stroke-width="2" marker-start="url(#cyanArrow)" marker-end="url(#cyanArrow)"/>
+  <text x="216" y="634" font-size="12" font-weight="700" fill="#C3FFFD">control plane</text>
+  <text x="216" y="652" font-size="11" fill="#9BA4A6">Desktop app &#8646; backend</text>
+  <text x="216" y="668" font-size="11" fill="#9BA4A6">backend pushes events to app:</text>
+  <text x="216" y="684" font-size="11" fill="#9BA4A6">trifecta / pre-block approvals, quarantine</text>
 
-  <!-- ===== Edison Watch gateway (remote; tag: bottom-right) ===== -->
-  <rect x="230" y="660" width="440" height="72" fill="none" stroke="#C3FFFD" stroke-width="2"/>
-  <rect x="494" y="710" width="176" height="22" fill="#C3FFFD"/>
-  <text x="582" y="726" text-anchor="middle" font-size="12" font-weight="700" letter-spacing="1.5" fill="#000000">GATEWAY</text>
-  <text x="450" y="690" text-anchor="middle" font-size="16" font-weight="700" fill="#FFFFFF">Edison Watch gateway</text>
-  <text x="450" y="708" text-anchor="middle" font-size="11.5" fill="#9BA4A6">remote backend &#183; off your machine</text>
+  <!-- MCP bridge: edison-stdiod <-> MCP gateway -->
+  <line x1="450" y1="524" x2="450" y2="704" stroke="#C3FFFD" stroke-width="2" marker-start="url(#cyanArrow)" marker-end="url(#cyanArrow)"/>
+  <text x="466" y="634" font-size="12" font-weight="700" fill="#C3FFFD">MCP bridge</text>
+  <text x="466" y="652" font-size="11" fill="#9BA4A6">edison-stdiod &#8646; MCP gateway</text>
+  <text x="466" y="668" font-size="11" fill="#9BA4A6">single outbound-initiated tunnel,</text>
+  <text x="466" y="684" font-size="11" fill="#9BA4A6">no inbound ports on your machine</text>
+
+  <!-- ===== Edison Watch cloud (remote; tag: bottom-right) ===== -->
+  <rect x="150" y="704" width="600" height="84" fill="none" stroke="#C3FFFD" stroke-width="2"/>
+  <rect x="510" y="766" width="240" height="22" fill="#C3FFFD"/>
+  <text x="630" y="782" text-anchor="middle" font-size="12" font-weight="700" letter-spacing="1.5" fill="#000000">EDISON WATCH CLOUD</text>
+  <text x="450" y="738" text-anchor="middle" font-size="16" font-weight="700" fill="#FFFFFF">Edison Watch backend &#183; MCP gateway</text>
+  <text x="450" y="758" text-anchor="middle" font-size="11.5" fill="#9BA4A6">remote &#183; off your machine</text>
 </svg>

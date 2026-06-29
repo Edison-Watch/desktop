@@ -33,7 +33,7 @@ Edison Watch Desktop is the local control plane for [Edison Watch](https://ediso
 Discover → review → approve → encrypt → bridge, without secrets ever leaving your device in the clear.
 
 <div align="center">
-  <img src="docs/architecture.svg" width="80%" alt="Edison Watch Desktop architecture: AI clients feed MCP configs to the desktop app (renderer and main process over a preload bridge), which supervises the edison-stdiod daemon that bridges local servers over a single outbound tunnel to the Edison Watch gateway." />
+  <img src="docs/architecture.svg" width="80%" alt="Edison Watch Desktop architecture: AI clients, the renderer, the main process and the edison-stdiod daemon run locally on your machine; the desktop app and the daemon reach the remote Edison Watch cloud over two outbound-initiated but bidirectional links, and the backend pushes events (trifecta / pre-block approvals, quarantine) back to the app." />
 </div>
 
 > [!WARNING]
@@ -106,37 +106,33 @@ The app runs in your menu bar / system tray and supervises the bundled `edison-s
 
 ## Architecture
 
-TLDR: AI clients → Edison Watch Desktop (discover · quarantine · encrypt) → `edison-stdiod` → single outbound tunnel → Edison Watch gateway.
+TLDR: everything runs locally except the Edison Watch cloud; the desktop app and `edison-stdiod` reach it over two outbound-initiated but bidirectional links, and the backend pushes events (trifecta / pre-block approvals, quarantine) back to the app.
 
 <details>
 <summary>Expand</summary>
 
-Same diagram as [`docs/architecture.svg`](docs/architecture.svg) above, rendered as ASCII so it shows up anywhere. It captures the durable component boundaries - the Electron process model and the trust/network boundaries - not the on-disk layout, which is free to change.
+Same diagram as [`docs/architecture.svg`](docs/architecture.svg) above, rendered as ASCII so it shows up anywhere. It captures the durable component and trust/network boundaries - not the on-disk layout, which is free to change. Both links to the cloud are initiated outbound from your machine (no inbound ports), but data flows both ways: the backend pushes events back to the app.
 
 ```
-        AI clients on your machine
-        (Claude · Cursor · VS Code · …)
-                     │
-                     │  MCP configs watched on disk
-                     ▼
-   ┌─────────────────────────────────────────────┐
-   │             Edison Watch Desktop             │
-   │                                              │
-   │   ┌─────────────┐   IPC over    ┌─────────┐  │
-   │   │ Renderer UI │◀── preload ──▶│  Main   │  │  discover · quarantine · encrypt
-   │   │ (wizard /   │    bridge     │ process │  │
-   │   │  views)     │               │         │  │
-   │   └─────────────┘               └────┬────┘  │
-   └────────────────────────────────────┼────────┘
-                                         │  supervises
-                                         ▼
-                              ┌──────────────────┐
-                              │  edison-stdiod    │  bridges local stdio MCP servers
-                              │  daemon           │
-                              └─────────┬────────┘
-                                        │  single outbound tunnel (no inbound ports)
-                                        ▼
-                              Edison Watch gateway
+YOUR MACHINE (everything below runs locally)
+┌────────────────────────────────────────────────────────────┐
+│  AI clients (Claude · Cursor · VS Code · …)                 │
+│       │  MCP configs watched on disk                        │
+│       ▼                                                     │
+│  Edison Watch Desktop app                                   │
+│     Renderer UI  ◀─ IPC / preload bridge ─▶  Main process   │
+│       │  supervises                                         │
+│       ▼                                                     │
+│  edison-stdiod daemon  (bridges local stdio MCP servers)    │
+└────────────────────────────────────────────────────────────┘
+      ▲                                          ▲
+      │ control plane (app ⇅ backend)            │ MCP bridge
+      │ backend PUSHES events to app:            │ outbound-initiated
+      ▼ trifecta / approvals / quarantine        ▼ tunnel, no inbound ports
+┌────────────────────────────────────────────────────────────┐
+│  Edison Watch cloud  (remote · off your machine)            │
+│  backend API   ·   MCP gateway                              │
+└────────────────────────────────────────────────────────────┘
 ```
 
 </details>
