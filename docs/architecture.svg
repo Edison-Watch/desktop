@@ -18,11 +18,11 @@
 
   <!-- ===================== THE LAPTOP (your machine) ===================== -->
   <!-- laptop base / keyboard deck -->
-  <path d="M86,548 L814,548 L856,600 L44,600 Z" fill="none" stroke="#C3FFFD" stroke-width="2.5" stroke-linejoin="round"/>
-  <line x1="408" y1="574" x2="492" y2="574" stroke="#C3FFFD" stroke-width="2.5"/>
+  <path d="M86,548 L814,548 L856,600 L44,600 Z" fill="none" stroke="#9BA4A6" stroke-width="2.5" stroke-linejoin="round"/>
+  <line x1="408" y1="574" x2="492" y2="574" stroke="#9BA4A6" stroke-width="2.5"/>
   <!-- laptop screen / lid -->
-  <rect x="86" y="28" width="728" height="520" rx="16" fill="none" stroke="#C3FFFD" stroke-width="2.5"/>
-  <rect x="98" y="40" width="704" height="496" rx="10" fill="none" stroke="#C3FFFD" stroke-width="1" opacity="0.35"/>
+  <rect x="86" y="28" width="728" height="520" rx="16" fill="none" stroke="#9BA4A6" stroke-width="2.5"/>
+  <rect x="98" y="40" width="704" height="496" rx="10" fill="none" stroke="#9BA4A6" stroke-width="1" opacity="0.35"/>
   <!-- machine label (plain caption, not a Hackbox tag) -->
   <text x="450" y="70" text-anchor="middle" font-size="13" font-weight="700" letter-spacing="3" fill="#9BA4A6">YOUR MACHINE</text>
 
