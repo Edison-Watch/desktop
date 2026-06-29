@@ -116,6 +116,8 @@ import {
 } from './ipc/approvalsHandler'
 import { registerIpcHandlers } from './ipc/ipcHandlers'
 import { buildAppMenu as buildAppMenuFromDeps } from './menus/appMenu'
+import { integrateDesktopEntry } from './runtime/desktopIntegration'
+import { stageStdiodBinary } from './runtime/stdiodBinary'
 import { refreshStdiodStatusCache, startStdiodStatusCacheRefresh } from './stdiod/trayCache'
 import { buildStdiodMenuItems } from './stdiod/trayMenu'
 import { uninstall as uninstallStdiod } from './stdiod/controller'
@@ -130,6 +132,11 @@ import trayIconPath from '../../resources/icon_tray.png?asset'
 // at small sizes and isn't picked up unpackaged). macOS/Linux use the exe/.icns.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import winIconPath from '../../resources/icon.ico?asset'
+
+// Baked at build time by electron.vite.config.ts (define). true = compact Linux
+// tray menu; false = full menu. Default build is compact; EDISON_TRAY_COMPACT=0
+// produces the full-menu variant.
+declare const __TRAY_COMPACT__: boolean
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -146,17 +153,31 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
   const setupData = getSetupData()
   const pendingCount = pendingApprovals.size
   const userDisplayName = setupData.userEmail || 'Not signed in'
+  // Trim the tray menu only on Linux AND when built compact (__TRAY_COMPACT__
+  // is baked at build time - see electron.vite.config.ts). The full-menu Linux
+  // build sets this false so Linux shows the same menu as win/mac.
+  const compactTray = process.platform === 'linux' && __TRAY_COMPACT__
 
   const items: MenuItemConstructorOptions[] = [
     { label: 'Open Edison Watch', click: () => showMainWindow() },
-    { type: 'separator' },
-    { label: 'Enabled', type: 'checkbox', checked: true, click: () => {} },
-    { label: getIsServerOnline() ? 'Backend: Connected' : 'Backend: Disconnected', enabled: false },
-    {
-      label: isSseConnected() ? 'Live updates: Connected' : 'Live updates: Disconnected',
-      enabled: false
-    },
-    { label: userDisplayName, enabled: false },
+    // "Enabled" + Backend/Live/account status are dropped on Linux (status is in
+    // the main window). The leading separator lives inside the block so Linux
+    // doesn't end up with two adjacent separators.
+    ...(compactTray
+      ? []
+      : ([
+          { type: 'separator' },
+          { label: 'Enabled', type: 'checkbox', checked: true, click: () => {} },
+          {
+            label: getIsServerOnline() ? 'Backend: Connected' : 'Backend: Disconnected',
+            enabled: false
+          },
+          {
+            label: isSseConnected() ? 'Live updates: Connected' : 'Live updates: Disconnected',
+            enabled: false
+          },
+          { label: userDisplayName, enabled: false }
+        ] as MenuItemConstructorOptions[])),
     { type: 'separator' },
     {
       label: pendingCount > 0 ? `Pending Approvals (${pendingCount})` : 'No Pending Approvals',
@@ -179,67 +200,86 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
         showServerRegistrationDialog(mainWindow ?? undefined, isAdminOrOwner)
       }
     },
-    {
-      label: 'Open Dashboard',
-      enabled: Boolean(getApiBaseUrl()),
-      click: () => {
-        const dashboardUrl = getApiBaseUrl()
-        if (dashboardUrl) shell.openExternal(dashboardUrl)
-      }
-    },
-    { type: 'separator' },
-    {
-      label: 'Copy EdisonWatch MCP config',
-      enabled: Boolean(getMcpUrl()),
-      click: () => {
-        const mcpConfig = getMcpConfig()
-        if (mcpConfig) {
-          clipboard.writeText(mcpConfig)
-          if (Notification.isSupported()) {
-            const n = new Notification({
-              title: 'Edison Watch',
-              body: 'MCP config copied - paste into VSCode, Cursor, or your MCP client',
-              ...(process.platform !== 'darwin' && { icon: trayIconPath })
-            })
-            n.show()
+    // Open Dashboard dropped on Linux.
+    ...(compactTray
+      ? []
+      : [
+          {
+            label: 'Open Dashboard',
+            enabled: Boolean(getApiBaseUrl()),
+            click: () => {
+              const dashboardUrl = getApiBaseUrl()
+              if (dashboardUrl) shell.openExternal(dashboardUrl)
+            }
           }
-        }
-      }
-    },
-    {
-      label: 'Copy MCP URL',
-      enabled: Boolean(getMcpUrl()),
-      click: () => {
-        const url = getMcpUrl()
-        if (url) {
-          clipboard.writeText(url)
-          if (Notification.isSupported()) {
-            const n = new Notification({
-              title: 'Edison Watch',
-              body: 'MCP URL copied to clipboard',
-              ...(process.platform !== 'darwin' && { icon: trayIconPath })
-            })
-            n.show()
+        ]),
+    // "Copy MCP config / URL" omitted on Linux (available in the main window).
+    ...(compactTray
+      ? []
+      : [
+          { type: 'separator' as const },
+          {
+            label: 'Copy EdisonWatch MCP config',
+            enabled: Boolean(getMcpUrl()),
+            click: () => {
+              const mcpConfig = getMcpConfig()
+              if (mcpConfig) {
+                clipboard.writeText(mcpConfig)
+                if (Notification.isSupported()) {
+                  const n = new Notification({
+                    title: 'Edison Watch',
+                    body: 'MCP config copied - paste into VSCode, Cursor, or your MCP client',
+                    ...(process.platform !== 'darwin' && { icon: trayIconPath })
+                  })
+                  n.show()
+                }
+              }
+            }
+          },
+          {
+            label: 'Copy MCP URL',
+            enabled: Boolean(getMcpUrl()),
+            click: () => {
+              const url = getMcpUrl()
+              if (url) {
+                clipboard.writeText(url)
+                if (Notification.isSupported()) {
+                  const n = new Notification({
+                    title: 'Edison Watch',
+                    body: 'MCP URL copied to clipboard',
+                    ...(process.platform !== 'darwin' && { icon: trayIconPath })
+                  })
+                  n.show()
+                }
+              }
+            }
           }
-        }
-      }
-    },
+        ]),
     { type: 'separator' },
-    ...buildStdiodMenuItems(trayIconPath, () => {
-      void handleStdiodReset({
-        getMainWindow: () => mainWindow,
-        updateTrayMenu,
-        trayIconPath
-      })
-    }),
+    ...buildStdiodMenuItems(
+      trayIconPath,
+      () => {
+        void handleStdiodReset({
+          getMainWindow: () => mainWindow,
+          updateTrayMenu,
+          trayIconPath
+        })
+      },
+      compactTray
+    ),
     { type: 'separator' },
-    { label: getHookStatusLabel(), enabled: false },
-    {
-      label: getAutoQuarantineEnabled()
-        ? 'MCP Auto-Quarantine: Enabled'
-        : 'MCP Auto-Quarantine: Disabled',
-      enabled: false
-    }
+    // Hooks + MCP Auto-Quarantine status lines dropped on Linux.
+    ...(compactTray
+      ? []
+      : [
+          { label: getHookStatusLabel(), enabled: false },
+          {
+            label: getAutoQuarantineEnabled()
+              ? 'MCP Auto-Quarantine: Enabled'
+              : 'MCP Auto-Quarantine: Disabled',
+            enabled: false
+          }
+        ])
   ]
 
   const pendingVersion = getPendingUpdateVersion()
@@ -325,21 +365,29 @@ function buildTrayMenuItems(): MenuItemConstructorOptions[] {
           }
         )
     },
-    {
-      label: 'Send Feedback',
-      click: () => showFeedbackWindow()
-    },
-    {
-      label: 'Sign Out',
-      click: () => handleLogoutAndRestart()
-    },
+    // Send Feedback + Sign Out omitted on Linux (both available in-app).
+    ...(compactTray
+      ? []
+      : [
+          {
+            label: 'Send Feedback',
+            click: () => showFeedbackWindow()
+          },
+          {
+            label: 'Sign Out',
+            click: () => handleLogoutAndRestart()
+          }
+        ]),
     {
       label: 'Quit',
       click: () => app.quit()
     }
   )
 
-  return items
+  // Linux: the menu is now short enough that the divider lines just add noise -
+  // strip every separator for a clean flat list. (Also collapses any adjacent
+  // separators left by the per-platform omissions above.)
+  return compactTray ? items.filter((item) => item.type !== 'separator') : items
 }
 
 function buildTrayMenu(): Menu {
@@ -370,10 +418,20 @@ function createTray(): void {
     tray.popUpContextMenu(buildTrayMenu())
   }
 
-  // Windows/Linux convention: left-click opens the app, right-click shows the menu.
-  // macOS menu-bar convention: any click shows the menu (the dock icon reopens the window).
-  tray.on('click', process.platform === 'darwin' ? showMenu : showMainWindow)
-  tray.on('right-click', showMenu)
+  if (process.platform === 'linux') {
+    // Linux tray backends (libappindicator / StatusNotifierItem) don't emit
+    // 'click'/'right-click' events and only render an attached context menu, so
+    // the popUpContextMenu approach below never fires - the icon looks dead.
+    // Bind the menu directly; clicking the indicator opens it. Kept current by
+    // updateTrayMenu(). (No left-click-opens-window affordance on Linux; the
+    // menu carries a "Show"/open item instead.)
+    tray.setContextMenu(buildTrayMenu())
+  } else {
+    // Windows: left-click opens the app, right-click shows the menu.
+    // macOS menu-bar convention: any click shows the menu (the dock icon reopens the window).
+    tray.on('click', process.platform === 'darwin' ? showMenu : showMainWindow)
+    tray.on('right-click', showMenu)
+  }
 
   startServerStatusChecks(updateTrayMenu)
   startStdiodStatusCacheRefresh(10_000, updateTrayMenu)
@@ -386,6 +444,11 @@ function createTray(): void {
 }
 
 function updateTrayMenu(): void {
+  // Linux binds the menu directly (no click event to rebuild it on demand), so
+  // re-attach it whenever status changes so the indicator stays current.
+  if (tray && process.platform === 'linux') {
+    tray.setContextMenu(buildTrayMenu())
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (tray && process.platform === 'darwin' && (app as any).dock?.setMenu) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -514,7 +577,10 @@ function createWindow(): void {
     // Match the renderer's dark background to avoid a white flash before paint.
     backgroundColor: '#1C1C1C',
     ...(process.platform === 'win32' ? { icon: winIconPath } : {}),
-    ...(process.platform === 'linux' ? { icon: join(__dirname, '../../build/icon.png') } : {}),
+    // Use the bundled asset (electron-vite ?asset), not build/icon.png - the
+    // build/ dir is buildResources and isn't packed, so that path didn't exist
+    // and the window fell back to GNOME's generic icon.
+    ...(process.platform === 'linux' ? { icon: appIconPath } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -536,6 +602,12 @@ function createWindow(): void {
   mainWindow.webContents.on('did-finish-load', () => {
     slog('did-finish-load')
     logEnvConfig('startup')
+    // `ready-to-show` is unreliable on Linux - it sometimes never fires, which
+    // leaves this `show: false` window hidden forever (no window, app only in
+    // the tray, which GNOME may not surface either). did-finish-load is a robust
+    // fallback: show() is idempotent, so where ready-to-show already fired this
+    // is a no-op (and the earlier event still avoids the pre-paint white flash).
+    mainWindow?.show()
     // Push any callback buffered before the page loaded (left buffered so the
     // renderer mount-pull can also claim it; renderer de-dupes).
     flushBufferedAuthCallback()
@@ -628,6 +700,18 @@ app.whenReady().then(async () => {
   slog('app.whenReady fired')
   electronApp.setAppUserModelId('com.edisonwatch.desktop')
   updateAppMenu()
+
+  // Linux/AppImage: copy the daemon out of the ephemeral FUSE mount to a stable
+  // path BEFORE anything invokes or installs it. The AppImage mounts at a fresh
+  // /tmp/.mount_* dir each launch, so a systemd unit pointing ExecStart there
+  // breaks the moment the app exits (status=203/EXEC -> crash-loop). No-op on
+  // mac/win/dev. See runtime/stdiodBinary.ts.
+  stageStdiodBinary()
+
+  // Linux/AppImage: self-install a .desktop entry + icon so the dock/taskbar
+  // shows the Edison icon and the app is pinnable. No-op on mac/win/dev and for
+  // non-AppImage runs. See runtime/desktopIntegration.ts.
+  integrateDesktopEntry(appIconPath)
 
   // Loopback auth-callback server - started in dev AND packaged builds. Chrome
   // silently blocks gesture-less redirects to custom protocols (edison-watch://),

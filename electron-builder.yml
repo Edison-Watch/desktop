@@ -103,11 +103,30 @@ dmg:
 linux:
   icon: resources/icon.png
   category: Development
+  # Bundle the edison-stdiod daemon (static musl binary, staged per-arch by
+  # scripts/build-stdiod-linux.sh) into resources/bin/edison-stdiod. Mirrors the
+  # win rule; getStdiodBinaryPath() resolves it via process.resourcesPath.
+  # Unlike Windows we do NOT bundle Node/uv runtimes - Linux users get npx/uvx
+  # from PATH (the systemd unit seeds a sensible PATH), matching the macOS app.
+  extraResources:
+    - from: bin/stdiod/${arch}/edison-stdiod
+      to: bin/edison-stdiod
   target:
     - target: AppImage
       arch:
         - x64
         - arm64
+appImage:
+  artifactName: EdisonWatch-${version}-${arch}.${ext}
+# Use the modern STATIC AppImage runtime instead of the legacy one. The legacy
+# runtime dynamically loads libfuse2 + libz.so from the host, which a base
+# Ubuntu lacks (the recurring "libz.so / FUSE" launch failures). The static
+# runtime (1.0.3, Runtime 20251108) bundles those, so the AppImage launches on a
+# stock distro with no extra packages. Becomes the electron-builder v27 default;
+# opt-in here. (Caveat: older AppImageLauncher installs can mishandle the static
+# runtime - type2-runtime#121 - but stock systems are unaffected.)
+toolsets:
+  appimage: "1.0.3"
 electronVersion: 40.8.0
 npmRebuild: false
 # Generic provider so electron-updater fetches latest-mac.yml + the zip from our

@@ -1,0 +1,90 @@
+name: Build Linux (AppImage)
+
+# Fast upstream TEST build - NOT a release.
+# Pulls the latest published edison-stdiod static-musl binaries from the stdiod
+# repo, bundles them, and produces AppImages (x64 + arm64) using the modern
+# STATIC AppImage runtime (electron-builder `toolsets: appimage`), so they launch
+# on a stock distro with no libfuse2/libz host deps. Compact tray (the default
+# build); set EDISON_TRAY_COMPACT=0 for the full-menu variant.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: build-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build AppImage (x64 + arm64)
+    runs-on: ubuntu-latest
+    env:
+      # gh CLI auth for cross-repo public release download.
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # appimagetool needs no FUSE on the runner with extract-and-run.
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+      # Demo backend config. Vite's loadEnv() also reads matching keys from the
+      # environment, so these flow into the bundle even without ../frontend-v2.
+      VITE_DEPLOY_ENV: ${{ vars.DEMO_VITE_DEPLOY_ENV }}
+      VITE_API_BASE_URL: ${{ vars.DEMO_VITE_API_BASE_URL }}
+      VITE_MCP_BASE_URL: ${{ vars.DEMO_VITE_MCP_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Electron binaries (~100 MB/arch) + app-builder tools (incl. the static
+      # AppImage runtime) - the big download win.
+      - name: Cache electron-builder downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: ${{ runner.os }}-electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-electron-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pull latest edison-stdiod (linux x64 + arm64) from stdiod releases
+        # Staged per-arch where electron-builder.yml's linux.extraResources expects
+        # them: bin/stdiod/<arch>/edison-stdiod -> resources/bin/edison-stdiod.
+        run: |
+          set -euo pipefail
+          mkdir -p stdiod-dl bin/stdiod/x64 bin/stdiod/arm64
+          gh release download --repo Edison-Watch/stdiod \
+            --pattern 'edison-stdiod-linux-x64' \
+            --pattern 'edison-stdiod-linux-arm64' \
+            --pattern 'SHA256SUMS-linux' \
+            --dir stdiod-dl --clobber
+          # Verify integrity against the published checksums before trusting them.
+          ( cd stdiod-dl && shasum -a 256 -c SHA256SUMS-linux )
+          cp stdiod-dl/edison-stdiod-linux-x64   bin/stdiod/x64/edison-stdiod
+          cp stdiod-dl/edison-stdiod-linux-arm64 bin/stdiod/arm64/edison-stdiod
+          chmod +x bin/stdiod/x64/edison-stdiod bin/stdiod/arm64/edison-stdiod
+          file bin/stdiod/*/edison-stdiod
+
+      - name: Build renderer/main/preload bundles (compact tray)
+        run: npm run build:demo
+
+      - name: Package AppImages (x64 + arm64, no publish)
+        # Daemon is pre-staged above (downloaded, not built here - unlike local
+        # `npm run build:linux` which cross-builds it from ../stdiod).
+        run: npx electron-builder --linux --publish never
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: edison-watch-linux
+          path: dist/*.AppImage
+          if-no-files-found: error
+          retention-days: 14

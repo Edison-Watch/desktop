@@ -27,6 +27,9 @@ import type { StdiodErrorCode, StdiodLoginInput, StdiodResult, StdiodStatus } fr
 // Hardcoded so we can ask launchctl directly without spawning the daemon
 // binary just to read a string.
 const LAUNCHD_LABEL = 'watch.edison.stdiod'
+// systemd user unit name matches stdiod/crates/edison-stdiod/src/platform/linux.rs
+// (UNIT_NAME). Used to query `systemctl --user is-active` directly.
+const SYSTEMD_UNIT = 'edison-stdiod.service'
 // Scheduled Task name matches platform/windows.rs task_name(): the base name
 // plus the current user's SID, so accounts on a shared machine don't collide.
 // Derived once (the user is fixed for the process) and cached; falls back to the
@@ -148,6 +151,19 @@ export async function isLaunchAgentLoaded(): Promise<boolean> {
       const child = spawn('schtasks', ['/query', '/tn', winTaskName()], {
         stdio: ['ignore', 'ignore', 'ignore'],
         windowsHide: true
+      })
+      child.on('error', () => resolve(false))
+      child.on('close', (code) => resolve(code === 0))
+      return
+    }
+    if (process.platform === 'linux') {
+      // `systemctl --user is-active <unit>` exits 0 iff the daemon is running.
+      // Matches the systemd user service written by `edison-stdiod install`
+      // (platform/linux.rs). Without this branch Linux fell through to the
+      // launchctl path below, which errors (no launchctl) -> always "not
+      // loaded" -> the toggle never turns on.
+      const child = spawn('systemctl', ['--user', 'is-active', SYSTEMD_UNIT], {
+        stdio: ['ignore', 'ignore', 'ignore']
       })
       child.on('error', () => resolve(false))
       child.on('close', (code) => resolve(code === 0))
