@@ -6,10 +6,8 @@ import {
   session,
   Tray,
   Menu,
-  Notification,
   nativeImage,
   nativeTheme,
-  clipboard,
   dialog
 } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
@@ -51,25 +49,8 @@ const optimizer = {
 import windowStateKeeper from 'electron-window-state'
 import { injectAllHooks, isCodexInstalled } from './runtime/hookInjection'
 import { initSentry } from './infra/sentry'
-import {
-  startHookHealthMonitor,
-  stopHookHealthMonitor,
-  getHookStatusLabel
-} from './runtime/hookHealthMonitor'
-import {
-  initUpdateManager,
-  stopUpdateManager,
-  checkForUpdates,
-  downloadUpdate,
-  quitAndInstall,
-  isUpdateDownloaded,
-  getPendingUpdateVersion
-} from './infra/updateManager'
-import { showDebugWindow } from './dialogs/debugWindow'
-import { showFeedbackWindow } from './dialogs/feedbackWindow'
-import { showServerRegistrationDialog } from './dialogs/mcpServerActionDialog'
-import { showUpdateKeysWindow } from './dialogs/updateKeysWindow'
-import { fetchUserRole } from './discovery/mcpServerSubmit'
+import { startHookHealthMonitor, stopHookHealthMonitor } from './runtime/hookHealthMonitor'
+import { initUpdateManager, stopUpdateManager } from './infra/updateManager'
 import { warmOrgIdCacheOnStartup } from './infra/orgIdCache'
 import {
   applyAppIntegrations,
@@ -78,7 +59,6 @@ import {
 } from './runtime/mcpConfigWriter'
 import {
   initQuarantineManager,
-  getAutoQuarantineEnabled,
   startQuarantineMonitorIfEnabled,
   handleQuarantineEnabled,
   handleQuarantineDisabled,
@@ -92,8 +72,6 @@ import {
   getActiveEnv,
   getApiBaseUrl,
   getMcpBaseUrl,
-  getMcpUrl,
-  getMcpConfig,
   ALL_SUPPORTED_APPS,
   getSetupData,
   isSetupComplete,
@@ -102,27 +80,23 @@ import {
   markSetupIncomplete,
   startServerStatusChecks,
   stopServerStatusChecks,
-  getIsServerOnline,
   checkClaudeCodeMcpConnection
 } from './infra/setupConfig'
 import {
   pendingApprovals,
   startEventSubscription as _startEventSubscription,
   stopEventSubscription,
-  showPendingApprovalsDialog,
   initApprovalsHandler,
-  isSseConnected,
   setSseStatusCallback
 } from './ipc/approvalsHandler'
 import { registerIpcHandlers } from './ipc/ipcHandlers'
 import { buildAppMenu as buildAppMenuFromDeps } from './menus/appMenu'
+import { buildTrayMenuItems as buildTrayMenuItemsFromDeps } from './menus/trayMenu'
 import { integrateDesktopEntry } from './runtime/desktopIntegration'
 import { stageStdiodBinary } from './runtime/stdiodBinary'
 import { refreshStdiodStatusCache, startStdiodStatusCacheRefresh } from './stdiod/trayCache'
-import { buildStdiodMenuItems } from './stdiod/trayMenu'
 import { uninstall as uninstallStdiod } from './stdiod/controller'
 import { maybeRefreshStdiodInstall } from './stdiod/installRefresh'
-import { handleStdiodReset } from './stdiod/trayReset'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import appIconPath from '../../resources/icon.png?asset'
@@ -150,244 +124,14 @@ function startEventSubscription(): void {
 }
 
 function buildTrayMenuItems(): MenuItemConstructorOptions[] {
-  const setupData = getSetupData()
-  const pendingCount = pendingApprovals.size
-  const userDisplayName = setupData.userEmail || 'Not signed in'
-  // Trim the tray menu only on Linux AND when built compact (__TRAY_COMPACT__
-  // is baked at build time - see electron.vite.config.ts). The full-menu Linux
-  // build sets this false so Linux shows the same menu as win/mac.
-  const compactTray = process.platform === 'linux' && __TRAY_COMPACT__
-
-  const items: MenuItemConstructorOptions[] = [
-    { label: 'Open Edison Watch', click: () => showMainWindow() },
-    // "Enabled" + Backend/Live/account status are dropped on Linux (status is in
-    // the main window). The leading separator lives inside the block so Linux
-    // doesn't end up with two adjacent separators.
-    ...(compactTray
-      ? []
-      : ([
-          { type: 'separator' },
-          { label: 'Enabled', type: 'checkbox', checked: true, click: () => {} },
-          {
-            label: getIsServerOnline() ? 'Backend: Connected' : 'Backend: Disconnected',
-            enabled: false
-          },
-          {
-            label: isSseConnected() ? 'Live updates: Connected' : 'Live updates: Disconnected',
-            enabled: false
-          },
-          { label: userDisplayName, enabled: false }
-        ] as MenuItemConstructorOptions[])),
-    { type: 'separator' },
-    {
-      label: pendingCount > 0 ? `Pending Approvals (${pendingCount})` : 'No Pending Approvals',
-      enabled: pendingCount > 0,
-      click: pendingCount > 0 ? () => showPendingApprovalsDialog() : undefined
-    },
-    {
-      label: 'Register MCP Servers',
-      enabled: Boolean(
-        getCredentialsForEnv()?.apiKey && (setupData.apiBaseUrl || setupData.serverAddress)
-      ),
-      click: async () => {
-        let isAdminOrOwner = false
-        const apiBaseUrl = getApiBaseUrl()
-        const envCreds = getCredentialsForEnv()
-        if (apiBaseUrl && envCreds?.apiKey) {
-          const role = await fetchUserRole(apiBaseUrl, envCreds.apiKey)
-          isAdminOrOwner = role === 'admin' || role === 'owner'
-        }
-        showServerRegistrationDialog(mainWindow ?? undefined, isAdminOrOwner)
-      }
-    },
-    // Open Dashboard dropped on Linux.
-    ...(compactTray
-      ? []
-      : [
-          {
-            label: 'Open Dashboard',
-            enabled: Boolean(getApiBaseUrl()),
-            click: () => {
-              const dashboardUrl = getApiBaseUrl()
-              if (dashboardUrl) shell.openExternal(dashboardUrl)
-            }
-          }
-        ]),
-    // "Copy MCP config / URL" omitted on Linux (available in the main window).
-    ...(compactTray
-      ? []
-      : [
-          { type: 'separator' as const },
-          {
-            label: 'Copy EdisonWatch MCP config',
-            enabled: Boolean(getMcpUrl()),
-            click: () => {
-              const mcpConfig = getMcpConfig()
-              if (mcpConfig) {
-                clipboard.writeText(mcpConfig)
-                if (Notification.isSupported()) {
-                  const n = new Notification({
-                    title: 'Edison Watch',
-                    body: 'MCP config copied - paste into VSCode, Cursor, or your MCP client',
-                    ...(process.platform !== 'darwin' && { icon: trayIconPath })
-                  })
-                  n.show()
-                }
-              }
-            }
-          },
-          {
-            label: 'Copy MCP URL',
-            enabled: Boolean(getMcpUrl()),
-            click: () => {
-              const url = getMcpUrl()
-              if (url) {
-                clipboard.writeText(url)
-                if (Notification.isSupported()) {
-                  const n = new Notification({
-                    title: 'Edison Watch',
-                    body: 'MCP URL copied to clipboard',
-                    ...(process.platform !== 'darwin' && { icon: trayIconPath })
-                  })
-                  n.show()
-                }
-              }
-            }
-          }
-        ]),
-    { type: 'separator' },
-    ...buildStdiodMenuItems(
-      trayIconPath,
-      () => {
-        void handleStdiodReset({
-          getMainWindow: () => mainWindow,
-          updateTrayMenu,
-          trayIconPath
-        })
-      },
-      compactTray
-    ),
-    { type: 'separator' },
-    // Hooks + MCP Auto-Quarantine status lines dropped on Linux.
-    ...(compactTray
-      ? []
-      : [
-          { label: getHookStatusLabel(), enabled: false },
-          {
-            label: getAutoQuarantineEnabled()
-              ? 'MCP Auto-Quarantine: Enabled'
-              : 'MCP Auto-Quarantine: Disabled',
-            enabled: false
-          }
-        ])
-  ]
-
-  const pendingVersion = getPendingUpdateVersion()
-  if (isUpdateDownloaded() && pendingVersion) {
-    items.push({
-      label: `Restart to update (v${pendingVersion})`,
-      click: () => quitAndInstall()
-    })
-  } else if (pendingVersion) {
-    // Available but not downloaded yet (demo default: download on demand).
-    items.push({
-      label: `Download update (v${pendingVersion})`,
-      click: () => {
-        downloadUpdate().catch((err) => console.error('[update] download failed:', err))
-        updateTrayMenu()
-      }
-    })
-  } else {
-    items.push({
-      label: 'Check for Updates',
-      click: async () => {
-        const state = await checkForUpdates()
-        if (Notification.isSupported()) {
-          if (state.version && state.status !== 'idle' && state.status !== 'error') {
-            new Notification({
-              title: 'Edison Watch',
-              body: `Version ${state.version} is available.`,
-              ...(process.platform !== 'darwin' && { icon: trayIconPath })
-            }).show()
-          } else if (state.status === 'error') {
-            new Notification({
-              title: 'Edison Watch',
-              body: 'Update check failed. Please check your connection.',
-              ...(process.platform !== 'darwin' && { icon: trayIconPath })
-            }).show()
-          } else {
-            new Notification({
-              title: 'Edison Watch',
-              body: "You're already on the latest version.",
-              ...(process.platform !== 'darwin' && { icon: trayIconPath })
-            }).show()
-          }
-        }
-        updateTrayMenu()
-      }
-    })
-  }
-
-  items.push(
-    { type: 'separator' },
-    {
-      label: 'Debug Window',
-      click: () => showDebugWindow(mainWindow ?? undefined)
-    },
-    { type: 'separator' },
-    {
-      label: 'Re-run Setup Wizard',
-      click: () => rerunWizard()
-    },
-    {
-      label: 'Clear App Data & Restart',
-      click: () => handleClearDataAndRestart()
-    },
-    {
-      label: 'Update Keys',
-      click: () =>
-        showUpdateKeysWindow(
-          getSetupData,
-          (key) => markSetupComplete({ edisonSecretKey: key }),
-          async (compositeKey) => {
-            const setup = getSetupData()
-            const mcpBaseUrl = getMcpBaseUrl()
-            const creds = getCredentialsForEnv()
-            const serverAddress = setup.serverAddress ?? ''
-            if (!mcpBaseUrl || !creds?.apiKey) return
-            await applyAppIntegrations({
-              serverAddress,
-              mcpBaseUrl,
-              apiKey: creds.apiKey,
-              edisonSecretKey: compositeKey,
-              apps: setup.configuredApps?.length ? setup.configuredApps : ALL_SUPPORTED_APPS
-            })
-          }
-        )
-    },
-    // Send Feedback + Sign Out omitted on Linux (both available in-app).
-    ...(compactTray
-      ? []
-      : [
-          {
-            label: 'Send Feedback',
-            click: () => showFeedbackWindow()
-          },
-          {
-            label: 'Sign Out',
-            click: () => handleLogoutAndRestart()
-          }
-        ]),
-    {
-      label: 'Quit',
-      click: () => app.quit()
-    }
-  )
-
-  // Linux: the menu is now short enough that the divider lines just add noise -
-  // strip every separator for a clean flat list. (Also collapses any adjacent
-  // separators left by the per-platform omissions above.)
-  return compactTray ? items.filter((item) => item.type !== 'separator') : items
+  return buildTrayMenuItemsFromDeps({
+    getMainWindow: () => mainWindow,
+    showMainWindow,
+    updateTrayMenu,
+    rerunWizard,
+    handleClearDataAndRestart,
+    handleLogoutAndRestart
+  })
 }
 
 function buildTrayMenu(): Menu {
