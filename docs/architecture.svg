@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="804" viewBox="0 0 900 804" font-family="Archivo, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-label="Edison Watch Desktop architecture: AI clients, the renderer, the main process and the edison-stdiod daemon run locally on your machine. Two outbound-initiated but bidirectional links reach the remote Edison Watch cloud: a control-plane link over which the backend pushes events to the app (trifecta / pre-block approvals, quarantine state) and the app replies over REST, and an MCP-bridge link from edison-stdiod to the MCP gateway.">
+  <defs>
+    <marker id="cyanArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#C3FFFD"/>
+    </marker>
+  </defs>
+
+  <!-- Void Black background -->
+  <rect x="0" y="0" width="900" height="804" fill="#000000"/>
+
+  <!-- grid markers -->
+  <g stroke="#C3FFFD" stroke-width="1.5" opacity="0.45">
+    <path d="M30,40 h12 M36,34 v12"/>
+    <path d="M858,40 h12 M864,34 v12"/>
+    <path d="M30,758 h12 M36,752 v12"/>
+    <path d="M858,758 h12 M864,752 v12"/>
+  </g>
+
+  <!-- ===================== THE LAPTOP (your machine) ===================== -->
+  <!-- laptop base / keyboard deck -->
+  <path d="M86,548 L814,548 L856,600 L44,600 Z" fill="none" stroke="#9BA4A6" stroke-width="2.5" stroke-linejoin="round"/>
+  <line x1="408" y1="574" x2="492" y2="574" stroke="#9BA4A6" stroke-width="2.5"/>
+  <!-- laptop screen / lid -->
+  <rect x="86" y="28" width="728" height="520" rx="16" fill="none" stroke="#9BA4A6" stroke-width="2.5"/>
+  <rect x="98" y="40" width="704" height="496" rx="10" fill="none" stroke="#9BA4A6" stroke-width="1" opacity="0.35"/>
+  <!-- machine label (plain caption, not a Hackbox tag) -->
+  <text x="450" y="70" text-anchor="middle" font-size="13" font-weight="700" letter-spacing="3" fill="#9BA4A6">YOUR MACHINE</text>
+
+  <!-- ===== AI clients (tag: top-right) ===== -->
+  <rect x="230" y="86" width="440" height="78" fill="none" stroke="#C3FFFD" stroke-width="2"/>
+  <rect x="494" y="86" width="176" height="22" fill="#C3FFFD"/>
+  <text x="582" y="102" text-anchor="middle" font-size="12" font-weight="700" letter-spacing="1.5" fill="#000000">CLIENTS</text>
+  <text x="450" y="130" text-anchor="middle" font-size="16" font-weight="700" fill="#FFFFFF">AI clients on your machine</text>
+  <text x="450" y="150" text-anchor="middle" font-size="11.5" fill="#9BA4A6">Claude &#183; Cursor &#183; VS Code &#183; Windsurf &#183; Zed &#183; JetBrains &#183; Codex</text>
+
+  <!-- arrow: clients -> desktop -->
+  <line x1="450" y1="164" x2="450" y2="208" stroke="#C3FFFD" stroke-width="2" marker-end="url(#cyanArrow)"/>
+  <text x="462" y="190" font-size="12" fill="#9BA4A6">MCP configs watched on disk</text>
+
+  <!-- ===== Edison Watch Desktop app (tag: top-left) ===== -->
+  <rect x="150" y="212" width="600" height="190" fill="none" stroke="#C3FFFD" stroke-width="2"/>
+  <rect x="150" y="212" width="240" height="22" fill="#C3FFFD"/>
+  <text x="270" y="228" text-anchor="middle" font-size="12" font-weight="700" letter-spacing="1.5" fill="#000000">DESKTOP APP</text>
+  <text x="734" y="229" text-anchor="end" font-size="12.5" font-weight="700" fill="#C3FFFD">discover &#183; quarantine &#183; encrypt</text>
+
+  <!-- Renderer sub-box (tag: bottom-left) -->
+  <rect x="176" y="258" width="240" height="104" fill="none" stroke="#C3FFFD" stroke-width="2"/>
+  <rect x="176" y="342" width="96" height="20" fill="#C3FFFD"/>
+  <text x="224" y="356" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="1.5" fill="#000000">UI</text>
+  <text x="296" y="302" text-anchor="middle" font-size="15" font-weight="700" fill="#FFFFFF">Renderer</text>
+  <text x="296" y="322" text-anchor="middle" font-size="11.5" fill="#9BA4A6">setup wizard / views</text>
+
+  <!-- Main process sub-box (tag: bottom-right) -->
+  <rect x="484" y="258" width="240" height="104" fill="none" stroke="#C3FFFD" stroke-width="2"/>
+  <rect x="628" y="342" width="96" height="20" fill="#C3FFFD"/>
+  <text x="676" y="356" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="1.5" fill="#000000">MAIN</text>
+  <text x="604" y="302" text-anchor="middle" font-size="15" font-weight="700" fill="#FFFFFF">Main process</text>
+  <text x="604" y="322" text-anchor="middle" font-size="11.5" fill="#9BA4A6">supervisor</text>
+
+  <!-- IPC link between renderer and main -->
+  <line x1="416" y1="310" x2="484" y2="310" stroke="#C3FFFD" stroke-width="2" marker-start="url(#cyanArrow)" marker-end="url(#cyanArrow)"/>
+  <text x="450" y="300" text-anchor="middle" font-size="10.5" fill="#9BA4A6">IPC over</text>
+  <text x="450" y="328" text-anchor="middle" font-size="10.5" fill="#9BA4A6">preload bridge</text>
+
+  <!-- arrow: desktop -> daemon (supervises) -->
+  <line x1="450" y1="402" x2="450" y2="444" stroke="#C3FFFD" stroke-width="2" marker-end="url(#cyanArrow)"/>
+  <text x="462" y="426" font-size="12" fill="#9BA4A6">supervises</text>
+
+  <!-- ===== edison-stdiod daemon (tag: top-left) ===== -->
+  <rect x="230" y="446" width="440" height="78" fill="none" stroke="#C3FFFD" stroke-width="2"/>
+  <rect x="230" y="446" width="176" height="22" fill="#C3FFFD"/>
+  <text x="318" y="462" text-anchor="middle" font-size="12" font-weight="700" letter-spacing="1.5" fill="#000000">DAEMON</text>
+  <text x="450" y="490" text-anchor="middle" font-size="16" font-weight="700" fill="#FFFFFF">edison-stdiod</text>
+  <text x="450" y="510" text-anchor="middle" font-size="11.5" fill="#9BA4A6">bridges local stdio MCP servers</text>
+
+  <!-- ============ TWO CROSS-BOUNDARY LINKS (outbound-initiated, bidirectional) ============ -->
+  <!-- control plane: desktop app <-> backend (server pushes events down) -->
+  <line x1="200" y1="402" x2="200" y2="704" stroke="#C3FFFD" stroke-width="2" marker-start="url(#cyanArrow)" marker-end="url(#cyanArrow)"/>
+  <text x="216" y="634" font-size="12" font-weight="700" fill="#C3FFFD">control plane</text>
+  <text x="216" y="652" font-size="11" fill="#9BA4A6">Desktop app &#8646; backend</text>
+  <text x="216" y="668" font-size="11" fill="#9BA4A6">backend pushes events to app:</text>
+  <text x="216" y="684" font-size="11" fill="#9BA4A6">trifecta / pre-block approvals, quarantine</text>
+
+  <!-- MCP bridge: edison-stdiod <-> MCP gateway -->
+  <line x1="450" y1="524" x2="450" y2="704" stroke="#C3FFFD" stroke-width="2" marker-start="url(#cyanArrow)" marker-end="url(#cyanArrow)"/>
+  <text x="466" y="634" font-size="12" font-weight="700" fill="#C3FFFD">MCP bridge</text>
+  <text x="466" y="652" font-size="11" fill="#9BA4A6">edison-stdiod &#8646; MCP gateway</text>
+  <text x="466" y="668" font-size="11" fill="#9BA4A6">single outbound-initiated tunnel,</text>
+  <text x="466" y="684" font-size="11" fill="#9BA4A6">no inbound ports on your machine</text>
+
+  <!-- ===== Edison Watch cloud (remote; tag: bottom-right) ===== -->
+  <rect x="150" y="704" width="600" height="84" fill="none" stroke="#C3FFFD" stroke-width="2"/>
+  <rect x="510" y="766" width="240" height="22" fill="#C3FFFD"/>
+  <text x="630" y="782" text-anchor="middle" font-size="12" font-weight="700" letter-spacing="1.5" fill="#000000">EDISON WATCH CLOUD</text>
+  <text x="450" y="738" text-anchor="middle" font-size="16" font-weight="700" fill="#FFFFFF">Edison Watch backend &#183; MCP gateway</text>
+  <text x="450" y="758" text-anchor="middle" font-size="11.5" fill="#9BA4A6">remote &#183; off your machine</text>
+</svg>

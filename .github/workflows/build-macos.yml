@@ -1,12 +1,12 @@
 name: Build macOS (signed, not notarized)
 
-# Fast upstream TEST build — NOT a release.
+# Fast upstream TEST build - NOT a release.
 # Pulls the latest published edison-stdiod universal binary from the stdiod repo,
 # bundles it, and produces a code-signed (Developer ID) but UN-notarized .dmg/.zip.
 # Notarization is skipped on purpose: it adds a multi-minute Apple round-trip and
 # isn't needed to verify the build/sign pipeline. The artifact will be
 # Gatekeeper-blocked on other machines (run `xattr -dr com.apple.quarantine` to
-# launch) and won't auto-update — that's fine for testing.
+# launch) and won't auto-update - that's fine for testing.
 
 on:
   workflow_dispatch:
@@ -48,7 +48,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      # Electron binaries (~100 MB/arch) + app-builder tools — the big download win.
+      # Electron binaries (~100 MB/arch) + app-builder tools - the big download win.
       - name: Cache electron-builder downloads
         uses: actions/cache@v4
         with:
