@@ -68,9 +68,9 @@ New to MCP? See the [Model Context Protocol docs](https://modelcontextprotocol.i
 
 | Platform | Format |
 | --- | --- |
-| macOS | `.dmg` (universal - Apple Silicon + Intel) |
-| Windows | `.exe` installer (x64, arm64) |
-| Linux | `.AppImage` (x64, arm64) |
+| <img src="resources/icons/macos.svg" width="14" height="14" align="center" alt=""> macOS | `.dmg` (universal - Apple Silicon + Intel) |
+| <img src="resources/icons/windows.svg" width="14" height="14" align="center" alt=""> Windows | `.exe` installer (x64, arm64) |
+| <img src="resources/icons/linux.svg" width="14" height="14" align="center" alt=""> Linux | `.AppImage` (x64, arm64) |
 
 ## Build from source
 
