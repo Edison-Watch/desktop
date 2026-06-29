@@ -157,12 +157,10 @@ export async function isLaunchAgentLoaded(): Promise<boolean> {
       return
     }
     if (process.platform === 'linux') {
-      // `systemctl --user is-active <unit>` exits 0 iff the daemon is running.
-      // Matches the systemd user service written by `edison-stdiod install`
-      // (platform/linux.rs). Without this branch Linux fell through to the
-      // launchctl path below, which errors (no launchctl) -> always "not
-      // loaded" -> the toggle never turns on.
-      const child = spawn('systemctl', ['--user', 'is-active', SYSTEMD_UNIT], {
+      // `is-enabled` (registration), not `is-active` (runtime), to match the
+      // macOS launchctl / Windows schtasks checks - so a restarting daemon
+      // still reports installed. Live health comes from state.json separately.
+      const child = spawn('systemctl', ['--user', 'is-enabled', SYSTEMD_UNIT], {
         stdio: ['ignore', 'ignore', 'ignore']
       })
       child.on('error', () => resolve(false))

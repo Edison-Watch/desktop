@@ -32,7 +32,16 @@ echo "==> Cross-building edison-stdiod (x64 + arm64) from ../stdiod"
 npm run build:stdiod:linux
 
 for variant in $VARIANTS; do
-  if [ "$variant" = "full" ]; then compact=0; else compact=1; fi
+  # Validate explicitly - an unknown/typo'd variant must fail loudly, not
+  # silently fall back to compact while producing a mislabeled artifact.
+  case "$variant" in
+    compact) compact=1 ;;
+    full) compact=0 ;;
+    *)
+      echo "build-appimage.sh: unknown variant '$variant' (expected: compact | full)" >&2
+      exit 1
+      ;;
+  esac
   echo "==> Building '$variant' AppImages (x64 + arm64, EDISON_TRAY_COMPACT=$compact)"
   EDISON_TRAY_COMPACT=$compact npm run build
   EDISON_TRAY_COMPACT=$compact npx electron-builder --linux \

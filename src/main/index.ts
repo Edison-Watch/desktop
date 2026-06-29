@@ -138,6 +138,16 @@ function buildTrayMenu(): Menu {
   return Menu.buildFromTemplate(buildTrayMenuItems())
 }
 
+// Linux: refresh the stdiod status cache, THEN (re)attach the tray menu. Linux
+// tray backends have no menu-open event, so we refresh on every (re)build to
+// keep the status rows fresh - the parity equivalent of the other platforms'
+// on-open refresh in showMenu(). (refreshStdiodStatusCache never rejects.)
+function refreshAndSetLinuxTrayMenu(): void {
+  void refreshStdiodStatusCache().then(() => {
+    if (tray) tray.setContextMenu(buildTrayMenu())
+  })
+}
+
 function createTray(): void {
   // Guard against duplicate trays: sign-out re-runs the wizard, which fires
   // `setup:reached-final` and calls createTray() again. Without this check the
@@ -165,11 +175,10 @@ function createTray(): void {
   if (process.platform === 'linux') {
     // Linux tray backends (libappindicator / StatusNotifierItem) don't emit
     // 'click'/'right-click' events and only render an attached context menu, so
-    // the popUpContextMenu approach below never fires - the icon looks dead.
-    // Bind the menu directly; clicking the indicator opens it. Kept current by
-    // updateTrayMenu(). (No left-click-opens-window affordance on Linux; the
-    // menu carries a "Show"/open item instead.)
-    tray.setContextMenu(buildTrayMenu())
+    // the popUpContextMenu approach below never fires. Bind the menu directly
+    // (refreshed first, so the first menu isn't built from a stale/default
+    // cache); kept current by updateTrayMenu().
+    refreshAndSetLinuxTrayMenu()
   } else {
     // Windows: left-click opens the app, right-click shows the menu.
     // macOS menu-bar convention: any click shows the menu (the dock icon reopens the window).
@@ -188,10 +197,10 @@ function createTray(): void {
 }
 
 function updateTrayMenu(): void {
-  // Linux binds the menu directly (no click event to rebuild it on demand), so
-  // re-attach it whenever status changes so the indicator stays current.
+  // Linux binds the menu directly (no click event to refresh on open), so
+  // refresh the status cache and re-attach on every rebuild to stay current.
   if (tray && process.platform === 'linux') {
-    tray.setContextMenu(buildTrayMenu())
+    refreshAndSetLinuxTrayMenu()
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (tray && process.platform === 'darwin' && (app as any).dock?.setMenu) {
@@ -338,20 +347,28 @@ function createWindow(): void {
     mainWindow = null
   })
 
+  // Tracks whether the initial show has happened, so the Linux did-finish-load
+  // fallback below fires at most once (a later reload's did-finish-load must not
+  // re-show a window the user hid to the tray).
+  let initialShowDone = false
+
   mainWindow.on('ready-to-show', () => {
     slog('ready-to-show, showing window')
+    initialShowDone = true
     mainWindow?.show()
   })
 
   mainWindow.webContents.on('did-finish-load', () => {
     slog('did-finish-load')
     logEnvConfig('startup')
-    // `ready-to-show` is unreliable on Linux - it sometimes never fires, which
-    // leaves this `show: false` window hidden forever (no window, app only in
-    // the tray, which GNOME may not surface either). did-finish-load is a robust
-    // fallback: show() is idempotent, so where ready-to-show already fired this
-    // is a no-op (and the earlier event still avoids the pre-paint white flash).
-    mainWindow?.show()
+    // Linux-only fallback: `ready-to-show` is unreliable there (may never fire),
+    // which would leave this `show: false` window hidden forever. win/mac rely
+    // on ready-to-show for anti-flash timing, so don't show here. First load
+    // only - did-finish-load also fires on reload/navigation.
+    if (process.platform === 'linux' && !initialShowDone) {
+      initialShowDone = true
+      mainWindow?.show()
+    }
     // Push any callback buffered before the page loaded (left buffered so the
     // renderer mount-pull can also claim it; renderer de-dupes).
     flushBufferedAuthCallback()
