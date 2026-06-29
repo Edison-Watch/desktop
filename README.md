@@ -100,54 +100,39 @@ Packaging installers also bundles the `edison-stdiod` daemon and per-platform ru
 
 The app runs in your menu bar / system tray and supervises the bundled `edison-stdiod` daemon. On first launch a setup wizard walks you through signing in, connecting your installed AI clients, and setting up encryption. From then on it watches your clients' MCP configuration, surfaces changes for review, and keeps the tunnel to the Edison Watch backend healthy.
 
-## Project structure
-
-TLDR: Electron main process in `src/main/`, React 19 renderer in `src/renderer/`.
-
-<details>
-<summary>Expand</summary>
-
-```
-src/main/          Electron main process — discovery, quarantine, daemon supervision, IPC
-src/main/clients/    Per-AI-client adapters (Cursor, VS Code, Claude, …)
-src/main/discovery/  MCP server discovery across installed clients
-src/main/quarantine/ Shadow-MCP quarantine + review/approve flow
-src/main/stdiod/     edison-stdiod daemon supervision
-src/preload/       Context-isolated bridge
-src/renderer/      React 19 UI (setup wizard, views, components)
-resources/         Icons, entitlements, bundled assets
-scripts/           Build/staging scripts (stdiod, Python, runtimes)
-```
-
-</details>
-
 ## Architecture
 
-TLDR: AI clients → Edison Watch Desktop (discover · quarantine · encrypt) → `edison-stdiod` → outbound tunnel → Edison Watch gateway.
+TLDR: AI clients → Edison Watch Desktop (discover · quarantine · encrypt) → `edison-stdiod` → single outbound tunnel → Edison Watch gateway.
 
 <details>
 <summary>Expand</summary>
 
+The diagram captures the durable component boundaries — the Electron process model and the trust/network boundaries — not the on-disk layout, which is free to change.
+
 ```
-   AI clients on your machine
-   (Claude · Cursor · VS Code · …)
-              │
-              │  MCP configs watched on disk
-              ▼
-   ┌───────────────────────────────┐
-   │   Edison Watch Desktop (app)   │  discover · quarantine · encrypt
-   │   menu bar / system tray       │
-   └───────────────┬───────────────┘
-                   │  supervises
-                   ▼
-        ┌──────────────────────┐
-        │   edison-stdiod       │  bridges local stdio MCP servers
-        │   daemon (bundled)    │
-        └──────────┬───────────┘
-                   │  single outbound tunnel
-                   │  (no inbound ports)
-                   ▼
-          Edison Watch gateway
+        AI clients on your machine
+        (Claude · Cursor · VS Code · …)
+                     │
+                     │  MCP configs watched on disk
+                     ▼
+   ┌─────────────────────────────────────────────┐
+   │             Edison Watch Desktop             │
+   │                                              │
+   │   ┌─────────────┐   IPC over    ┌─────────┐  │
+   │   │ Renderer UI │◀── preload ──▶│  Main   │  │  discover · quarantine · encrypt
+   │   │ (wizard /   │    bridge     │ process │  │
+   │   │  views)     │               │         │  │
+   │   └─────────────┘               └────┬────┘  │
+   └────────────────────────────────────┼────────┘
+                                         │  supervises
+                                         ▼
+                              ┌──────────────────┐
+                              │  edison-stdiod    │  bridges local stdio MCP servers
+                              │  daemon           │
+                              └─────────┬────────┘
+                                        │  single outbound tunnel (no inbound ports)
+                                        ▼
+                              Edison Watch gateway
 ```
 
 </details>
