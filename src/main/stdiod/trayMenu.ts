@@ -18,13 +18,16 @@ const CONNECTION_LABELS: Record<string, string> = {
 
 export function buildStdiodMenuItems(
   trayIconPath: string,
-  onReset?: () => void
+  onReset?: () => void,
+  // compact (Linux) drops the status/device/servers/last-error/reset rows,
+  // leaving just "Open logs folder", to keep the tall native tray menu short.
+  compact = false
 ): MenuItemConstructorOptions[] {
   const status = getCachedStdiodStatus()
   const items: MenuItemConstructorOptions[] = []
 
   if (!status.binaryAvailable) {
-    items.push({ label: 'Local tunnel: binary missing', enabled: false })
+    if (!compact) items.push({ label: 'Local tunnel: binary missing', enabled: false })
     return items
   }
 
@@ -38,15 +41,17 @@ export function buildStdiodMenuItems(
       {
         label: 'Open logs folder',
         click: () => {
+          // macOS logs to ~/Library/Logs; Linux + Windows use
+          // ~/.local/state (matches the daemon's paths.rs).
           const logDir =
-            process.platform === 'win32'
-              ? join(homedir(), '.local', 'state', 'edison-stdiod')
-              : join(homedir(), 'Library', 'Logs', 'edison-stdiod')
+            process.platform === 'darwin'
+              ? join(homedir(), 'Library', 'Logs', 'edison-stdiod')
+              : join(homedir(), '.local', 'state', 'edison-stdiod')
           shell.openPath(logDir).catch(() => {})
         }
       }
     ]
-    if (onReset && (status.installed || status.loggedIn)) {
+    if (!compact && onReset && (status.installed || status.loggedIn)) {
       actions.push({ label: 'Reset Local Tunnel…', click: onReset })
     }
     return actions
@@ -57,25 +62,31 @@ export function buildStdiodMenuItems(
   // one click - checking it first would mislead users into seeing
   // "starting" forever after they toggled the daemon off.
   if (!status.installed) {
-    items.push({
-      label: status.loggedIn ? 'Local tunnel: off' : 'Local tunnel: not signed in',
-      enabled: false
-    })
+    if (!compact)
+      items.push({
+        label: status.loggedIn ? 'Local tunnel: off' : 'Local tunnel: not signed in',
+        enabled: false
+      })
     if (status.loggedIn) items.push(...buildActions())
     return items
   }
 
   const conn = status.state?.connection_state ?? 'starting'
-  items.push({
-    label: `Local tunnel: ${CONNECTION_LABELS[conn] ?? conn}`,
-    enabled: false
-  })
+  if (!compact)
+    items.push({
+      label: `Local tunnel: ${CONNECTION_LABELS[conn] ?? conn}`,
+      enabled: false
+    })
 
-  if (status.state?.device_id) {
+  if (!compact && status.state?.device_id) {
     const deviceId = status.state.device_id
-    const label = status.state.device_label
-      ? `${deviceId} (${status.state.device_label})`
-      : deviceId
+    // On Linux the native menu has no width cap, so a long
+    // `id (label)` (often id == label == hostname) blows the menu wide.
+    // Show just the id there; win/mac keep the labelled form.
+    const label =
+      status.state.device_label && process.platform !== 'linux'
+        ? `${deviceId} (${status.state.device_label})`
+        : deviceId
     items.push({
       label: `Device: ${label}`,
       click: () => {
@@ -92,7 +103,7 @@ export function buildStdiodMenuItems(
   }
 
   const servers = status.state?.servers ?? []
-  if (servers.length > 0) {
+  if (!compact && servers.length > 0) {
     const running = servers.filter((s) => s.state === 'running').length
     items.push({
       label: `Tunneled servers: ${running}/${servers.length} running`,
@@ -100,7 +111,7 @@ export function buildStdiodMenuItems(
     })
   }
 
-  if (status.state?.last_error) {
+  if (!compact && status.state?.last_error) {
     items.push({ label: `Last error: ${status.state.last_error}`, enabled: false })
   }
 
