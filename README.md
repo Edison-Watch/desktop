@@ -32,6 +32,10 @@ Edison Watch Desktop is the local control plane for [Edison Watch](https://ediso
 
 Discover → review → approve → encrypt → bridge, without secrets ever leaving your device in the clear.
 
+<div align="center">
+  <img src="docs/architecture.svg" width="80%" alt="Edison Watch Desktop architecture: AI clients feed MCP configs to the desktop app (renderer and main process over a preload bridge), which supervises the edison-stdiod daemon that bridges local servers over a single outbound tunnel to the Edison Watch gateway." />
+</div>
+
 > [!WARNING]
 > **Edison Watch Desktop is experimental software under active development** and has **not** had an independent security audit. It is a **client for the Edison Watch platform** - it requires an Edison Watch account and connects to the Edison backend. UI, on-disk formats, and behavior may change before a 1.0 release.
 
@@ -107,7 +111,7 @@ TLDR: AI clients → Edison Watch Desktop (discover · quarantine · encrypt) �
 <details>
 <summary>Expand</summary>
 
-The diagram captures the durable component boundaries - the Electron process model and the trust/network boundaries - not the on-disk layout, which is free to change.
+Same diagram as [`docs/architecture.svg`](docs/architecture.svg) above, rendered as ASCII so it shows up anywhere. It captures the durable component boundaries - the Electron process model and the trust/network boundaries - not the on-disk layout, which is free to change.
 
 ```
         AI clients on your machine

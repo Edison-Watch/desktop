@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="660" viewBox="0 0 900 660" font-family="Archivo, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-label="Edison Watch Desktop architecture diagram">
+  <defs>
+    <marker id="cyanArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#C3FFFD"/>
+    </marker>
+  </defs>
+
+  <!-- Void Black background: all elements exist in infinite negative space -->
+  <rect x="0" y="0" width="900" height="660" fill="#000000"/>
+
+  <!-- grid markers: standalone cyan dashes on grid intersections -->
+  <g stroke="#C3FFFD" stroke-width="1.5" opacity="0.45">
+    <path d="M52,46 h12 M58,40 v12"/>
+    <path d="M842,46 h12 M848,40 v12"/>
+    <path d="M52,338 h12 M58,332 v12"/>
+    <path d="M842,338 h12 M848,332 v12"/>
+    <path d="M52,614 h12 M58,608 v12"/>
+    <path d="M842,614 h12 M848,608 v12"/>
+  </g>
+
+  <!-- ===== AI clients (tag: top-left) ===== -->
+  <rect x="230" y="40" width="440" height="80" fill="none" stroke="#C3FFFD" stroke-width="2"/>
+  <rect x="230" y="40" width="176" height="22" fill="#C3FFFD"/>
+  <text x="318" y="56" text-anchor="middle" font-size="12" font-weight="700" letter-spacing="1.5" fill="#000000">CLIENTS</text>
+  <text x="450" y="90" text-anchor="middle" font-size="17" font-weight="700" fill="#FFFFFF">AI clients on your machine</text>
+  <text x="450" y="110" text-anchor="middle" font-size="12" fill="#9BA4A6">Claude &#183; Cursor &#183; VS Code &#183; Windsurf &#183; Zed &#183; JetBrains &#183; Codex</text>
+
+  <!-- arrow: clients -> desktop -->
+  <line x1="450" y1="120" x2="450" y2="180" stroke="#C3FFFD" stroke-width="2" marker-end="url(#cyanArrow)"/>
+  <text x="462" y="155" font-size="12" fill="#9BA4A6">MCP configs watched on disk</text>
+
+  <!-- ===== Edison Watch Desktop container (tag: top-right) ===== -->
+  <rect x="110" y="186" width="680" height="190" fill="none" stroke="#C3FFFD" stroke-width="2"/>
+  <rect x="518" y="186" width="272" height="22" fill="#C3FFFD"/>
+  <text x="654" y="202" text-anchor="middle" font-size="12" font-weight="700" letter-spacing="1.5" fill="#000000">DESKTOP</text>
+  <text x="134" y="228" font-size="13" font-weight="700" letter-spacing="0.5" fill="#C3FFFD">discover &#183; quarantine &#183; encrypt</text>
+
+  <!-- Renderer sub-box (tag: bottom-left) -->
+  <rect x="156" y="244" width="240" height="108" fill="none" stroke="#C3FFFD" stroke-width="2"/>
+  <rect x="156" y="332" width="96" height="20" fill="#C3FFFD"/>
+  <text x="204" y="346" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="1.5" fill="#000000">UI</text>
+  <text x="276" y="288" text-anchor="middle" font-size="15" font-weight="700" fill="#FFFFFF">Renderer</text>
+  <text x="276" y="308" text-anchor="middle" font-size="12" fill="#9BA4A6">setup wizard / views</text>
+
+  <!-- Main process sub-box (tag: bottom-right) -->
+  <rect x="504" y="244" width="240" height="108" fill="none" stroke="#C3FFFD" stroke-width="2"/>
+  <rect x="648" y="332" width="96" height="20" fill="#C3FFFD"/>
+  <text x="696" y="346" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="1.5" fill="#000000">MAIN</text>
+  <text x="624" y="288" text-anchor="middle" font-size="15" font-weight="700" fill="#FFFFFF">Main process</text>
+  <text x="624" y="308" text-anchor="middle" font-size="12" fill="#9BA4A6">supervisor</text>
+
+  <!-- IPC link between renderer and main -->
+  <line x1="396" y1="298" x2="504" y2="298" stroke="#C3FFFD" stroke-width="2" marker-start="url(#cyanArrow)" marker-end="url(#cyanArrow)"/>
+  <text x="450" y="285" text-anchor="middle" font-size="11" fill="#9BA4A6">IPC over</text>
+  <text x="450" y="318" text-anchor="middle" font-size="11" fill="#9BA4A6">preload bridge</text>
+
+  <!-- arrow: desktop -> daemon -->
+  <line x1="624" y1="376" x2="624" y2="430" stroke="#C3FFFD" stroke-width="2" marker-end="url(#cyanArrow)"/>
+  <text x="636" y="406" font-size="12" fill="#9BA4A6">supervises</text>
+
+  <!-- ===== edison-stdiod daemon (tag: top-left) ===== -->
+  <rect x="404" y="436" width="440" height="76" fill="none" stroke="#C3FFFD" stroke-width="2"/>
+  <rect x="404" y="436" width="176" height="22" fill="#C3FFFD"/>
+  <text x="492" y="452" text-anchor="middle" font-size="12" font-weight="700" letter-spacing="1.5" fill="#000000">DAEMON</text>
+  <text x="624" y="482" text-anchor="middle" font-size="16" font-weight="700" fill="#FFFFFF">edison-stdiod</text>
+  <text x="624" y="502" text-anchor="middle" font-size="12" fill="#9BA4A6">bridges local stdio MCP servers</text>
+
+  <!-- arrow: daemon -> gateway -->
+  <line x1="624" y1="512" x2="624" y2="566" stroke="#C3FFFD" stroke-width="2" marker-end="url(#cyanArrow)"/>
+  <text x="636" y="542" font-size="12" fill="#9BA4A6">single outbound tunnel (no inbound ports)</text>
+
+  <!-- ===== Edison Watch gateway (tag: bottom-right) ===== -->
+  <rect x="404" y="572" width="440" height="64" fill="none" stroke="#C3FFFD" stroke-width="2"/>
+  <rect x="668" y="614" width="176" height="22" fill="#C3FFFD"/>
+  <text x="756" y="630" text-anchor="middle" font-size="12" font-weight="700" letter-spacing="1.5" fill="#000000">GATEWAY</text>
+  <text x="624" y="600" text-anchor="middle" font-size="16" font-weight="700" fill="#FFFFFF">Edison Watch gateway</text>
+</svg>
