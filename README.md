@@ -1,8 +1,8 @@
 <div align="center">
 
-# Edison Watch — Desktop
+# Edison Watch - Desktop
 
-<b>The local control plane for your AI tools' MCP servers — discover, quarantine, and encrypt, all from your menu bar.</b>
+<b>The local control plane for your AI tools' MCP servers - discover, quarantine, and encrypt, all from your menu bar.</b>
 
 <p>
   <a href="#what-it-does">What it does</a> •
@@ -33,17 +33,17 @@ Edison Watch Desktop is the local control plane for [Edison Watch](https://ediso
 Discover → review → approve → encrypt → bridge, without secrets ever leaving your device in the clear.
 
 > [!WARNING]
-> **Edison Watch Desktop is experimental software under active development** and has **not** had an independent security audit. It is a **client for the Edison Watch platform** — it requires an Edison Watch account and connects to the Edison backend. UI, on-disk formats, and behavior may change before a 1.0 release.
+> **Edison Watch Desktop is experimental software under active development** and has **not** had an independent security audit. It is a **client for the Edison Watch platform** - it requires an Edison Watch account and connects to the Edison backend. UI, on-disk formats, and behavior may change before a 1.0 release.
 
 ## What it does
 
 Modern AI tools (Claude, Cursor, VS Code, and friends) connect to MCP servers that can read your files, hold credentials, and reach the network. They're configured in a dozen different places and are easy to lose track of. Edison Watch Desktop gives you one place to see and control them:
 
-- **Discover** — every MCP server configured across the AI clients installed on your machine, with no manual inventory.
-- **Quarantine** — newly-appeared or unapproved servers ("shadow MCPs") before they can run, with a review-and-approve flow.
-- **Encrypt** — credentials with zero-knowledge keys (personal and organization), so secrets never leave your device in the clear.
-- **Bridge** — local stdio MCP servers to the Edison Watch gateway through the bundled [`edison-stdiod`](https://github.com/Edison-Watch/stdiod) daemon: a single outbound, no-inbound-ports tunnel, so they're reachable and governed without being exposed.
-- **Stay current** — with in-app auto-updates.
+- **Discover** - every MCP server configured across the AI clients installed on your machine, with no manual inventory.
+- **Quarantine** - newly-appeared or unapproved servers ("shadow MCPs") before they can run, with a review-and-approve flow.
+- **Encrypt** - credentials with zero-knowledge keys (personal and organization), so secrets never leave your device in the clear.
+- **Bridge** - local stdio MCP servers to the Edison Watch gateway through the bundled [`edison-stdiod`](https://github.com/Edison-Watch/stdiod) daemon: a single outbound, no-inbound-ports tunnel, so they're reachable and governed without being exposed.
+- **Stay current** - with in-app auto-updates.
 
 ### Supported AI clients
 
@@ -51,9 +51,9 @@ Claude Code · Claude Desktop · Claude Cowork · Cursor · VS Code · Windsurf 
 
 ## Getting Started
 
-1. **Install** the app — see [Installation](#installation) (or [build from source](#build-from-source) until signed installers ship).
-2. **Launch** it — the app lives in your menu bar / system tray. A setup wizard walks you through signing in, connecting your installed AI clients, and setting up encryption.
-3. **Review** — from then on the app watches your clients' MCP configuration, surfaces changes for approval, and keeps the tunnel to the Edison Watch backend healthy.
+1. **Install** the app - see [Installation](#installation) (or [build from source](#build-from-source) until signed installers ship).
+2. **Launch** it - the app lives in your menu bar / system tray. A setup wizard walks you through signing in, connecting your installed AI clients, and setting up encryption.
+3. **Review** - from then on the app watches your clients' MCP configuration, surfaces changes for approval, and keeps the tunnel to the Edison Watch backend healthy.
 
 New to MCP? See the [Model Context Protocol docs](https://modelcontextprotocol.io/).
 
@@ -64,7 +64,7 @@ New to MCP? See the [Model Context Protocol docs](https://modelcontextprotocol.i
 
 | Platform | Format |
 | --- | --- |
-| macOS | `.dmg` (universal — Apple Silicon + Intel) |
+| macOS | `.dmg` (universal - Apple Silicon + Intel) |
 | Windows | `.exe` installer (x64, arm64) |
 | Linux | `.AppImage` (x64, arm64) |
 
@@ -107,7 +107,7 @@ TLDR: AI clients → Edison Watch Desktop (discover · quarantine · encrypt) �
 <details>
 <summary>Expand</summary>
 
-The diagram captures the durable component boundaries — the Electron process model and the trust/network boundaries — not the on-disk layout, which is free to change.
+The diagram captures the durable component boundaries - the Electron process model and the trust/network boundaries - not the on-disk layout, which is free to change.
 
 ```
         AI clients on your machine
@@ -166,8 +166,8 @@ Development / runtime toggles:
 
 ## Related repositories
 
-- [**Edison-Watch/stdiod**](https://github.com/Edison-Watch/stdiod) — the `edison-stdiod` tunnel daemon bundled with this app.
-- [**Edison-Watch/shared**](https://github.com/Edison-Watch/shared) — shared React components, design tokens, and client utilities, consumed here as the [`@edison-watch/shared`](https://www.npmjs.com/package/@edison-watch/shared) npm package.
+- [**Edison-Watch/stdiod**](https://github.com/Edison-Watch/stdiod) - the `edison-stdiod` tunnel daemon bundled with this app.
+- [**Edison-Watch/shared**](https://github.com/Edison-Watch/shared) - shared React components, design tokens, and client utilities, consumed here as the [`@edison-watch/shared`](https://www.npmjs.com/package/@edison-watch/shared) npm package.
 
 ## Security
 
@@ -181,13 +181,13 @@ Issues and focused pull requests are welcome. Please keep changes small and run 
 
 This software is built with:
 
-- [Electron](https://www.electronjs.org/) — cross-platform desktop runtime
-- [electron-vite](https://electron-vite.org/) — build tooling
-- [React 19](https://react.dev/) — renderer UI
-- [Tailwind CSS](https://tailwindcss.com/) — styling
-- [Storybook](https://storybook.js.org/) — component development
-- [Playwright](https://playwright.dev/) + [Vitest](https://vitest.dev/) — end-to-end and unit testing
-- [prek](https://github.com/j178/prek) — Rust-based pre-commit framework
+- [Electron](https://www.electronjs.org/) - cross-platform desktop runtime
+- [electron-vite](https://electron-vite.org/) - build tooling
+- [React 19](https://react.dev/) - renderer UI
+- [Tailwind CSS](https://tailwindcss.com/) - styling
+- [Storybook](https://storybook.js.org/) - component development
+- [Playwright](https://playwright.dev/) + [Vitest](https://vitest.dev/) - end-to-end and unit testing
+- [prek](https://github.com/j178/prek) - Rust-based pre-commit framework
 
 ## About the Core Contributors
 
