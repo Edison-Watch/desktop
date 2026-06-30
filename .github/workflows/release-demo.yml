@@ -9,7 +9,7 @@ name: Release macOS (demo prerelease)
 #
 # This is the "manual pre-release" tier. The fast per-commit signed builds
 # (build-macos.yml, Actions artifacts, NOT published) auto-update TO whatever
-# this workflow publishes — that's why those builds are usable upstream.
+# this workflow publishes - that's why those builds are usable upstream.
 
 on:
   workflow_dispatch:

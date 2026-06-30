@@ -37,7 +37,7 @@ jobs:
       # Code signing.
       CSC_LINK: ${{ secrets.CSC_LINK }}
       CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-      # Notarization — REQUIRED so a downloaded stable build opens without the
+      # Notarization - REQUIRED so a downloaded stable build opens without the
       # Gatekeeper prompt. Add these three repo secrets.
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
@@ -86,7 +86,7 @@ jobs:
       - name: Package, sign, notarize & publish to GitHub Releases
         # Tag = v${version} from package.json. releaseType `release` publishes
         # immediately; `draft` uploads assets into a draft you publish in the UI
-        # (safer once Windows/Linux jobs are added — publish once all are up).
+        # (safer once Windows/Linux jobs are added - publish once all are up).
         run: |
           RELEASE_TYPE=release
           [ "${{ inputs.publish }}" != "true" ] && RELEASE_TYPE=draft
