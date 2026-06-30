@@ -66,7 +66,7 @@ jobs:
             --pattern 'edison-stdiod-macos-universal' \
             --pattern 'SHA256SUMS' \
             --dir stdiod-dl --clobber
-          ( cd stdiod-dl && shasum -a 256 -c SHA256SUMS )
+          ( cd stdiod-dl && grep 'edison-stdiod-macos-universal' SHA256SUMS | shasum -a 256 -c - )
           cp stdiod-dl/edison-stdiod-macos-universal bin/edison-stdiod
           chmod +x bin/edison-stdiod
           xattr -c bin/edison-stdiod || true

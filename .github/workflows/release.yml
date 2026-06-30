@@ -21,6 +21,10 @@ on:
         description: 'Publish immediately (true) or upload into a draft to publish manually (false)'
         type: boolean
         default: false
+      stdiod_tag:
+        description: 'edison-stdiod release tag to bundle (pin for reproducible stable builds)'
+        type: string
+        default: v0.0.1
 
 concurrency:
   group: release-macos-stable
@@ -68,14 +72,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Pull latest edison-stdiod (universal) from stdiod releases
+      - name: Pull pinned edison-stdiod (universal) from stdiod releases
         run: |
           mkdir -p stdiod-dl bin
-          gh release download --repo Edison-Watch/stdiod \
+          # Pinned to a specific tag so a stable release is reproducible.
+          gh release download "${{ inputs.stdiod_tag }}" --repo Edison-Watch/stdiod \
             --pattern 'edison-stdiod-macos-universal' \
             --pattern 'SHA256SUMS' \
             --dir stdiod-dl --clobber
-          ( cd stdiod-dl && shasum -a 256 -c SHA256SUMS )
+          ( cd stdiod-dl && grep 'edison-stdiod-macos-universal' SHA256SUMS | shasum -a 256 -c - )
           cp stdiod-dl/edison-stdiod-macos-universal bin/edison-stdiod
           chmod +x bin/edison-stdiod
           xattr -c bin/edison-stdiod || true
