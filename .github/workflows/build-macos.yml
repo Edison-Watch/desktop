@@ -83,7 +83,7 @@ jobs:
             --pattern 'SHA256SUMS' \
             --dir stdiod-dl --clobber
           # Verify integrity against the published checksum before trusting it.
-          ( cd stdiod-dl && shasum -a 256 -c SHA256SUMS )
+          ( cd stdiod-dl && grep 'edison-stdiod-macos-universal' SHA256SUMS | shasum -a 256 -c - )
           cp stdiod-dl/edison-stdiod-macos-universal bin/edison-stdiod
           chmod +x bin/edison-stdiod
           xattr -c bin/edison-stdiod || true

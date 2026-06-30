@@ -2,10 +2,10 @@
  * Auto-updater for the Edison Watch desktop client, built on electron-updater.
  *
  * Replaces the old notify-only updateChecker. Behaviour:
- *   - Feed is electron-updater's `generic` provider pointed at the active
- *     environment's release bucket (demo -> demo-releases, release -> releases),
- *     resolved at runtime via getReleasesBaseUrl(). The two channels are
- *     isolated by URL, so no electron-updater "channel" split is needed.
+ *   - Updates come from GitHub Releases (provider/owner/repo baked into
+ *     app-update.yml at build time; see electron-builder.yml). No feed URL is
+ *     set at runtime. The channel follows the build environment: release ->
+ *     'latest', demo -> 'beta' (GitHub prereleases). See updateChannel().
  *   - autoDownload / autoInstallOnAppQuit come from updateSettings (per-channel
  *     defaults, user-overridable). Release downloads silently; demo downloads
  *     on demand. Both install on quit once a build has been downloaded.
@@ -23,7 +23,7 @@
 
 import { app, BrowserWindow } from 'electron'
 import electronUpdater, { type UpdateInfo, type ProgressInfo } from 'electron-updater'
-import { getReleasesBaseUrl } from './setupConfig'
+import { getBuildDefaultEnv } from './setupConfig'
 import { getUpdateSettings, setUpdateSettings, type UpdateSettings } from './updateSettings'
 
 // electron-updater is CJS; under electron-vite a named import resolves to
@@ -88,6 +88,19 @@ function emit(): void {
   }
 }
 
+/**
+ * electron-updater channel for this build:
+ *   release -> 'latest' (stable GitHub Releases)
+ *   demo    -> 'beta'   (GitHub prereleases)
+ * Demo builds are versioned as prereleases of the *next* stable (e.g. 0.5.4-beta.N
+ * while 0.5.3 is stable), so on the beta channel they only ever update to newer
+ * demo prereleases and never get pulled down onto a stable release. `dev` isn't
+ * packaged, so the updater never runs there.
+ */
+function updateChannel(): 'latest' | 'beta' {
+  return getBuildDefaultEnv() === 'release' ? 'latest' : 'beta'
+}
+
 function applyFeed(): void {
   const testFeed = process.env.EW_UPDATE_FEED
   if (process.env.EW_UPDATE_TEST && testFeed) {
@@ -96,14 +109,10 @@ function applyFeed(): void {
     console.log(`[update] using local test feed: ${testFeed}`)
     return
   }
-  const base = getReleasesBaseUrl()
-  if (!base) {
-    console.log('[update] no release feed for active env; auto-update disabled')
-    return
-  }
-  const url = `${base.replace(/\/$/, '')}/client/latest`
-  autoUpdater.setFeedURL({ provider: 'generic', url, channel: 'latest' })
-  console.log(`[update] feed: ${url}`)
+  // Production: the GitHub provider (owner/repo) is baked into app-update.yml at
+  // build time, so there is no feed URL to set here - the docs are explicit that
+  // setFeedURL should NOT be called in this path. The channel is applied from the
+  // build environment in initUpdateManager().
 }
 
 function registerEventHandlers(): void {
@@ -159,10 +168,13 @@ export function initUpdateManager(opts: {
     autoUpdater.autoDownload = s.autoDownload
     autoUpdater.autoInstallOnAppQuit = s.autoInstallOnQuit
     autoUpdater.autoRunAppAfterInstall = true
-    // Demo versions are semver prereleases (e.g. 0.4.0-demo.142). Feeds are
-    // URL-isolated, so allowing prereleases only affects the demo feed; the
-    // release feed only ever publishes clean versions.
-    autoUpdater.allowPrerelease = true
+    // Follow the channel matching this build: release tracks stable 'latest',
+    // demo tracks 'beta' prereleases. Setting `channel` overrides the value
+    // baked into app-update.yml. allowPrerelease lets demo builds accept the
+    // GitHub prereleases that carry the demo channel; stable builds never do.
+    const channel = updateChannel()
+    autoUpdater.channel = channel
+    autoUpdater.allowPrerelease = channel === 'beta'
     autoUpdater.logger = {
       info: (m) => console.log('[update]', m),
       warn: (m) => console.warn('[update]', m),
