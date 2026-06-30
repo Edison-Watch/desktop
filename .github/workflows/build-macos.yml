@@ -62,14 +62,25 @@ jobs:
           node-version: 22
           cache: npm
 
+      # The Electron runtime electron-builder downloads is pinned by electronVersion
+      # in electron-builder.yml (independent of the resolved `electron` devDep), so
+      # the cache below keys on that value.
+      - name: Resolve Electron runtime version (cache key)
+        id: electron
+        run: echo "version=$(grep '^electronVersion:' electron-builder.yml | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
       # Electron binaries (~100 MB/arch) + app-builder tools - the big download win.
+      # Keyed on the Electron runtime version, NOT package-lock.json: these binaries
+      # only change when Electron is upgraded, so an unrelated dependency bump (the
+      # common dependabot case) no longer needlessly re-downloads ~200 MB. The npm
+      # dependencies themselves are cached separately by setup-node's `cache: npm`.
       - name: Cache electron-builder downloads
         uses: actions/cache@v4
         with:
           path: |
             ~/Library/Caches/electron
             ~/Library/Caches/electron-builder
-          key: ${{ runner.os }}-electron-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-electron-${{ steps.electron.outputs.version }}
           restore-keys: ${{ runner.os }}-electron-
 
       - name: Install dependencies
