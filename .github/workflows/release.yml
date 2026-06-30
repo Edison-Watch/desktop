@@ -42,10 +42,11 @@ jobs:
       CSC_LINK: ${{ secrets.CSC_LINK }}
       CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
       # Notarization - REQUIRED so a downloaded stable build opens without the
-      # Gatekeeper prompt. Add these three repo secrets.
-      APPLE_ID: ${{ secrets.APPLE_ID }}
+      # Gatekeeper prompt. APPLE_ID (email) and APPLE_TEAM_ID are non-sensitive
+      # repo *Variables*; the app-specific password is a *Secret*.
+      APPLE_ID: ${{ vars.APPLE_ID }}
       APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       # electron-builder reads GH_TOKEN to upload assets to the release.
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Stable backend config (RELEASE_VITE_* repository variables).

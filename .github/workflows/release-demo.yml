@@ -31,9 +31,11 @@ jobs:
       # Notarized so demo testers don't hit the Gatekeeper prompt. Demo is
       # manual/infrequent, so the notarization round-trip is acceptable here
       # (unlike the fast per-commit build-macos.yml, which stays un-notarized).
-      APPLE_ID: ${{ secrets.APPLE_ID }}
+      # APPLE_ID / APPLE_TEAM_ID are non-sensitive repo Variables; the
+      # app-specific password is a Secret.
+      APPLE_ID: ${{ vars.APPLE_ID }}
       APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Demo backend config (DEMO_VITE_* repository variables).
       VITE_DEPLOY_ENV: ${{ vars.DEMO_VITE_DEPLOY_ENV }}
