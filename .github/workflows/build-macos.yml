@@ -1,16 +1,29 @@
-name: Build macOS (signed, not notarized)
+name: Build macOS
 
-# Fast upstream TEST build - NOT a release.
+# Upstream TEST build - NOT a release.
 # Pulls the latest published edison-stdiod universal binary from the stdiod repo,
-# bundles it, and produces a code-signed (Developer ID) but UN-notarized .dmg/.zip.
-# Notarization is skipped on purpose: it adds a multi-minute Apple round-trip and
-# isn't needed to verify the build/sign pipeline. The artifact will be
-# Gatekeeper-blocked on other machines (run `xattr -dr com.apple.quarantine` to
-# launch) and won't auto-update - that's fine for testing.
+# bundles it, and produces a universal .dmg/.zip uploaded as an Actions artifact.
+#
+# Signing depends on the trigger:
+#   - pull_request: UNSIGNED. Code signing is the slow part of the build and
+#     needs the CSC_* secrets, which GitHub withholds from fork/dependabot PRs -
+#     so signing PR builds is both wasteful and impossible there. We skip it so
+#     every PR (including dependabot) gets a green gate + a downloadable artifact.
+#   - push to main (post-merge): SIGNED (Developer ID) but NOT notarized. Secrets
+#     are available on same-repo push events, so we sign here to produce a
+#     signed artifact. Notarization is skipped on purpose - it adds a multi-minute
+#     Apple round-trip and isn't needed to verify the build/sign pipeline.
+#
+# Either way the artifact is un-notarized, so it's Gatekeeper-blocked on other
+# machines (run `xattr -dr com.apple.quarantine` to launch) and won't auto-update
+# - that's fine for testing. Real, notarized, published releases come from
+# release.yml / release-demo.yml.
 
 on:
   workflow_dispatch:
   pull_request:
+    branches: [main]
+  push:
     branches: [main]
 
 concurrency:
@@ -22,16 +35,17 @@ permissions:
 
 jobs:
   build:
-    name: Build & sign (universal)
+    name: Build (universal)
     runs-on: macos-latest # arm64; builds the universal target for both arches
     env:
-      # Code-signing only. Leave APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
-      # UNSET so electron-builder signs but does not notarize.
-      CSC_LINK: ${{ secrets.CSC_LINK }}
-      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-      # Sign on PR builds too (internal repo). Fork PRs have no secrets, so CSC_LINK
-      # is empty there and electron-builder falls back to an unsigned build.
-      CSC_FOR_PULL_REQUEST: true
+      # Sign only on post-merge push to main; PR builds stay unsigned (see header).
+      # On pull_request these resolve to empty / false so electron-builder skips
+      # signing entirely instead of erroring on a missing certificate.
+      CSC_LINK: ${{ github.event_name == 'push' && secrets.CSC_LINK || '' }}
+      CSC_KEY_PASSWORD: ${{ github.event_name == 'push' && secrets.CSC_KEY_PASSWORD || '' }}
+      # false => electron-builder produces an unsigned build without probing the
+      # keychain for a Developer ID identity (none exists on PR runs).
+      CSC_IDENTITY_AUTO_DISCOVERY: ${{ github.event_name == 'push' }}
       # gh CLI auth for cross-repo public release download.
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Demo backend config. Vite's loadEnv() also reads matching keys from the
@@ -78,7 +92,7 @@ jobs:
       - name: Build renderer/main/preload bundles
         run: npm run build:demo
 
-      - name: Package & sign (universal, no notarization, no publish)
+      - name: Package (universal, no notarization, no publish)
         run: npx electron-builder --mac --publish never -c.mac.notarize=false
 
       - name: Upload app artifact
