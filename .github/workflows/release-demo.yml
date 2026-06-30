@@ -13,6 +13,11 @@ name: Release macOS (demo prerelease)
 
 on:
   workflow_dispatch:
+    inputs:
+      notarize:
+        description: 'Notarize the build (false = faster, signed-only; testers must run xattr -dr com.apple.quarantine to open)'
+        type: boolean
+        default: true
 
 concurrency:
   group: release-macos-demo
@@ -92,6 +97,6 @@ jobs:
         run: |
           npx electron-builder --mac --publish always \
             -c.extraMetadata.version="${{ steps.ver.outputs.version }}" \
-            -c.mac.notarize=true \
+            -c.mac.notarize=${{ inputs.notarize }} \
             -c.publish.channel=beta \
             -c.publish.releaseType=prerelease
