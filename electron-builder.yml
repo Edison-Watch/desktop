@@ -110,12 +110,19 @@ linux:
         - arm64
 electronVersion: 40.8.0
 npmRebuild: false
-# Generic provider so electron-updater fetches latest-mac.yml + the zip from our
-# R2 release bucket (co-located under client/latest/). This bakes a default
-# app-update.yml pointing at the release channel; the demo CI build overrides
-# the URL via `-c.publish.url=...`, and the running app additionally calls
-# autoUpdater.setFeedURL() per environment (see infra/updateManager.ts).
+# Default artifact names: stable and space-free. Spaces (from productName
+# "Edison Watch") become %20 and break electron-updater URLs and GitHub asset
+# links. The dmg/nsis blocks above keep their own explicit names.
+artifactName: EdisonWatch-${version}-${arch}.${ext}
+# Publish to GitHub Releases (public repo -> no runtime token needed). The
+# provider/owner/repo are baked into app-update.yml at build time, so the
+# installed app resolves updates from GitHub with no feed URL set at runtime
+# (see infra/updateManager.ts). Per-build channel + releaseType are set by the
+# CI workflows via `-c`:
+#   - stable -> channel: latest, releaseType: release  (.github/workflows/release.yml)
+#   - demo   -> channel: beta,   releaseType: prerelease (release-demo.yml)
 publish:
-  provider: generic
-  url: https://releases.edison.watch/client/latest
+  provider: github
+  owner: Edison-Watch
+  repo: desktop
   channel: latest

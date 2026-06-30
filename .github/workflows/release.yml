@@ -1,0 +1,97 @@
+name: Release macOS (stable)
+
+# Manually-triggered STABLE release to GitHub Releases (channel: latest).
+# Builds a signed + NOTARIZED universal macOS app and publishes it as a normal
+# (non-prerelease) GitHub Release. electron-updater on the 'latest' channel picks
+# it up.
+#
+# VERSIONING INVARIANT (keeps demo installs on demo, never pulled onto stable):
+#   package.json `version` is the in-development NEXT stable (e.g. 0.5.4 while
+#   0.5.3 is the latest published stable). Demo builds are `0.5.4-beta.N`, which
+#   are always semver-greater than the released stable, so demo installs only
+#   ever update within the demo (beta) channel.
+#   => AFTER publishing a stable release, bump package.json to the next patch so
+#      the demo channel immediately leads the just-shipped stable again. Until
+#      that bump lands, do NOT cut a demo prerelease at the old base version.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish immediately (true) or upload into a draft to publish manually (false)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-macos-stable
+  cancel-in-progress: false
+
+permissions:
+  contents: write # create / publish the GitHub Release
+
+jobs:
+  release:
+    name: Build, sign, notarize & publish (stable)
+    runs-on: macos-latest
+    env:
+      # Code signing.
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      # Notarization — REQUIRED so a downloaded stable build opens without the
+      # Gatekeeper prompt. Add these three repo secrets.
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      # electron-builder reads GH_TOKEN to upload assets to the release.
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Stable backend config (RELEASE_VITE_* repository variables).
+      VITE_DEPLOY_ENV: ${{ vars.RELEASE_VITE_DEPLOY_ENV }}
+      VITE_API_BASE_URL: ${{ vars.RELEASE_VITE_API_BASE_URL }}
+      VITE_MCP_BASE_URL: ${{ vars.RELEASE_VITE_MCP_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Cache electron-builder downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: ${{ runner.os }}-electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-electron-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pull latest edison-stdiod (universal) from stdiod releases
+        run: |
+          mkdir -p stdiod-dl bin
+          gh release download --repo Edison-Watch/stdiod \
+            --pattern 'edison-stdiod-macos-universal' \
+            --pattern 'SHA256SUMS' \
+            --dir stdiod-dl --clobber
+          ( cd stdiod-dl && shasum -a 256 -c SHA256SUMS )
+          cp stdiod-dl/edison-stdiod-macos-universal bin/edison-stdiod
+          chmod +x bin/edison-stdiod
+          xattr -c bin/edison-stdiod || true
+
+      - name: Build renderer/main/preload bundles (release mode)
+        run: npm run build:release
+
+      - name: Package, sign, notarize & publish to GitHub Releases
+        # Tag = v${version} from package.json. releaseType `release` publishes
+        # immediately; `draft` uploads assets into a draft you publish in the UI
+        # (safer once Windows/Linux jobs are added — publish once all are up).
+        run: |
+          RELEASE_TYPE=release
+          [ "${{ inputs.publish }}" != "true" ] && RELEASE_TYPE=draft
+          echo "Releasing $(node -p "require('./package.json').version") as: $RELEASE_TYPE"
+          npx electron-builder --mac --publish always \
+            -c.mac.notarize=true \
+            -c.publish.channel=latest \
+            -c.publish.releaseType="$RELEASE_TYPE"
