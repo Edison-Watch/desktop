@@ -35,7 +35,7 @@
     "chokidar": "^4.0.3",
     "electron-updater": "^6.3.9",
     "electron-window-state": "^5.0.0",
-    "eventsource": "^3.0.7",
+    "eventsource": "^4.1.0",
     "jsonc-parser": "^3.3.1",
     "smol-toml": "^1.6.1"
   },
