@@ -39,6 +39,26 @@ export default function App(): React.ReactNode {
     })();
   }, []);
 
+  // Hand the daemon the credentials as soon as the user is signed in (Continue
+  // past the login window) so it enrolls right away. A returning login keeps
+  // its API key only in this renderer's auth state — main's setup file has no
+  // key for the active env, so app-ready's bootstrap can't do this on its own.
+  // Enroll is additive (agents union) and non-destructive (a missing secret
+  // keeps the existing one), so it's safe to (re-)send on every sign-in. Before
+  // app selection there are no configured agents yet, so this is a base enroll
+  // (url + key); onboarding's setup:complete adds the chosen agents.
+  useEffect(() => {
+    if (!auth.signedIn || !auth.apiKey || !auth.apiBaseUrl) return;
+    window.api.detectord
+      .enroll({
+        apiUrl: auth.apiBaseUrl,
+        mcpUrl: auth.mcpBaseUrl,
+        apiKey: auth.apiKey,
+        edisonSecretKey: edisonSecretKey || undefined,
+      })
+      .catch((err) => console.error("[App] detectord enroll push failed:", err));
+  }, [auth.signedIn, auth.apiKey, auth.apiBaseUrl, auth.mcpBaseUrl, edisonSecretKey]);
+
   // Windows: right-click in the app body opens the app menu (skip editable
   // fields/selections); the title bar keeps the OS system menu.
   useEffect(() => {

@@ -10,6 +10,7 @@ const RELEVANT_PREFIXES = [
   '[SeenStore]',
   '[getCursorPluginMcpPaths]',
   '[claude-cli]',
+  '[detectord]',
 ]
 
 function shouldCapture(msg: string): boolean {

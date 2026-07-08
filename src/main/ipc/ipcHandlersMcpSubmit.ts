@@ -15,6 +15,8 @@ const execFileAsync = promisify(execFile);
 
 import { discoverMcpServers, describeUnsupportedReason } from "../discovery/mcpDiscovery";
 import type { DiscoveredMcpServer, McpClientId, McpServerConfig } from "../discovery/mcpDiscovery";
+import { detectordPrimary } from "../detectord/mode";
+import { submitServersViaDetectord, resubmitServerViaDetectord } from "../detectord/submit";
 import { removeServerFromConfig } from "../runtime/mcpConfigActions";
 import { quarantineCursorPlugin } from "../clients/cursor/quarantinePlugins";
 import {
@@ -172,6 +174,11 @@ export function registerMcpSubmitHandlers(): void {
       return { success: false, error: "Not signed in or server URL not configured." };
     }
 
+    // Primary mode: resubmit-under-new-name is a daemon disposition with rename.
+    if (detectordPrimary()) {
+      return resubmitServerViaDetectord(params.originalName, params.newName, params.client ?? "");
+    }
+
     // Use cache first, fall back to passed config
     const { servers: cached, raw: cachedRaw } = getCachedDiscovery();
     let server: DiscoveredMcpServer | undefined = cached.find((s) => s.name === params.originalName);
@@ -241,6 +248,15 @@ export function registerMcpSubmitHandlers(): void {
     removed: string[];
     errors: string[];
   }> => {
+    // Primary mode: the daemon owns removal. Servers the user didn't send to EW
+    // are auto-quarantined once enforcement arms at setup:complete, so there's
+    // nothing for the client to remove here.
+    if (detectordPrimary()) {
+      const names = targets.map((t) => (typeof t === "string" ? t : t.name));
+      console.log(`[detectord] removeServers no-op in primary (daemon quarantines when armed): ${names.join(", ")}`);
+      return { removed: [], errors: [] };
+    }
+
     // Use cached raw (pre-dedup) list so we find ALL per-agent instances
     const { servers: deduped, raw: filtered } = getCachedDiscovery();
     const removed: string[] = [];
@@ -428,6 +444,15 @@ export function registerMcpSubmitHandlers(): void {
     const allServers = deduplicateServers(cached);
     const skipSet = new Set(params.skipServers ?? []);
     const servers = skipSet.size > 0 ? allServers.filter((s) => !skipSet.has(s.name)) : allServers;
+
+    // Primary mode: the daemon owns submit and auto-templatizes detected secrets,
+    // so the manual template overrides don't apply — route through the daemon.
+    if (detectordPrimary()) {
+      const summary = await submitServersViaDetectord(servers);
+      console.log(`[detectord] onboarding submit (templates ignored; daemon auto-templatizes): ${summary.submitted} submitted, ${summary.failures.length} failed`);
+      return summary;
+    }
+
     const removalMap = buildRemovalMap(cachedRaw, servers);
 
     const serverList = servers.map((s) => ({ name: s.name, client: s.client, clients: s.clients, source: s.source }));
@@ -563,6 +588,15 @@ export function registerMcpSubmitHandlers(): void {
     const allServers = deduplicateServers(cached);
     const skipSet = new Set(params?.skipServers ?? []);
     const servers = skipSet.size > 0 ? allServers.filter((s) => !skipSet.has(s.name)) : allServers;
+
+    // Primary mode: the daemon owns submit (and handles stdio). Route each
+    // registration through it instead of the client's http-only submit path.
+    if (detectordPrimary()) {
+      const summary = await submitServersViaDetectord(servers);
+      console.log(`[detectord] onboarding submit: ${summary.submitted} submitted, ${summary.failures.length} failed`);
+      return summary;
+    }
+
     const removalMap = buildRemovalMap(cachedRaw, servers);
 
     const serverList = servers.map((s) => ({ name: s.name, client: s.client, clients: s.clients, source: s.source }));

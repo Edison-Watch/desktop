@@ -181,6 +181,16 @@ interface EdisonAPI {
   app: {
     clearDataAndRestart: () => Promise<void>
   }
+  detectord: {
+    enroll: (input: {
+      apiUrl?: string
+      mcpUrl?: string
+      apiKey?: string
+      edisonSecretKey?: string
+    }) => Promise<{ ok: boolean }>
+    setSecret: (key: string) => Promise<{ ok: boolean }>
+    uninstall: (opts?: { purge?: boolean }) => Promise<{ ok: boolean; stdout: string; stderr: string }>
+  }
   stdiod: {
     status: () => Promise<StdiodStatus>
     install: () => Promise<StdiodResult>

@@ -12,6 +12,7 @@
     "build:demo": "npm run typecheck && electron-vite build --mode demo",
     "build:release": "npm run typecheck && electron-vite build --mode release",
     "build:stdiod": "bash scripts/build-stdiod.sh",
+    "build:detectord": "bash scripts/build-detectord.sh",
     "build:mac": "npm run build:stdiod && npm run build:demo && electron-builder --mac",
     "build:mac:release": "npm run build:stdiod && npm run build:release && electron-builder --mac",
     "stage:python": "pwsh -NoProfile -File scripts/stage-python.ps1",

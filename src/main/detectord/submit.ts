@@ -1,0 +1,103 @@
+// Route onboarding's "register these servers" actions through the daemon.
+//
+// In primary mode the daemon owns submit (templatize secrets, send to EW, mark
+// seen, remove locally) and handles stdio servers the client's own http-only
+// submit path can't. Onboarding's bulk submit + rename-resubmit map cleanly onto
+// per-server `disposition(send_to_ew[, rename])` calls.
+
+import type { DiscoveredMcpServer } from '../discovery/types'
+
+import { getDetectordClient } from './lifecycle'
+
+// Client ids use dashes (`claude-code`); daemon agent names use underscores.
+const toAgent = (client: string): string => client.replace(/-/g, '_')
+
+export interface DetectordSubmitFailure {
+  name: string
+  client: string
+  reason: 'conflict' | 'error' | 'already-on-backend'
+  message: string
+  config?: Record<string, unknown>
+  configPath?: string
+  backendStatus?: 'registered' | 'requested'
+}
+
+export interface DetectordSubmitSummary {
+  submitted: number
+  autoApproved: number
+  skipped: number
+  alreadyOnBackend: number
+  total: number
+  servers: Array<{ name: string; client: string; clients?: string[]; source: string }>
+  failures: DetectordSubmitFailure[]
+}
+
+/**
+ * Submit each server via the daemon. Success => submitted (autoApproved when the
+ * user is admin/owner, since the daemon registers directly for those roles). A
+ * backend 409 comes back as a `conflict:` error, surfaced as a conflict failure
+ * carrying the config so onboarding can offer the rename-resubmit flow.
+ */
+export async function submitServersViaDetectord(
+  servers: DiscoveredMcpServer[]
+): Promise<DetectordSubmitSummary> {
+  const client = getDetectordClient()
+  await client.connect()
+  const status = await client.status().catch(() => null)
+  const isAdminOrOwner = status?.role === 'admin' || status?.role === 'owner'
+
+  let submitted = 0
+  let autoApproved = 0
+  const failures: DetectordSubmitFailure[] = []
+  for (const s of servers) {
+    try {
+      await client.disposition(s.name, 'send_to_ew', toAgent(s.client))
+      submitted++
+      if (isAdminOrOwner) autoApproved++
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (/conflict/i.test(message)) {
+        failures.push({
+          name: s.name,
+          client: s.client,
+          reason: 'conflict',
+          message,
+          config: s.config as unknown as Record<string, unknown>,
+          configPath: s.path
+        })
+      } else {
+        failures.push({ name: s.name, client: s.client, reason: 'error', message })
+      }
+    }
+  }
+  return {
+    submitted,
+    autoApproved,
+    skipped: 0,
+    alreadyOnBackend: 0,
+    total: servers.length,
+    servers: servers.map((s) => ({
+      name: s.name,
+      client: s.client,
+      clients: s.clients,
+      source: s.source
+    })),
+    failures
+  }
+}
+
+/** Resubmit a name-conflicting server under a new name via the daemon. */
+export async function resubmitServerViaDetectord(
+  name: string,
+  newName: string,
+  client: string
+): Promise<{ success: boolean; error?: string }> {
+  const c = getDetectordClient()
+  await c.connect()
+  try {
+    await c.disposition(name, 'send_to_ew', toAgent(client), newName)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}

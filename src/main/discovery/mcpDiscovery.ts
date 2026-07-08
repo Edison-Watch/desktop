@@ -12,6 +12,8 @@ import type { DiscoveredMcpServer, DiscoveryResult } from './types'
 import { isOpaqueConfig, hasMalformedHeaders } from './types'
 import { clientAlias } from './serverDeduplication'
 import { MAC_APP_NAMES, macAppExists } from './macAppNames'
+import { detectordPrimary } from '../detectord/mode'
+import { discoverViaDetectord } from '../detectord/discovery'
 
 // ── Re-exports (backward compatibility) ────────────────────────────────────
 
@@ -76,8 +78,13 @@ export { MAC_APP_NAMES, macAppExists }
 export async function discoverMcpServers(): Promise<DiscoveredMcpServer[]>
 export async function discoverMcpServers(opts: { includeRaw: true }): Promise<DiscoveryResult>
 export async function discoverMcpServers(opts?: { includeRaw?: boolean }): Promise<DiscoveredMcpServer[] | DiscoveryResult> {
-  const perClient = await Promise.all(CLIENT_LIST.map((c) => c.discoverServers()))
-  const results: DiscoveredMcpServer[] = perClient.flat()
+  // Primary mode: the daemon is the source of truth (and sees stdio servers the
+  // client can't). Fall back to a local scan only when it returns null (daemon
+  // unreachable / not enrolled). The rest of the pipeline — shim-unwrap,
+  // supported/unsupported split, dedup, installed-app filter — runs unchanged.
+  const daemonServers = detectordPrimary() ? await discoverViaDetectord() : null
+  const results: DiscoveredMcpServer[] =
+    daemonServers ?? (await Promise.all(CLIENT_LIST.map((c) => c.discoverServers()))).flat()
 
   // Normalize stdio shims (e.g. `npx -y mcp-remote https://…`) to their
   // URL-shaped equivalents so downstream code (submit, dedup, credential
@@ -90,8 +97,13 @@ export async function discoverMcpServers(opts?: { includeRaw?: boolean }): Promi
   // Split supported / unsupported. Unsupported = opaque (Cursor marketplace
   // and VS Code state-DB shapes) OR local stdio that we can't unwrap into a
   // URL OR an HTTP server whose `headers` field is the wrong shape (must be
-  // a JSON object). Local stdio is no longer executable post-rip-out, so we
-  // list it for visibility but don't quarantine or submit it.
+  // a JSON object).
+  //
+  // Local stdio is "not yet supported" only for the *client's* http-proxy path.
+  // When the list comes from the daemon (primary mode), the daemon can act on
+  // stdio servers, so they're supported (registerable via the daemon) — don't
+  // bucket them as unsupported or onboarding would show 0 registerable servers.
+  const daemonSourced = daemonServers !== null
   const supported: DiscoveredMcpServer[] = []
   const unsupportedRaw: DiscoveredMcpServer[] = []
   for (const s of results) {
@@ -100,7 +112,8 @@ export async function discoverMcpServers(opts?: { includeRaw?: boolean }): Promi
     } else if (hasMalformedHeaders(s.config)) {
       unsupportedRaw.push(s)
     } else if ('command' in s.config && s.config.command) {
-      unsupportedRaw.push(s)
+      if (daemonSourced) supported.push(s)
+      else unsupportedRaw.push(s)
     } else {
       supported.push(s)
     }
