@@ -6,10 +6,8 @@ import {
   session,
   Tray,
   Menu,
-  Notification,
   nativeImage,
   nativeTheme,
-  clipboard,
   dialog
 } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
@@ -51,25 +49,8 @@ const optimizer = {
 import windowStateKeeper from 'electron-window-state'
 import { injectAllHooks, isCodexInstalled } from './runtime/hookInjection'
 import { initSentry } from './infra/sentry'
-import {
-  startHookHealthMonitor,
-  stopHookHealthMonitor,
-  getHookStatusLabel
-} from './runtime/hookHealthMonitor'
-import {
-  initUpdateManager,
-  stopUpdateManager,
-  checkForUpdates,
-  downloadUpdate,
-  quitAndInstall,
-  isUpdateDownloaded,
-  getPendingUpdateVersion
-} from './infra/updateManager'
-import { showDebugWindow } from './dialogs/debugWindow'
-import { showFeedbackWindow } from './dialogs/feedbackWindow'
-import { showServerRegistrationDialog } from './dialogs/mcpServerActionDialog'
-import { showUpdateKeysWindow } from './dialogs/updateKeysWindow'
-import { fetchUserRole } from './discovery/mcpServerSubmit'
+import { startHookHealthMonitor, stopHookHealthMonitor } from './runtime/hookHealthMonitor'
+import { initUpdateManager, stopUpdateManager } from './infra/updateManager'
 import { warmOrgIdCacheOnStartup } from './infra/orgIdCache'
 import {
   applyAppIntegrations,
@@ -78,7 +59,6 @@ import {
 } from './runtime/mcpConfigWriter'
 import {
   initQuarantineManager,
-  getAutoQuarantineEnabled,
   startQuarantineMonitorIfEnabled,
   handleQuarantineEnabled,
   handleQuarantineDisabled,
@@ -92,8 +72,6 @@ import {
   getActiveEnv,
   getApiBaseUrl,
   getMcpBaseUrl,
-  getMcpUrl,
-  getMcpConfig,
   ALL_SUPPORTED_APPS,
   getSetupData,
   isSetupComplete,
@@ -102,25 +80,23 @@ import {
   markSetupIncomplete,
   startServerStatusChecks,
   stopServerStatusChecks,
-  getIsServerOnline,
   checkClaudeCodeMcpConnection
 } from './infra/setupConfig'
 import {
   pendingApprovals,
   startEventSubscription as _startEventSubscription,
   stopEventSubscription,
-  showPendingApprovalsDialog,
   initApprovalsHandler,
-  isSseConnected,
   setSseStatusCallback
 } from './ipc/approvalsHandler'
 import { registerIpcHandlers } from './ipc/ipcHandlers'
 import { buildAppMenu as buildAppMenuFromDeps } from './menus/appMenu'
+import { buildTrayMenuItems as buildTrayMenuItemsFromDeps } from './menus/trayMenu'
+import { integrateDesktopEntry } from './runtime/desktopIntegration'
+import { stageStdiodBinary } from './runtime/stdiodBinary'
 import { refreshStdiodStatusCache, startStdiodStatusCacheRefresh } from './stdiod/trayCache'
-import { buildStdiodMenuItems } from './stdiod/trayMenu'
 import { uninstall as uninstallStdiod } from './stdiod/controller'
 import { maybeRefreshStdiodInstall } from './stdiod/installRefresh'
-import { handleStdiodReset } from './stdiod/trayReset'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import appIconPath from '../../resources/icon.png?asset'
@@ -130,6 +106,11 @@ import trayIconPath from '../../resources/icon_tray.png?asset'
 // at small sizes and isn't picked up unpackaged). macOS/Linux use the exe/.icns.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import winIconPath from '../../resources/icon.ico?asset'
+
+// Baked at build time by electron.vite.config.ts (define). true = compact Linux
+// tray menu; false = full menu. Default build is compact; EDISON_TRAY_COMPACT=0
+// produces the full-menu variant.
+declare const __TRAY_COMPACT__: boolean
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -143,207 +124,28 @@ function startEventSubscription(): void {
 }
 
 function buildTrayMenuItems(): MenuItemConstructorOptions[] {
-  const setupData = getSetupData()
-  const pendingCount = pendingApprovals.size
-  const userDisplayName = setupData.userEmail || 'Not signed in'
-
-  const items: MenuItemConstructorOptions[] = [
-    { label: 'Open Edison Watch', click: () => showMainWindow() },
-    { type: 'separator' },
-    { label: 'Enabled', type: 'checkbox', checked: true, click: () => {} },
-    { label: getIsServerOnline() ? 'Backend: Connected' : 'Backend: Disconnected', enabled: false },
-    {
-      label: isSseConnected() ? 'Live updates: Connected' : 'Live updates: Disconnected',
-      enabled: false
-    },
-    { label: userDisplayName, enabled: false },
-    { type: 'separator' },
-    {
-      label: pendingCount > 0 ? `Pending Approvals (${pendingCount})` : 'No Pending Approvals',
-      enabled: pendingCount > 0,
-      click: pendingCount > 0 ? () => showPendingApprovalsDialog() : undefined
-    },
-    {
-      label: 'Register MCP Servers',
-      enabled: Boolean(
-        getCredentialsForEnv()?.apiKey && (setupData.apiBaseUrl || setupData.serverAddress)
-      ),
-      click: async () => {
-        let isAdminOrOwner = false
-        const apiBaseUrl = getApiBaseUrl()
-        const envCreds = getCredentialsForEnv()
-        if (apiBaseUrl && envCreds?.apiKey) {
-          const role = await fetchUserRole(apiBaseUrl, envCreds.apiKey)
-          isAdminOrOwner = role === 'admin' || role === 'owner'
-        }
-        showServerRegistrationDialog(mainWindow ?? undefined, isAdminOrOwner)
-      }
-    },
-    {
-      label: 'Open Dashboard',
-      enabled: Boolean(getApiBaseUrl()),
-      click: () => {
-        const dashboardUrl = getApiBaseUrl()
-        if (dashboardUrl) shell.openExternal(dashboardUrl)
-      }
-    },
-    { type: 'separator' },
-    {
-      label: 'Copy EdisonWatch MCP config',
-      enabled: Boolean(getMcpUrl()),
-      click: () => {
-        const mcpConfig = getMcpConfig()
-        if (mcpConfig) {
-          clipboard.writeText(mcpConfig)
-          if (Notification.isSupported()) {
-            const n = new Notification({
-              title: 'Edison Watch',
-              body: 'MCP config copied - paste into VSCode, Cursor, or your MCP client',
-              ...(process.platform !== 'darwin' && { icon: trayIconPath })
-            })
-            n.show()
-          }
-        }
-      }
-    },
-    {
-      label: 'Copy MCP URL',
-      enabled: Boolean(getMcpUrl()),
-      click: () => {
-        const url = getMcpUrl()
-        if (url) {
-          clipboard.writeText(url)
-          if (Notification.isSupported()) {
-            const n = new Notification({
-              title: 'Edison Watch',
-              body: 'MCP URL copied to clipboard',
-              ...(process.platform !== 'darwin' && { icon: trayIconPath })
-            })
-            n.show()
-          }
-        }
-      }
-    },
-    { type: 'separator' },
-    ...buildStdiodMenuItems(trayIconPath, () => {
-      void handleStdiodReset({
-        getMainWindow: () => mainWindow,
-        updateTrayMenu,
-        trayIconPath
-      })
-    }),
-    { type: 'separator' },
-    { label: getHookStatusLabel(), enabled: false },
-    {
-      label: getAutoQuarantineEnabled()
-        ? 'MCP Auto-Quarantine: Enabled'
-        : 'MCP Auto-Quarantine: Disabled',
-      enabled: false
-    }
-  ]
-
-  const pendingVersion = getPendingUpdateVersion()
-  if (isUpdateDownloaded() && pendingVersion) {
-    items.push({
-      label: `Restart to update (v${pendingVersion})`,
-      click: () => quitAndInstall()
-    })
-  } else if (pendingVersion) {
-    // Available but not downloaded yet (demo default: download on demand).
-    items.push({
-      label: `Download update (v${pendingVersion})`,
-      click: () => {
-        downloadUpdate().catch((err) => console.error('[update] download failed:', err))
-        updateTrayMenu()
-      }
-    })
-  } else {
-    items.push({
-      label: 'Check for Updates',
-      click: async () => {
-        const state = await checkForUpdates()
-        if (Notification.isSupported()) {
-          if (state.version && state.status !== 'idle' && state.status !== 'error') {
-            new Notification({
-              title: 'Edison Watch',
-              body: `Version ${state.version} is available.`,
-              ...(process.platform !== 'darwin' && { icon: trayIconPath })
-            }).show()
-          } else if (state.status === 'error') {
-            new Notification({
-              title: 'Edison Watch',
-              body: 'Update check failed. Please check your connection.',
-              ...(process.platform !== 'darwin' && { icon: trayIconPath })
-            }).show()
-          } else {
-            new Notification({
-              title: 'Edison Watch',
-              body: "You're already on the latest version.",
-              ...(process.platform !== 'darwin' && { icon: trayIconPath })
-            }).show()
-          }
-        }
-        updateTrayMenu()
-      }
-    })
-  }
-
-  items.push(
-    { type: 'separator' },
-    {
-      label: 'Debug Window',
-      click: () => showDebugWindow(mainWindow ?? undefined)
-    },
-    { type: 'separator' },
-    {
-      label: 'Re-run Setup Wizard',
-      click: () => rerunWizard()
-    },
-    {
-      label: 'Clear App Data & Restart',
-      click: () => handleClearDataAndRestart()
-    },
-    {
-      label: 'Update Keys',
-      click: () =>
-        showUpdateKeysWindow(
-          getSetupData,
-          (key) => markSetupComplete({ edisonSecretKey: key }),
-          async (compositeKey) => {
-            const setup = getSetupData()
-            const mcpBaseUrl = getMcpBaseUrl()
-            const creds = getCredentialsForEnv()
-            const serverAddress = setup.serverAddress ?? ''
-            if (!mcpBaseUrl || !creds?.apiKey) return
-            await applyAppIntegrations({
-              serverAddress,
-              mcpBaseUrl,
-              apiKey: creds.apiKey,
-              edisonSecretKey: compositeKey,
-              apps: setup.configuredApps?.length ? setup.configuredApps : ALL_SUPPORTED_APPS
-            })
-          }
-        )
-    },
-    {
-      label: 'Send Feedback',
-      click: () => showFeedbackWindow()
-    },
-    {
-      label: 'Sign Out',
-      click: () => handleLogoutAndRestart()
-    },
-    {
-      label: 'Quit',
-      click: () => app.quit()
-    }
-  )
-
-  return items
+  return buildTrayMenuItemsFromDeps({
+    getMainWindow: () => mainWindow,
+    showMainWindow,
+    updateTrayMenu,
+    rerunWizard,
+    handleClearDataAndRestart,
+    handleLogoutAndRestart
+  })
 }
 
 function buildTrayMenu(): Menu {
   return Menu.buildFromTemplate(buildTrayMenuItems())
+}
+
+// Linux: refresh the stdiod status cache, THEN (re)attach the tray menu. Linux
+// tray backends have no menu-open event, so we refresh on every (re)build to
+// keep the status rows fresh - the parity equivalent of the other platforms'
+// on-open refresh in showMenu(). (refreshStdiodStatusCache never rejects.)
+function refreshAndSetLinuxTrayMenu(): void {
+  void refreshStdiodStatusCache().then(() => {
+    if (tray) tray.setContextMenu(buildTrayMenu())
+  })
 }
 
 function createTray(): void {
@@ -370,10 +172,19 @@ function createTray(): void {
     tray.popUpContextMenu(buildTrayMenu())
   }
 
-  // Windows/Linux convention: left-click opens the app, right-click shows the menu.
-  // macOS menu-bar convention: any click shows the menu (the dock icon reopens the window).
-  tray.on('click', process.platform === 'darwin' ? showMenu : showMainWindow)
-  tray.on('right-click', showMenu)
+  if (process.platform === 'linux') {
+    // Linux tray backends (libappindicator / StatusNotifierItem) don't emit
+    // 'click'/'right-click' events and only render an attached context menu, so
+    // the popUpContextMenu approach below never fires. Bind the menu directly
+    // (refreshed first, so the first menu isn't built from a stale/default
+    // cache); kept current by updateTrayMenu().
+    refreshAndSetLinuxTrayMenu()
+  } else {
+    // Windows: left-click opens the app, right-click shows the menu.
+    // macOS menu-bar convention: any click shows the menu (the dock icon reopens the window).
+    tray.on('click', process.platform === 'darwin' ? showMenu : showMainWindow)
+    tray.on('right-click', showMenu)
+  }
 
   startServerStatusChecks(updateTrayMenu)
   startStdiodStatusCacheRefresh(10_000, updateTrayMenu)
@@ -386,6 +197,11 @@ function createTray(): void {
 }
 
 function updateTrayMenu(): void {
+  // Linux binds the menu directly (no click event to refresh on open), so
+  // refresh the status cache and re-attach on every rebuild to stay current.
+  if (tray && process.platform === 'linux') {
+    refreshAndSetLinuxTrayMenu()
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (tray && process.platform === 'darwin' && (app as any).dock?.setMenu) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -514,7 +330,10 @@ function createWindow(): void {
     // Match the renderer's dark background to avoid a white flash before paint.
     backgroundColor: '#1C1C1C',
     ...(process.platform === 'win32' ? { icon: winIconPath } : {}),
-    ...(process.platform === 'linux' ? { icon: join(__dirname, '../../build/icon.png') } : {}),
+    // Use the bundled asset (electron-vite ?asset), not build/icon.png - the
+    // build/ dir is buildResources and isn't packed, so that path didn't exist
+    // and the window fell back to GNOME's generic icon.
+    ...(process.platform === 'linux' ? { icon: appIconPath } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -528,14 +347,28 @@ function createWindow(): void {
     mainWindow = null
   })
 
+  // Tracks whether the initial show has happened, so the Linux did-finish-load
+  // fallback below fires at most once (a later reload's did-finish-load must not
+  // re-show a window the user hid to the tray).
+  let initialShowDone = false
+
   mainWindow.on('ready-to-show', () => {
     slog('ready-to-show, showing window')
+    initialShowDone = true
     mainWindow?.show()
   })
 
   mainWindow.webContents.on('did-finish-load', () => {
     slog('did-finish-load')
     logEnvConfig('startup')
+    // Linux-only fallback: `ready-to-show` is unreliable there (may never fire),
+    // which would leave this `show: false` window hidden forever. win/mac rely
+    // on ready-to-show for anti-flash timing, so don't show here. First load
+    // only - did-finish-load also fires on reload/navigation.
+    if (process.platform === 'linux' && !initialShowDone) {
+      initialShowDone = true
+      mainWindow?.show()
+    }
     // Push any callback buffered before the page loaded (left buffered so the
     // renderer mount-pull can also claim it; renderer de-dupes).
     flushBufferedAuthCallback()
@@ -628,6 +461,18 @@ app.whenReady().then(async () => {
   slog('app.whenReady fired')
   electronApp.setAppUserModelId('com.edisonwatch.desktop')
   updateAppMenu()
+
+  // Linux/AppImage: copy the daemon out of the ephemeral FUSE mount to a stable
+  // path BEFORE anything invokes or installs it. The AppImage mounts at a fresh
+  // /tmp/.mount_* dir each launch, so a systemd unit pointing ExecStart there
+  // breaks the moment the app exits (status=203/EXEC -> crash-loop). No-op on
+  // mac/win/dev. See runtime/stdiodBinary.ts.
+  stageStdiodBinary()
+
+  // Linux/AppImage: self-install a .desktop entry + icon so the dock/taskbar
+  // shows the Edison icon and the app is pinnable. No-op on mac/win/dev and for
+  // non-AppImage runs. See runtime/desktopIntegration.ts.
+  integrateDesktopEntry(appIconPath)
 
   // Loopback auth-callback server - started in dev AND packaged builds. Chrome
   // silently blocks gesture-less redirects to custom protocols (edison-watch://),
