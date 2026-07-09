@@ -41,3 +41,6 @@ dev-app-update.yml
 *.ntvs*
 *.njsproj
 *.sln
+
+# Claude Code
+.claude/
