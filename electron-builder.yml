@@ -62,10 +62,9 @@ nsis:
 mac:
   icon: resources/icon.icns
   category: public.app-category.developer-tools
-  # Bundle the edison-stdiod daemon (universal Mach-O staged by
-  # scripts/build-stdiod.sh) directly into Contents/Resources/bin/.
-  # electron-builder's mac.target=universal requires this binary to also
-  # be universal - see scripts/build-stdiod.sh for the lipo step.
+  # Bundle the edison-stdiod daemon directly into Contents/Resources/bin/.
+  # The .app targets arm64 (Apple Silicon) only; a universal bundled binary
+  # still works (its arm64 slice is used), but arm64-only staging is enough.
   # @electron/osx-sign signs nested executables in Contents/Resources
   # automatically when hardenedRuntime: true, inheriting entitlements
   # from entitlementsInherit, so no afterPack hook is needed here.
@@ -75,10 +74,10 @@ mac:
   target:
     - target: dmg
       arch:
-        - universal
+        - arm64
     - target: zip
       arch:
-        - universal
+        - arm64
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.plist
   hardenedRuntime: true

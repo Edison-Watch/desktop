@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Build the mcp_detector_daemon (edison-detectord) as a universal macOS binary
-# and stage it into desktop/bin/ so electron-builder's mac.extraResources rule
-# copies it into Contents/Resources/bin/ of the packaged .app.
+# Build the mcp_detector_daemon (edison-detectord) for Apple Silicon (arm64) and
+# stage it into desktop/bin/ so electron-builder's mac.extraResources rule copies
+# it into Contents/Resources/bin/ of the packaged .app.
 #
 # Mirrors build-stdiod.sh. The daemon source is the sibling `detectord/` clone
 # (edison-client/detectord). The cargo binary is `mcp_detector_daemon`; we stage
 # it under the friendlier name `edison-detectord` (matching the stdiod naming).
 #
-# Why universal: electron-builder.yml sets mac.target: universal, so every
-# nested binary must also be universal or the merge fails; we build both arches
-# and lipo them.
+# arm64-only: we no longer build the x86_64 slice or lipo a universal binary.
+# NOTE: if electron-builder.yml still sets mac.target: universal, the bundled
+# binaries must match — target arm64 there too, or the universal merge fails.
 
 set -euo pipefail
 
@@ -18,6 +18,7 @@ CLIENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$CLIENT_DIR/.." && pwd)"
 DETECTORD_DIR="$REPO_ROOT/detectord"
 BIN_NAME="mcp_detector_daemon"
+TARGET="aarch64-apple-darwin"
 OUT_DIR="$CLIENT_DIR/bin"
 OUT_BIN="$OUT_DIR/edison-detectord"
 
@@ -33,25 +34,17 @@ fi
 
 mkdir -p "$OUT_DIR"
 
-for target in aarch64-apple-darwin x86_64-apple-darwin; do
-  if ! rustup target list --installed | grep -q "^${target}\$"; then
-    echo "Installing rustup target $target ..."
-    rustup target add "$target"
-  fi
-done
+if ! rustup target list --installed | grep -q "^${TARGET}\$"; then
+  echo "Installing rustup target $TARGET ..."
+  rustup target add "$TARGET"
+fi
 
-echo "Building $BIN_NAME for aarch64-apple-darwin ..."
-( cd "$DETECTORD_DIR" && cargo build --release --bin "$BIN_NAME" --target aarch64-apple-darwin )
+echo "Building $BIN_NAME for $TARGET ..."
+( cd "$DETECTORD_DIR" && cargo build --release --bin "$BIN_NAME" --target "$TARGET" )
 
-echo "Building $BIN_NAME for x86_64-apple-darwin ..."
-( cd "$DETECTORD_DIR" && cargo build --release --bin "$BIN_NAME" --target x86_64-apple-darwin )
-
-echo "Creating universal binary at $OUT_BIN ..."
-lipo -create \
-  "$DETECTORD_DIR/target/aarch64-apple-darwin/release/$BIN_NAME" \
-  "$DETECTORD_DIR/target/x86_64-apple-darwin/release/$BIN_NAME" \
-  -output "$OUT_BIN"
+echo "Staging binary at $OUT_BIN ..."
+cp "$DETECTORD_DIR/target/$TARGET/release/$BIN_NAME" "$OUT_BIN"
 chmod +x "$OUT_BIN"
 
-echo "Verifying architectures ..."
+echo "Verifying architecture ..."
 lipo -info "$OUT_BIN"
