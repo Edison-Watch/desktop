@@ -33,7 +33,12 @@ export function buildAppMenu(deps: AppMenuDeps): Menu {
   const showDeveloperMenu = getBuildDefaultEnv() !== 'release'
   const currentEnv = getDebugEnvOverride() ?? getBuildDefaultEnv()
   const envSubmenu: MenuItemConstructorOptions[] = DEBUG_ENV_NAMES.map((name) => ({
-    label: name === 'dev' ? 'dev (localhost)' : name,
+    label:
+      name === 'dev'
+        ? 'dev (localhost)'
+        : name === 'temp-local-stack'
+          ? 'temp-local-stack (railway offline)'
+          : name,
     type: 'radio' as const,
     checked: currentEnv === name,
     click: async () => {
