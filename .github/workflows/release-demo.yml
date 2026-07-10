@@ -89,14 +89,40 @@ jobs:
       - name: Build renderer/main/preload bundles (demo mode)
         run: npm run build:demo
 
-      - name: Package, sign, notarize & publish prerelease to GitHub Releases
+      - name: Pre-create draft release
+        # electron-builder races itself creating the GitHub release: the dmg
+        # and zip artifacts finish near-simultaneously, PublishManager spawns
+        # two GitHubPublisher instances (async cache-miss race), and both POST
+        # /releases for the same tag - the loser dies with 422 "Published
+        # releases must have a valid tag" and the job fails after a successful
+        # notarization, leaving a half-uploaded release without beta.yml.
+        # Pre-creating the release means every publisher instance finds and
+        # reuses it instead of racing to create it. Draft keeps it invisible
+        # to auto-updaters until all assets (incl. beta.yml) are up.
+        run: |
+          TAG="v${{ steps.ver.outputs.version }}"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "${{ steps.ver.outputs.version }}" \
+              --draft --prerelease \
+              --notes "Demo prerelease build (run ${{ github.run_number }})"
+
+      - name: Package, sign, notarize & upload prerelease assets
         # extraMetadata.version sets the app/asset/yaml version without editing
         # package.json. channel: beta writes beta.yml; releaseType: prerelease
         # marks the GitHub release as a prerelease (both required for the GitHub
-        # provider to resolve the demo channel correctly).
+        # provider to resolve the demo channel correctly). Assets go into the
+        # draft pre-created above; the next step flips it public.
         run: |
           npx electron-builder --mac --publish always \
             -c.extraMetadata.version="${{ steps.ver.outputs.version }}" \
             -c.mac.notarize=${{ inputs.notarize }} \
             -c.publish.channel=beta \
             -c.publish.releaseType=prerelease
+
+      - name: Publish prerelease
+        # All assets + beta.yml are uploaded - make the release visible.
+        run: |
+          gh release edit "v${{ steps.ver.outputs.version }}" \
+            --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
