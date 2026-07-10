@@ -89,15 +89,37 @@ jobs:
       - name: Build renderer/main/preload bundles (release mode)
         run: npm run build:release
 
-      - name: Package, sign, notarize & publish to GitHub Releases
-        # Tag = v${version} from package.json. releaseType `release` publishes
-        # immediately; `draft` uploads assets into a draft you publish in the UI
-        # (safer once Windows/Linux jobs are added - publish once all are up).
+      - name: Pre-create draft release
+        # electron-builder races itself creating the GitHub release (two
+        # publisher instances, both POST /releases, loser 422s - see
+        # release-demo.yml for details). Pre-create the release as a draft so
+        # every publisher instance finds and reuses it; the last step publishes
+        # it once all assets (incl. latest.yml) are uploaded.
         run: |
-          RELEASE_TYPE=release
-          [ "${{ inputs.publish }}" != "true" ] && RELEASE_TYPE=draft
-          echo "Releasing $(node -p "require('./package.json').version") as: $RELEASE_TYPE"
+          VERSION=$(node -p "require('./package.json').version")
+          gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "$VERSION" \
+              --draft \
+              --notes "Edison Watch $VERSION"
+
+      - name: Package, sign, notarize & upload to GitHub Releases
+        # Tag = v${version} from package.json. Assets upload into the draft
+        # pre-created above; the next step publishes it (or leaves it a draft
+        # to publish manually in the UI when the publish input is false).
+        run: |
+          echo "Releasing $(node -p "require('./package.json').version")"
           npx electron-builder --mac --publish always \
             -c.mac.notarize=true \
             -c.publish.channel=latest \
-            -c.publish.releaseType="$RELEASE_TYPE"
+            -c.publish.releaseType=draft
+
+      - name: Publish release
+        # Only when publish=true; otherwise the draft stays for manual publish
+        # in the UI (safer once Windows/Linux jobs are added - publish once all
+        # are up).
+        if: ${{ inputs.publish }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --latest
