@@ -24,7 +24,12 @@ import {
 } from './protocol'
 
 /** A daemon Reply that carried an { reply: 'error' } becomes a thrown Error. */
-export class DetectordError extends Error {}
+export class DetectordError extends Error {
+  constructor(message?: string) {
+    super(message)
+    this.name = 'DetectordError'
+  }
+}
 
 type Pending = { resolve: (r: Reply) => void; reject: (e: Error) => void }
 
