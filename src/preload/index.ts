@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
+import type { SecretOutcome } from '../main/detectord/protocol'
 import type { StdiodLoginInput, StdiodResult, StdiodStatus } from '../main/stdiod/types'
 import type { UpdateState } from '../main/infra/updateManager'
 import type { UpdateSettings } from '../main/infra/updateSettings'
@@ -242,7 +243,9 @@ const api = {
       edisonSecretKey?: string
     }): Promise<{ ok: boolean }> => ipcRenderer.invoke('detectord:enroll', input),
     /** Register/adopt the org secret key when the user enters or changes it. */
-    setSecret: (key: string): Promise<{ ok: boolean; reason?: string }> =>
+    setSecret: (
+      key: string
+    ): Promise<{ ok: boolean; outcome?: SecretOutcome; reason?: string }> =>
       ipcRenderer.invoke('detectord:setSecret', key),
     /** Uninstall the daemon; purge=true also deletes all its data + logs. */
     uninstall: (opts?: { purge?: boolean }): Promise<{ ok: boolean; stdout: string; stderr: string }> =>
