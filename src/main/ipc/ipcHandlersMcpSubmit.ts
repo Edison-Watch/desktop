@@ -39,13 +39,9 @@ import { getCachedOrgId, refreshOrgIdFromBackend } from "../infra/orgIdCache";
 import { logClaudeCmd } from "../runtime/monitorLog";
 
 /**
- * Get the caller's org_id for seen-store writes. Uses the cache if populated;
- * otherwise forces an inline refresh from the backend.
- *
- * Accepts explicit apiBaseUrl/apiKey so the ONBOARDING flow works - during
- * onboarding getCredentialsForEnv() still returns null (keychain not written
- * yet) but the caller already has the apiKey from IPC params or setup data.
- * After onboarding both cached-creds and explicit-creds paths converge.
+ * Caller's org_id for seen-store writes: cached if warm, else an inline backend
+ * refresh. Explicit apiBaseUrl/apiKey lets onboarding work before
+ * getCredentialsForEnv() is populated (keychain not written yet).
  */
 async function getOrRefreshOrgId(
   apiBaseUrl: string | null | undefined,
@@ -105,13 +101,10 @@ function getCachedDiscovery() {
 }
 
 /**
- * Hook for when a discovered server's fingerprint already exists on the backend.
- *
- * The submit step is skipped (the server is already there), but we still
- * (a) update the seen-store so quarantine recognises it on the next rescan,
- * and (b) remove the local agent-config entry so traffic flows through
- * Edison Watch instead of the bypass path. `removalMap` is omitted in the
- * single-server path; we then fall back to removing the discovered server itself.
+ * Fingerprint already on the backend: skip the submit, but still update the
+ * seen-store (so quarantine recognises it) and remove the local config entry so
+ * traffic flows through Edison Watch. `removalMap` omitted (single-server path)
+ * falls back to removing the discovered server itself.
  */
 async function handleAlreadyOnBackend(
   server: DiscoveredMcpServer,
@@ -464,10 +457,8 @@ export function registerMcpSubmitHandlers(): void {
     const errors: string[] = [];
     const failures: Array<{ name: string; client: string; reason: "conflict" | "error" | "already-on-backend"; message: string; config?: Record<string, unknown>; configPath?: string; backendStatus?: "registered" | "requested" }> = [];
 
-    // Preflight: pull org's existing fingerprints so we can short-circuit
-    // servers that are already on the backend (registered or pending). The
-    // 409 path on the server only catches name collisions; we want
-    // "already exists" surfaced as a non-error state, not as a rename prompt.
+    // Preflight: pull org fingerprints to short-circuit servers already on the
+    // backend (registered/pending) as a non-error state, not a rename prompt.
     const backendIndex = await fetchBackendFingerprints(apiBaseUrl, apiKey);
 
     const role = await fetchUserRole(apiBaseUrl, apiKey);
@@ -741,10 +732,8 @@ export function registerMcpSubmitHandlers(): void {
       config: params.config as McpServerConfig,
     };
 
-    // Preflight: if the fingerprint is already on the backend, skip the
-    // submit (it's the same server) and just sync local state. This guards
-    // against the user double-acknowledging a quarantine dialog after the
-    // request was already filed in a previous session.
+    // Preflight: if the fingerprint is already on the backend, skip the submit
+    // (same server) and just sync local state, guarding a double-acknowledge.
     const backendIndex = await fetchBackendFingerprints(apiBaseUrl, apiKey);
     const backendMatch = findBackendFingerprintMatch(server, backendIndex);
     if (backendMatch) {
