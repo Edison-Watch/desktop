@@ -19,6 +19,14 @@
     RMDir /r "$PROFILE\.local\state\edison-stdiod"
   ew_skipDaemon:
 
+  ; Stop + remove the detector daemon (scheduled task + its enrollment,
+  ; seen-store, quarantine records, logs). `service uninstall --purge` handles
+  ; the SID-named task (and the legacy name) and wipes its data dir.
+  MessageBox MB_YESNO|MB_ICONQUESTION "Stop and remove the Edison detector daemon (background MCP monitor + its quarantine records)?" /SD IDNO IDNO ew_skipDetectord
+    nsExec::ExecToLog '"$INSTDIR\resources\bin\edison-detectord.exe" service uninstall --purge'
+    RMDir /r "$APPDATA\edison-watch-detectord"
+  ew_skipDetectord:
+
   ; Remove all app data (userData under both name variants + the per-user dir).
   MessageBox MB_YESNO|MB_ICONQUESTION "Remove all Edison Watch data (settings and logs)?" /SD IDNO IDNO ew_skipData
     RMDir /r "$APPDATA\edison-watch-client-2"

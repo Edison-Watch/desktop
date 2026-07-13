@@ -57,6 +57,8 @@ export interface DetectordEnrollInput {
  * surface a retry/error instead of assuming success.
  */
 export async function bootstrapDetectord(creds?: DetectordEnrollInput): Promise<boolean> {
+  // The daemon ships for macOS + Windows only; elsewhere the TS pipeline runs.
+  if (process.platform !== 'darwin' && process.platform !== 'win32') return false
   const primary = detectordPrimary()
   console.log(
     `[detectord] bootstrap mode=${primary ? 'primary (enforce)' : 'shadow (detect-only)'} ` +
