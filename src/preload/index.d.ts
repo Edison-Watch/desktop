@@ -1,5 +1,6 @@
 import type { ElectronAPI } from '@electron-toolkit/preload'
 
+import type { SecretOutcome } from '../main/detectord/protocol'
 import type { StdiodLoginInput, StdiodResult, StdiodStatus } from '../main/stdiod/types'
 import type { UpdateState } from '../main/infra/updateManager'
 import type { UpdateSettings } from '../main/infra/updateSettings'
@@ -180,6 +181,16 @@ interface EdisonAPI {
   }
   app: {
     clearDataAndRestart: () => Promise<void>
+  }
+  detectord: {
+    enroll: (input: {
+      apiUrl?: string
+      mcpUrl?: string
+      apiKey?: string
+      edisonSecretKey?: string
+    }) => Promise<{ ok: boolean }>
+    setSecret: (key: string) => Promise<{ ok: boolean; outcome?: SecretOutcome; reason?: string }>
+    uninstall: (opts?: { purge?: boolean }) => Promise<{ ok: boolean; stdout: string; stderr: string }>
   }
   stdiod: {
     status: () => Promise<StdiodStatus>

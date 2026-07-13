@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
+import type { SecretOutcome } from '../main/detectord/protocol'
 import type { StdiodLoginInput, StdiodResult, StdiodStatus } from '../main/stdiod/types'
 import type { UpdateState } from '../main/infra/updateManager'
 import type { UpdateSettings } from '../main/infra/updateSettings'
@@ -230,6 +231,25 @@ const api = {
   /** Developer: clear all app data and relaunch */
   app: {
     clearDataAndRestart: (): Promise<void> => ipcRenderer.invoke('app:clearDataAndRestart')
+  },
+
+  /** Bundled edison-detectord daemon (MCP discovery/quarantine). */
+  detectord: {
+    /** Push credentials after sign-in so the daemon enrolls on login. */
+    enroll: (input: {
+      apiUrl?: string
+      mcpUrl?: string
+      apiKey?: string
+      edisonSecretKey?: string
+    }): Promise<{ ok: boolean }> => ipcRenderer.invoke('detectord:enroll', input),
+    /** Register/adopt the org secret key when the user enters or changes it. */
+    setSecret: (
+      key: string
+    ): Promise<{ ok: boolean; outcome?: SecretOutcome; reason?: string }> =>
+      ipcRenderer.invoke('detectord:setSecret', key),
+    /** Uninstall the daemon; purge=true also deletes all its data + logs. */
+    uninstall: (opts?: { purge?: boolean }): Promise<{ ok: boolean; stdout: string; stderr: string }> =>
+      ipcRenderer.invoke('detectord:uninstall', opts)
   },
 
   /** Bundled edison-stdiod daemon (stdio MCP tunnel) */

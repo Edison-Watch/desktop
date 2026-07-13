@@ -28,6 +28,9 @@ import {
   removeVsCodeWorkspaceHook,
   getCodexConfigPath
 } from '../runtime/hookInjection'
+import { bootstrapDetectord, setDetectordSecret } from '../detectord/bootstrap'
+import { uninstallService as uninstallDetectord } from '../detectord/controller'
+import { detectordPrimary } from '../detectord/mode'
 import { startHookHealthMonitor } from '../runtime/hookHealthMonitor'
 import {
   getUpdateState,
@@ -165,12 +168,18 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
 
     // Start background services
     startEventSubscription()
-    startHookHealthMonitor()
-    injectAllHooks().catch((err) => console.error('[HookInjection] Failed to inject hooks:', err))
-    startQuarantineMonitorIfEnabled().catch((err) =>
-      console.error('[Quarantine] Failed to start monitor after setup:', err)
-    )
-    startQuarantinePolling()
+    // The TS install/hooks/quarantine pipeline stands down when the daemon is
+    // primary (it owns those). See detectord/mode.ts.
+    if (!detectordPrimary()) {
+      startHookHealthMonitor()
+      injectAllHooks().catch((err) => console.error('[HookInjection] Failed to inject hooks:', err))
+      startQuarantineMonitorIfEnabled().catch((err) =>
+        console.error('[Quarantine] Failed to start monitor after setup:', err)
+      )
+      startQuarantinePolling()
+    }
+    // Install + enroll the detector daemon and mirror its work into the client logs.
+    bootstrapDetectord().catch((err) => console.error('[detectord] bootstrap failed:', err))
 
     const win = getMainWindow()
     if (win) {
@@ -194,6 +203,37 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   ipcMain.handle('setup:update', (_event, data: Partial<SetupData>) => {
     markSetupComplete(data)
     return { ok: true }
+  })
+
+  // Renderer pushes credentials right after sign-in so the daemon can enroll on
+  // login. A returning login keeps its API key only in the renderer's auth
+  // state (never persisted to the setup file), so app-ready's bootstrap can't
+  // read it, so mirror stdiod.login and let the renderer hand them over.
+  ipcMain.handle(
+    'detectord:enroll',
+    async (
+      _event,
+      input: { apiUrl?: string; mcpUrl?: string; apiKey?: string; edisonSecretKey?: string }
+    ) => {
+      const ok = await bootstrapDetectord(input).catch((err) => {
+        console.error('[detectord] enroll (push) failed:', err)
+        return false
+      })
+      return { ok }
+    }
+  )
+
+  // Register/adopt the org secret key when the user enters or changes it
+  // (OrgKeyCard). Explicit "enroll key" state change, separate from login.
+  ipcMain.handle('detectord:setSecret', async (_event, key: string) =>
+    setDetectordSecret(key)
+  )
+
+  // Stop + remove the detector daemon. purge=true also deletes all its data
+  // (enrollment, seen-store, quarantine records, logs, socket).
+  ipcMain.handle('detectord:uninstall', async (_event, opts?: { purge?: boolean }) => {
+    const r = await uninstallDetectord(opts ?? {})
+    return { ok: r.code === 0, stdout: r.stdout, stderr: r.stderr }
   })
 
   // Verify a composite secret key against the ACTIVE-environment backend.

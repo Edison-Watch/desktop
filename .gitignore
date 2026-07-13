@@ -44,3 +44,6 @@ dev-app-update.yml
 
 # Claude Code
 .claude/
+
+# Local-only build helper (kept out of git)
+/build-linux.yml

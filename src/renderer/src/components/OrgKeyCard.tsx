@@ -153,6 +153,20 @@ export default function OrgKeyCard({
       // side effects) and mark the key active.
       cacheSecretKey(composite);
       await window.api.setup.update({ edisonSecretKey: composite });
+      // Adopt the key into the detector daemon's enrollment (explicit "enroll
+      // key" state change). Non-fatal: the org key is already applied to the
+      // client configs above; the daemon will re-verify on its next enroll.
+      try {
+        const res = await window.api.detectord.setSecret(composite);
+        if (!res?.ok) {
+          console.warn(
+            `[OrgKeyCard] detector daemon did not adopt the org key` +
+              `${res?.reason ? `: ${res.reason}` : ""} (will re-verify on next enroll)`,
+          );
+        }
+      } catch (err) {
+        console.error("[OrgKeyCard] detectord setSecret failed:", err);
+      }
 
       setSaved(true);
       setEditing(false);

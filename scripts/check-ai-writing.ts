@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "../..");
 const SELF = resolve(fileURLToPath(import.meta.url));
 const EM_DASH = "\u2014";
-const ROOT_SKIP = new Set([".git", ".venv", "node_modules", "dist", "build", "target", ".next", "coverage", ".cache"]);
+const ROOT_SKIP = new Set([".git", ".venv", "node_modules", "dist", "build", "target", "out", "bin", ".next", "coverage", ".cache"]);
 const REC_SKIP = new Set(["__pycache__", "node_modules", "dist", "target", ".next"]);
 const SKIP_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".svg", ".mp4", ".mov",
   ".mp3", ".woff", ".woff2", ".ttf", ".otf", ".pdf", ".zip", ".gz", ".bin", ".lock"]);

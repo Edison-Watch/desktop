@@ -15,6 +15,8 @@ const execFileAsync = promisify(execFile);
 
 import { discoverMcpServers, describeUnsupportedReason } from "../discovery/mcpDiscovery";
 import type { DiscoveredMcpServer, McpClientId, McpServerConfig } from "../discovery/mcpDiscovery";
+import { detectordPrimary } from "../detectord/mode";
+import { submitServersViaDetectord, resubmitServerViaDetectord } from "../detectord/submit";
 import { removeServerFromConfig } from "../runtime/mcpConfigActions";
 import { quarantineCursorPlugin } from "../clients/cursor/quarantinePlugins";
 import {
@@ -37,13 +39,9 @@ import { getCachedOrgId, refreshOrgIdFromBackend } from "../infra/orgIdCache";
 import { logClaudeCmd } from "../runtime/monitorLog";
 
 /**
- * Get the caller's org_id for seen-store writes. Uses the cache if populated;
- * otherwise forces an inline refresh from the backend.
- *
- * Accepts explicit apiBaseUrl/apiKey so the ONBOARDING flow works - during
- * onboarding getCredentialsForEnv() still returns null (keychain not written
- * yet) but the caller already has the apiKey from IPC params or setup data.
- * After onboarding both cached-creds and explicit-creds paths converge.
+ * Caller's org_id for seen-store writes: cached if warm, else an inline backend
+ * refresh. Explicit apiBaseUrl/apiKey lets onboarding work before
+ * getCredentialsForEnv() is populated (keychain not written yet).
  */
 async function getOrRefreshOrgId(
   apiBaseUrl: string | null | undefined,
@@ -103,13 +101,10 @@ function getCachedDiscovery() {
 }
 
 /**
- * Hook for when a discovered server's fingerprint already exists on the backend.
- *
- * The submit step is skipped (the server is already there), but we still
- * (a) update the seen-store so quarantine recognises it on the next rescan,
- * and (b) remove the local agent-config entry so traffic flows through
- * Edison Watch instead of the bypass path. `removalMap` is omitted in the
- * single-server path; we then fall back to removing the discovered server itself.
+ * Fingerprint already on the backend: skip the submit, but still update the
+ * seen-store (so quarantine recognises it) and remove the local config entry so
+ * traffic flows through Edison Watch. `removalMap` omitted (single-server path)
+ * falls back to removing the discovered server itself.
  */
 async function handleAlreadyOnBackend(
   server: DiscoveredMcpServer,
@@ -170,6 +165,13 @@ export function registerMcpSubmitHandlers(): void {
 
     if (!apiKey || !apiBaseUrl) {
       return { success: false, error: "Not signed in or server URL not configured." };
+    }
+
+    // Primary mode: resubmit-under-new-name is a daemon disposition with rename.
+    // Pass client through as-is (may be undefined) so the daemon matches by name
+    // alone when it's omitted, preserving the optional-client contract.
+    if (detectordPrimary()) {
+      return resubmitServerViaDetectord(params.originalName, params.newName, params.client);
     }
 
     // Use cache first, fall back to passed config
@@ -241,6 +243,15 @@ export function registerMcpSubmitHandlers(): void {
     removed: string[];
     errors: string[];
   }> => {
+    // Primary mode: the daemon owns removal. Servers the user didn't send to EW
+    // are auto-quarantined once enforcement arms at setup:complete, so there's
+    // nothing for the client to remove here.
+    if (detectordPrimary()) {
+      const names = targets.map((t) => (typeof t === "string" ? t : t.name));
+      console.log(`[detectord] removeServers no-op in primary (daemon quarantines when armed): ${names.join(", ")}`);
+      return { removed: [], errors: [] };
+    }
+
     // Use cached raw (pre-dedup) list so we find ALL per-agent instances
     const { servers: deduped, raw: filtered } = getCachedDiscovery();
     const removed: string[] = [];
@@ -428,6 +439,15 @@ export function registerMcpSubmitHandlers(): void {
     const allServers = deduplicateServers(cached);
     const skipSet = new Set(params.skipServers ?? []);
     const servers = skipSet.size > 0 ? allServers.filter((s) => !skipSet.has(s.name)) : allServers;
+
+    // Primary mode: the daemon owns submit and auto-templatizes detected secrets,
+    // so the manual template overrides don't apply; route through the daemon.
+    if (detectordPrimary()) {
+      const summary = await submitServersViaDetectord(servers);
+      console.log(`[detectord] onboarding submit (templates ignored; daemon auto-templatizes): ${summary.submitted} submitted, ${summary.failures.length} failed`);
+      return summary;
+    }
+
     const removalMap = buildRemovalMap(cachedRaw, servers);
 
     const serverList = servers.map((s) => ({ name: s.name, client: s.client, clients: s.clients, source: s.source }));
@@ -437,10 +457,8 @@ export function registerMcpSubmitHandlers(): void {
     const errors: string[] = [];
     const failures: Array<{ name: string; client: string; reason: "conflict" | "error" | "already-on-backend"; message: string; config?: Record<string, unknown>; configPath?: string; backendStatus?: "registered" | "requested" }> = [];
 
-    // Preflight: pull org's existing fingerprints so we can short-circuit
-    // servers that are already on the backend (registered or pending). The
-    // 409 path on the server only catches name collisions; we want
-    // "already exists" surfaced as a non-error state, not as a rename prompt.
+    // Preflight: pull org fingerprints to short-circuit servers already on the
+    // backend (registered/pending) as a non-error state, not a rename prompt.
     const backendIndex = await fetchBackendFingerprints(apiBaseUrl, apiKey);
 
     const role = await fetchUserRole(apiBaseUrl, apiKey);
@@ -563,6 +581,15 @@ export function registerMcpSubmitHandlers(): void {
     const allServers = deduplicateServers(cached);
     const skipSet = new Set(params?.skipServers ?? []);
     const servers = skipSet.size > 0 ? allServers.filter((s) => !skipSet.has(s.name)) : allServers;
+
+    // Primary mode: the daemon owns submit (and handles stdio). Route each
+    // registration through it instead of the client's http-only submit path.
+    if (detectordPrimary()) {
+      const summary = await submitServersViaDetectord(servers);
+      console.log(`[detectord] onboarding submit: ${summary.submitted} submitted, ${summary.failures.length} failed`);
+      return summary;
+    }
+
     const removalMap = buildRemovalMap(cachedRaw, servers);
 
     const serverList = servers.map((s) => ({ name: s.name, client: s.client, clients: s.clients, source: s.source }));
@@ -705,10 +732,8 @@ export function registerMcpSubmitHandlers(): void {
       config: params.config as McpServerConfig,
     };
 
-    // Preflight: if the fingerprint is already on the backend, skip the
-    // submit (it's the same server) and just sync local state. This guards
-    // against the user double-acknowledging a quarantine dialog after the
-    // request was already filed in a previous session.
+    // Preflight: if the fingerprint is already on the backend, skip the submit
+    // (same server) and just sync local state, guarding a double-acknowledge.
     const backendIndex = await fetchBackendFingerprints(apiBaseUrl, apiKey);
     const backendMatch = findBackendFingerprintMatch(server, backendIndex);
     if (backendMatch) {

@@ -90,12 +90,15 @@ import {
   setSseStatusCallback
 } from './ipc/approvalsHandler'
 import { registerIpcHandlers } from './ipc/ipcHandlers'
+import { bootstrapDetectord } from './detectord/bootstrap'
+import { detectordPrimary } from './detectord/mode'
 import { buildAppMenu as buildAppMenuFromDeps } from './menus/appMenu'
 import { buildTrayMenuItems as buildTrayMenuItemsFromDeps } from './menus/trayMenu'
 import { integrateDesktopEntry } from './runtime/desktopIntegration'
 import { stageStdiodBinary } from './runtime/stdiodBinary'
 import { refreshStdiodStatusCache, startStdiodStatusCacheRefresh } from './stdiod/trayCache'
 import { uninstall as uninstallStdiod } from './stdiod/controller'
+import { uninstallService as uninstallDetectord } from './detectord/controller'
 import { maybeRefreshStdiodInstall } from './stdiod/installRefresh'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -292,6 +295,10 @@ async function handleClearDataAndRestart(): Promise<void> {
   // wipe on it. Awaited so it finishes before app.exit().
   await uninstallStdiod({ purge: true }).catch(() => {})
   slog('[clear-data] Tore down stdiod daemon')
+  // Same for the detector daemon: purge removes the LaunchAgent plus all data
+  // (enrollment, seen-store, quarantine records, logs, socket).
+  await uninstallDetectord({ purge: true }).catch(() => {})
+  slog('[clear-data] Tore down detector daemon')
   for (const file of CLEAR_DATA_FILES) {
     try {
       unlinkSync(join(userDataPath, file))
@@ -518,23 +525,35 @@ app.whenReady().then(async () => {
   // restart it onto the freshly shipped binary when the bundle changed.
   maybeRefreshStdiodInstall().catch((err) => console.error('[Stdiod] install refresh failed:', err))
 
+  // Install + launch the detector daemon on EVERY client run (not gated on
+  // setup): the daemon owns detection/quarantine/install/hooks. Enrolls if
+  // credentials exist yet; otherwise the setup:complete handler enrolls on login.
+  bootstrapDetectord().catch((err) => console.error('[detectord] bootstrap failed:', err))
+
   if (isSetupComplete()) {
     slog('setup complete, creating tray')
     createTray()
     startEventSubscription()
-    startHookHealthMonitor()
-    // Await hook injection before quarantine monitor to avoid config file races
-    await injectAllHooks().catch((err) => console.error('[HookInjection] Failed:', err))
+    // The TS hooks/quarantine pipeline stands down when the daemon is primary
+    // (it owns those). See detectord/mode.ts.
+    if (!detectordPrimary()) {
+      startHookHealthMonitor()
+      // Await hook injection before quarantine monitor to avoid config file races
+      await injectAllHooks().catch((err) => console.error('[HookInjection] Failed:', err))
+    }
 
     await warmOrgIdCacheOnStartup()
-    startQuarantineMonitorIfEnabled().catch((err) => console.error('[Quarantine] Failed:', err))
-    startQuarantinePolling()
+    if (!detectordPrimary()) {
+      startQuarantineMonitorIfEnabled().catch((err) => console.error('[Quarantine] Failed:', err))
+      startQuarantinePolling()
+    }
 
-    // Self-heal: re-register edison-watch for any apps where the config was cleared externally
+    // Self-heal: re-register edison-watch for any apps where the config was
+    // cleared externally. Skipped when the daemon is primary; it owns install.
     const setup = getSetupData()
     const mcpBaseUrl = getMcpBaseUrl()
     const creds = getCredentialsForEnv()
-    if (mcpBaseUrl && creds?.apiKey) {
+    if (!detectordPrimary() && mcpBaseUrl && creds?.apiKey) {
       const rawApps = setup.configuredApps?.length ? setup.configuredApps : ALL_SUPPORTED_APPS
       let configuredApps = rawApps.filter((app) => ALL_SUPPORTED_APPS.includes(app))
 
