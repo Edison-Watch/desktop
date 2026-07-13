@@ -64,11 +64,13 @@ export function showDaemonApprovalDialog(
       if (req.skip) {
         try {
           await client.disposition(s.name, 'skip', s.agent)
+          console.log(`[Quarantine] disposition ${s.name} (${s.agent}) -> skip`)
+          return { ok: true }
         } catch (err) {
-          console.error(`[detectord] disposition skip ${s.name} failed: ${String(err)}`)
+          const message = err instanceof Error ? err.message : String(err)
+          console.error(`[detectord] disposition skip ${s.name} failed: ${message}`)
+          return { ok: false, message }
         }
-        console.log(`[Quarantine] disposition ${s.name} (${s.agent}) -> skip`)
-        return { ok: true }
       }
       try {
         await client.disposition(s.name, 'send_to_ew', s.agent, req.rename)
@@ -224,8 +226,12 @@ function buildHtml(servers: ServerView[], isAdminOrOwner: boolean, channel: stri
     async function skip(item) {
       const idx = Number(item.dataset.index)
       item.querySelectorAll('button').forEach(b => b.disabled = true)
-      try { await ipcRenderer.invoke(CHANNEL, { index: idx, skip: true }) } catch (e) { /* keep quarantined */ }
-      markResolved(item, 'Kept quarantined')
+      let res
+      try { res = await ipcRenderer.invoke(CHANNEL, { index: idx, skip: true }) }
+      catch (e) { setMsg(item, String(e), 'error'); item.querySelectorAll('button').forEach(b => b.disabled = false); return }
+      if (res.ok) { markResolved(item, 'Kept quarantined'); return }
+      setMsg(item, res.message || 'Failed to keep quarantined.', 'error')
+      item.querySelectorAll('button').forEach(b => b.disabled = false)
     }
 
     document.querySelectorAll('.server-item').forEach(item => {
