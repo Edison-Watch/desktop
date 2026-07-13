@@ -44,6 +44,9 @@ export class DetectordClient extends EventEmitter {
     if (this.connecting) return this.connecting
 
     this.connecting = new Promise<void>((resolve, reject) => {
+      // A new byte stream must start clean — never inherit a partial frame left
+      // in the buffer by a previous (abruptly closed) connection.
+      this.buf = ''
       const sock = createConnection(this.socketPath)
       sock.setEncoding('utf8')
       sock.once('connect', () => {
@@ -98,6 +101,10 @@ export class DetectordClient extends EventEmitter {
 
   private onClose(): void {
     this.socket = null
+    // Drop any partial frame from the dead stream so a reconnect doesn't prepend
+    // it to the next reply (which would corrupt + drop that reply, hanging its
+    // request until the following disconnect).
+    this.buf = ''
     const err = new DetectordError('daemon socket closed')
     while (this.pending.length) this.pending.shift()!.reject(err)
   }
