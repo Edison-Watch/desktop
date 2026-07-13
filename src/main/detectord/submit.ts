@@ -42,7 +42,34 @@ export async function submitServersViaDetectord(
   servers: DiscoveredMcpServer[]
 ): Promise<DetectordSubmitSummary> {
   const client = getDetectordClient()
-  await client.connect()
+  const serverList = servers.map((s) => ({
+    name: s.name,
+    client: s.client,
+    clients: s.clients,
+    source: s.source
+  }))
+  try {
+    // connect() before status/disposition. On an unreachable daemon, return a
+    // summary with every server marked failed rather than throwing to the IPC
+    // handler — the caller renders per-server failures.
+    await client.connect()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return {
+      submitted: 0,
+      autoApproved: 0,
+      skipped: 0,
+      alreadyOnBackend: 0,
+      total: servers.length,
+      servers: serverList,
+      failures: servers.map((s) => ({
+        name: s.name,
+        client: s.client,
+        reason: 'error' as const,
+        message
+      }))
+    }
+  }
   const status = await client.status().catch(() => null)
   const isAdminOrOwner = status?.role === 'admin' || status?.role === 'owner'
 
@@ -76,12 +103,7 @@ export async function submitServersViaDetectord(
     skipped: 0,
     alreadyOnBackend: 0,
     total: servers.length,
-    servers: servers.map((s) => ({
-      name: s.name,
-      client: s.client,
-      clients: s.clients,
-      source: s.source
-    })),
+    servers: serverList,
     failures
   }
 }
@@ -93,8 +115,10 @@ export async function resubmitServerViaDetectord(
   client: string
 ): Promise<{ success: boolean; error?: string }> {
   const c = getDetectordClient()
-  await c.connect()
   try {
+    // connect() inside the try so an unreachable daemon fulfills the
+    // {success:false, error} contract instead of throwing to the IPC handler.
+    await c.connect()
     await c.disposition(name, 'send_to_ew', toAgent(client), newName)
     return { success: true }
   } catch (err) {
