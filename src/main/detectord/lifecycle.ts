@@ -9,6 +9,7 @@ import { detectordAvailable, installService } from './controller'
 
 let client: DetectordClient | null = null
 let installedThisSession = false
+let installInFlight: Promise<{ ok: true } | { ok: false; reason: string }> | null = null
 
 /** The shared client (lazily created; connects on first request). */
 export function getDetectordClient(): DetectordClient {
@@ -41,18 +42,33 @@ export async function ensureDetectord(
   }
   // Install once per app session (the LaunchAgent bootstrap is a restart, so we
   // don't want to bounce it on every call — but we DO want it installed on every
-  // client run, which the unconditional caller guarantees).
+  // client run, which the unconditional caller guarantees). Serialized via a
+  // shared in-flight promise: concurrent bootstrap/enroll paths (app-ready +
+  // the login push, setup:complete, setSecret) must not both run `service
+  // install`, which would bounce the LaunchAgent under another caller. First
+  // caller runs it; the rest await the same promise. On failure it's cleared so
+  // a later call can retry.
   if (!installedThisSession) {
-    try {
-      const r = await installService(enforce)
-      slog(`[detectord] service install (enforce=${enforce}) exit=${r.code} ${r.stdout.trim()} ${r.stderr.trim()}`)
-      if (r.code !== 0) {
-        return { ok: false, reason: `service install failed (exit ${r.code}): ${r.stderr.trim() || r.stdout.trim()}` }
+    installInFlight ??= (async () => {
+      try {
+        const r = await installService(enforce)
+        slog(`[detectord] service install (enforce=${enforce}) exit=${r.code} ${r.stdout.trim()} ${r.stderr.trim()}`)
+        if (r.code !== 0) {
+          return {
+            ok: false as const,
+            reason: `service install failed (exit ${r.code}): ${r.stderr.trim() || r.stdout.trim()}`
+          }
+        }
+        installedThisSession = true
+        return { ok: true as const }
+      } catch (err) {
+        return { ok: false as const, reason: `service install error: ${String(err)}` }
+      } finally {
+        installInFlight = null
       }
-      installedThisSession = true
-    } catch (err) {
-      return { ok: false, reason: `service install error: ${String(err)}` }
-    }
+    })()
+    const res = await installInFlight
+    if (!res.ok) return { ok: false, reason: res.reason }
   }
 
   const c = getDetectordClient()
