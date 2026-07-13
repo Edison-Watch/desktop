@@ -8,6 +8,9 @@
 // to the TS pipeline, then restart the app. Default is primary (cutover active).
 
 export function detectordPrimary(): boolean {
+  // The daemon ships for macOS (launchd) and Windows (Task Scheduler). Linux has
+  // no supervisor integration yet, so the TS pipeline stays primary there.
+  if (process.platform !== 'darwin' && process.platform !== 'win32') return false
   const v = (process.env.EW_DETECTORD_PRIMARY ?? '').toLowerCase()
   if (v === '0' || v === 'false' || v === 'off' || v === 'no') return false
   return true

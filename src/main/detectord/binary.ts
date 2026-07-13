@@ -30,13 +30,18 @@ export function detectordBinaryExists(): boolean {
   return existsSync(getDetectordBinaryPath())
 }
 
-// The Unix socket the launchd-managed daemon serves. Matches the daemon's
-// ipc::default_socket_path() (base_dir/daemon.sock, base_dir =
-// ~/Library/Application Support/edison-watch-detectord in user mode).
+// The IPC endpoint the daemon serves. Must match the daemon's
+// ipc::default_socket_path():
+//   - Unix: base_dir/daemon.sock (base_dir = appData/edison-watch-detectord).
+//   - Windows: a per-user named pipe `\\.\pipe\edison-detectord.<user>`, where
+//     <user> uses the same USER||LOGNAME||USERNAME chain as the daemon's
+//     paths::current_username(). Node's net.createConnection(string) connects to
+//     a named pipe when the string is a `\\.\pipe\...` path.
 export function detectordSocketPath(): string {
-  return path.join(
-    app.getPath('appData'),
-    'edison-watch-detectord',
-    'daemon.sock'
-  )
+  if (process.platform === 'win32') {
+    const user =
+      process.env.USER || process.env.LOGNAME || process.env.USERNAME || 'unknown'
+    return `\\\\.\\pipe\\edison-detectord.${user}`
+  }
+  return path.join(app.getPath('appData'), 'edison-watch-detectord', 'daemon.sock')
 }

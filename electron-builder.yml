@@ -39,6 +39,9 @@ win:
     # stdiod daemon (staged by scripts/build-stdiod-win.sh) -> resources/bin/.
     - from: bin/stdiod/${arch}/edison-stdiod.exe
       to: bin/edison-stdiod.exe
+    # detector daemon (staged by scripts/build-detectord-win.sh) -> resources/bin/.
+    - from: bin/detectord/${arch}/edison-detectord.exe
+      to: bin/edison-detectord.exe
     # Node (npx) + uv (uvx) for the daemon's child MCP servers, staged by
     # scripts/stage-runtimes.ps1 -> resources/runtimes/{node,uv}.
     - from: bin/runtimes/${arch}
