@@ -175,8 +175,10 @@ export function registerMcpSubmitHandlers(): void {
     }
 
     // Primary mode: resubmit-under-new-name is a daemon disposition with rename.
+    // Pass client through as-is (may be undefined) so the daemon matches by name
+    // alone when it's omitted, preserving the optional-client contract.
     if (detectordPrimary()) {
-      return resubmitServerViaDetectord(params.originalName, params.newName, params.client ?? "");
+      return resubmitServerViaDetectord(params.originalName, params.newName, params.client);
     }
 
     // Use cache first, fall back to passed config

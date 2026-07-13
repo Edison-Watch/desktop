@@ -112,14 +112,16 @@ export async function submitServersViaDetectord(
 export async function resubmitServerViaDetectord(
   name: string,
   newName: string,
-  client: string
+  client?: string
 ): Promise<{ success: boolean; error?: string }> {
   const c = getDetectordClient()
   try {
     // connect() inside the try so an unreachable daemon fulfills the
     // {success:false, error} contract instead of throwing to the IPC handler.
     await c.connect()
-    await c.disposition(name, 'send_to_ew', toAgent(client), newName)
+    // No client → leave agent unspecified so the daemon matches by name alone
+    // (matches the pre-primary cache path). An empty string would match nothing.
+    await c.disposition(name, 'send_to_ew', client ? toAgent(client) : undefined, newName)
     return { success: true }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) }
