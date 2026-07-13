@@ -157,7 +157,13 @@ export default function OrgKeyCard({
       // key" state change). Non-fatal: the org key is already applied to the
       // client configs above; the daemon will re-verify on its next enroll.
       try {
-        await window.api.detectord.setSecret(composite);
+        const res = await window.api.detectord.setSecret(composite);
+        if (!res?.ok) {
+          console.warn(
+            `[OrgKeyCard] detector daemon did not adopt the org key` +
+              `${res?.reason ? `: ${res.reason}` : ""} (will re-verify on next enroll)`,
+          );
+        }
       } catch (err) {
         console.error("[OrgKeyCard] detectord setSecret failed:", err);
       }

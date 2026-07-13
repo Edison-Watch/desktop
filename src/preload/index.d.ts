@@ -188,7 +188,7 @@ interface EdisonAPI {
       apiKey?: string
       edisonSecretKey?: string
     }) => Promise<{ ok: boolean }>
-    setSecret: (key: string) => Promise<{ ok: boolean }>
+    setSecret: (key: string) => Promise<{ ok: boolean; reason?: string }>
     uninstall: (opts?: { purge?: boolean }) => Promise<{ ok: boolean; stdout: string; stderr: string }>
   }
   stdiod: {

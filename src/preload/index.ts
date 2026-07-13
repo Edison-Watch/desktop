@@ -242,7 +242,7 @@ const api = {
       edisonSecretKey?: string
     }): Promise<{ ok: boolean }> => ipcRenderer.invoke('detectord:enroll', input),
     /** Register/adopt the org secret key when the user enters or changes it. */
-    setSecret: (key: string): Promise<{ ok: boolean }> =>
+    setSecret: (key: string): Promise<{ ok: boolean; reason?: string }> =>
       ipcRenderer.invoke('detectord:setSecret', key),
     /** Uninstall the daemon; purge=true also deletes all its data + logs. */
     uninstall: (opts?: { purge?: boolean }): Promise<{ ok: boolean; stdout: string; stderr: string }> =>
