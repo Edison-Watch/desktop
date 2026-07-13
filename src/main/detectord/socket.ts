@@ -49,7 +49,7 @@ export class DetectordClient extends EventEmitter {
     if (this.connecting) return this.connecting
 
     this.connecting = new Promise<void>((resolve, reject) => {
-      // A new byte stream must start clean — never inherit a partial frame left
+      // A new byte stream must start clean; never inherit a partial frame left
       // in the buffer by a previous (abruptly closed) connection.
       this.buf = ''
       const sock = createConnection(this.socketPath)

@@ -22,7 +22,7 @@ export interface ServiceStatus {
 }
 
 // EDISON_DRY_RUN (Playwright/Storybook) short-circuits subprocess calls so test
-// runs don't touch launchctl on the host — matching stdiod's controller.
+// runs don't touch launchctl on the host, matching stdiod's controller.
 function dryRun(): boolean {
   return process.env.EDISON_DRY_RUN === '1'
 }
@@ -47,7 +47,7 @@ export function detectordAvailable(): boolean {
 
 /**
  * Install + start the LaunchAgent. `enforce=false` (default) runs the daemon
- * report-only — safe for first install; flip to true once wired up and trusted.
+ * report-only: safe for first install; flip to true once wired up and trusted.
  */
 export async function installService(enforce = false): Promise<SpawnResult> {
   if (dryRun()) return { code: 0, stdout: '', stderr: '' }

@@ -1,7 +1,7 @@
 // Source MCP-server discovery from the daemon instead of re-scanning locally.
 //
 // In primary mode the daemon is the single source of truth for what's on the
-// machine — and, unlike the client's own scan, it sees stdio servers. This maps
+// machine, and unlike the client's own scan, it sees stdio servers. This maps
 // the daemon's `list_servers` into the client's DiscoveredMcpServer shape so the
 // existing onboarding/dedup/submit pipeline runs unchanged on the daemon's view.
 
@@ -54,7 +54,7 @@ function toDiscovered(v: ServerView): DiscoveredMcpServer | null {
 
 /**
  * The daemon's discovered servers as DiscoveredMcpServer[], or `null` to signal
- * "fall back to local discovery" — when the daemon is unreachable or not yet
+ * "fall back to local discovery" when the daemon is unreachable or not yet
  * enrolled (e.g. before login, when it has nothing to report anyway).
  */
 export async function discoverViaDetectord(): Promise<DiscoveredMcpServer[] | null> {

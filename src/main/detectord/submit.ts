@@ -51,7 +51,7 @@ export async function submitServersViaDetectord(
   try {
     // connect() before status/disposition. On an unreachable daemon, return a
     // summary with every server marked failed rather than throwing to the IPC
-    // handler — the caller renders per-server failures.
+    // handler; the caller renders per-server failures.
     await client.connect()
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

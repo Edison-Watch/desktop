@@ -8,7 +8,7 @@ import { app } from 'electron'
 // Packaged: Contents/Resources/bin/edison-detectord (staged by
 // scripts/build-detectord.sh, copied via mac.extraResources). Dev: the cargo
 // target dir in the sibling detectord/ clone, where the binary keeps its cargo
-// name `mcp_detector_daemon` — run `cargo build --release` (or build-detectord.sh)
+// name `mcp_detector_daemon`; run `cargo build --release` (or build-detectord.sh)
 // there once.
 export function getDetectordBinaryPath(): string {
   const win = process.platform === 'win32'

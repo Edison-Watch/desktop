@@ -1,6 +1,6 @@
 // Detector-daemon lifecycle from the app's side: ensure the LaunchAgent is
 // installed (report-only) and hold a shared socket client. Mirrors how the app
-// treats stdiod — the daemon is launchd-managed; we only orchestrate install +
+// treats stdiod: the daemon is launchd-managed; we only orchestrate install +
 // connect.
 
 import { DetectordClient } from './socket'
@@ -26,7 +26,7 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 /**
  * Ensure the daemon is installed (report-only by default) and the socket
  * connects. Returns a discriminated result so the caller can surface the actual
- * failure. The connect is retried — after `service install`, launchd needs a
+ * failure. The connect is retried, since after `service install`, launchd needs a
  * moment to start the daemon and bind the socket.
  */
 export async function ensureDetectord(
@@ -37,11 +37,11 @@ export async function ensureDetectord(
   if (!detectordAvailable()) {
     return {
       ok: false,
-      reason: `daemon binary not found at ${binary} — run \`npm run build:detectord\` (or \`cargo build --release\` in detectord/).`
+      reason: `daemon binary not found at ${binary}; run \`npm run build:detectord\` (or \`cargo build --release\` in detectord/).`
     }
   }
   // Install once per app session (the LaunchAgent bootstrap is a restart, so we
-  // don't want to bounce it on every call — but we DO want it installed on every
+  // don't want to bounce it on every call, but we DO want it installed on every
   // client run, which the unconditional caller guarantees). Serialized via a
   // shared in-flight promise: concurrent bootstrap/enroll paths (app-ready +
   // the login push, setup:complete, setSecret) must not both run `service

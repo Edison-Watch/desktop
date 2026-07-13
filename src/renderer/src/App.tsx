@@ -41,7 +41,7 @@ export default function App(): React.ReactNode {
 
   // Hand the daemon the credentials as soon as the user is signed in (Continue
   // past the login window) so it enrolls right away. A returning login keeps
-  // its API key only in this renderer's auth state — main's setup file has no
+  // its API key only in this renderer's auth state; main's setup file has no
   // key for the active env, so app-ready's bootstrap can't do this on its own.
   // Enroll is additive (agents union) and non-destructive (a missing secret
   // keeps the existing one), so it's safe to (re-)send on every sign-in. Before

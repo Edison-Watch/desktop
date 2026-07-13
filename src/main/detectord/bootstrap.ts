@@ -1,11 +1,11 @@
 // Bootstrap the detector daemon: install + launch it (on every client run),
 // enroll it with the app's credentials, and mirror everything it does into the
 // client's log streams. In primary mode (the default) the daemon owns detection,
-// quarantine, install, and hooks — the TS pipeline stands down.
+// quarantine, install, and hooks; the TS pipeline stands down.
 //
 // Logging: we emit console.log with the SAME prefixes the TS pipeline uses
 // (`[Monitor]`, `[Quarantine]`, `[SeenStore]`) so monitorLog's tee captures them
-// into /tmp/ew-monitor.log — the client "still produces the detection and
+// into /tmp/ew-monitor.log, so the client "still produces the detection and
 // quarantine logs" even though the daemon is the one doing the work. Install /
 // enroll use a `[detectord]` prefix.
 
@@ -44,7 +44,7 @@ export interface DetectordEnrollInput {
 }
 
 /**
- * Install + enroll + start logging the daemon. Idempotent — safe to call
+ * Install + enroll + start logging the daemon. Idempotent, so safe to call
  * unconditionally on app-ready, on setup:complete, after account switches, and
  * from the renderer's post-login push (install is once-per-session; enroll is
  * additive). Without `creds` it reads persisted setup; enroll is skipped (with
@@ -53,7 +53,7 @@ export interface DetectordEnrollInput {
 /**
  * Returns whether the daemon ended up enrolled and being observed (subscribed +
  * listed). `false` means we couldn't reach the daemon, or it isn't enrolled and
- * this call didn't enroll it — so a caller (e.g. the `detectord:enroll` IPC) can
+ * this call didn't enroll it, so a caller (e.g. the `detectord:enroll` IPC) can
  * surface a retry/error instead of assuming success.
  */
 export async function bootstrapDetectord(creds?: DetectordEnrollInput): Promise<boolean> {
@@ -70,12 +70,12 @@ export async function bootstrapDetectord(creds?: DetectordEnrollInput): Promise<
   const client = ensured.client
 
   // Enroll is safe to run on every login: it's additive (agents union with the
-  // existing set — never removed) and non-destructive (a missing secret keeps
+  // existing set, never removed) and non-destructive (a missing secret keeps
   // the existing one). So we always (re-)enroll whenever credentials are
   // available rather than guarding on prior state; agent/key *additions* still
   // come through here (union) and removals go through unenroll.
   if (!(await enrollDaemon(client, primary, creds))) {
-    // enroll didn't run or failed — no credentials yet, or a transient backend
+    // enroll didn't run or failed: no credentials yet, or a transient backend
     // error (enroll hits the backend). The daemon may still be enrolled and
     // running/enforcing from a prior session, so don't go blind: if it reports
     // it's enrolled, fall through to subscribe + list so its quarantines still
@@ -99,7 +99,7 @@ export async function bootstrapDetectord(creds?: DetectordEnrollInput): Promise<
 /**
  * Register/adopt the org secret key with the daemon when the user enters or
  * changes it (OrgKeyCard). `verify_secret` validates against the backend and
- * adopts it into the enrollment — the explicit "enroll key" state change. The
+ * adopts it into the enrollment: the explicit "enroll key" state change. The
  * daemon must already be enrolled; if it isn't, this is a non-fatal no-op.
  */
 export async function setDetectordSecret(
@@ -132,7 +132,7 @@ async function enrollDaemon(
   const edisonSecretKey = override?.edisonSecretKey ?? stored?.edisonSecretKey
   const setup = getSetupData()
   if (!apiUrl || !apiKey) {
-    console.warn('[detectord] not enrolling — no api url / key yet')
+    console.warn('[detectord] not enrolling: no api url / key yet')
     return false
   }
   // Only the apps the user has actually configured. Empty (e.g. a new user who
@@ -213,7 +213,7 @@ async function flushBatch(client: DetectordClient): Promise<void> {
   if (dialogOpen || pendingBatch.length === 0) return
   const batch = pendingBatch.splice(0, pendingBatch.length)
   // Owners/admins register directly ("Add to Edison"); everyone else files a
-  // request. The daemon enforces this by role regardless — this is the label.
+  // request. The daemon enforces this by role regardless; this is the label.
   let isAdminOrOwner = false
   try {
     const status = await client.status()

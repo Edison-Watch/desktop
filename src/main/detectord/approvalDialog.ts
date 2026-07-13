@@ -1,8 +1,8 @@
 // Daemon-driven quarantine approval window.
 //
 // In primary mode the daemon auto-quarantines new servers and emits a
-// `quarantine-prompt` event for each. The client's job is the human decision —
-// send to Edison Watch (register/request) or keep quarantined — plus
+// `quarantine-prompt` event for each. The client's job is the human decision:
+// send to Edison Watch (register/request) or keep quarantined, plus
 // rename-on-conflict. A whole batch of newly-quarantined servers is shown in a
 // SINGLE window (one row each, with bulk actions), driving the daemon's
 // `disposition` op directly (the daemon owns config, submit, secret-templatizing,
@@ -36,7 +36,7 @@ const toClientId = (agent: string): string => agent.replace(/_/g, '-')
  * Show one window listing every server in `servers` (a batch of newly
  * quarantined ones), each with Send-to-EW / Keep-quarantined + inline
  * rename-on-conflict. Resolves when the window closes. Only one window at a
- * time — the caller batches; a second call while one is open is ignored.
+ * time. The caller batches; a second call while one is open is ignored.
  */
 export function showDaemonApprovalDialog(
   client: DetectordClient,
@@ -214,7 +214,7 @@ function buildHtml(servers: ServerView[], isAdminOrOwner: boolean, channel: stri
       if (res.ok) { markResolved(item, 'Sent to Edison Watch'); return }
       if (res.conflict) {
         item.querySelector('.rename-row').style.display = 'flex'
-        setMsg(item, (res.message || 'Name already taken') + ' — choose a different name.', 'error')
+        setMsg(item, (res.message || 'Name already taken') + '. Choose a different name.', 'error')
         item.querySelectorAll('button').forEach(b => b.disabled = false)
         item.querySelector('.rename-input').focus()
         return

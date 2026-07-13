@@ -9,7 +9,7 @@
 #
 # arm64-only: we no longer build the x86_64 slice or lipo a universal binary.
 # NOTE: if electron-builder.yml still sets mac.target: universal, the bundled
-# binaries must match — target arm64 there too, or the universal merge fails.
+# binaries must match: target arm64 there too, or the universal merge fails.
 
 set -euo pipefail
 

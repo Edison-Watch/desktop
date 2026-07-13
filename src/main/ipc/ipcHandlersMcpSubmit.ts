@@ -448,7 +448,7 @@ export function registerMcpSubmitHandlers(): void {
     const servers = skipSet.size > 0 ? allServers.filter((s) => !skipSet.has(s.name)) : allServers;
 
     // Primary mode: the daemon owns submit and auto-templatizes detected secrets,
-    // so the manual template overrides don't apply — route through the daemon.
+    // so the manual template overrides don't apply; route through the daemon.
     if (detectordPrimary()) {
       const summary = await submitServersViaDetectord(servers);
       console.log(`[detectord] onboarding submit (templates ignored; daemon auto-templatizes): ${summary.submitted} submitted, ${summary.failures.length} failed`);

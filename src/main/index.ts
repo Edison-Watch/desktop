@@ -549,7 +549,7 @@ app.whenReady().then(async () => {
     }
 
     // Self-heal: re-register edison-watch for any apps where the config was
-    // cleared externally. Skipped when the daemon is primary — it owns install.
+    // cleared externally. Skipped when the daemon is primary; it owns install.
     const setup = getSetupData()
     const mcpBaseUrl = getMcpBaseUrl()
     const creds = getCredentialsForEnv()

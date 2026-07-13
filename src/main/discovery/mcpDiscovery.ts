@@ -80,8 +80,8 @@ export async function discoverMcpServers(opts: { includeRaw: true }): Promise<Di
 export async function discoverMcpServers(opts?: { includeRaw?: boolean }): Promise<DiscoveredMcpServer[] | DiscoveryResult> {
   // Primary mode: the daemon is the source of truth (and sees stdio servers the
   // client can't). Fall back to a local scan only when it returns null (daemon
-  // unreachable / not enrolled). The rest of the pipeline — shim-unwrap,
-  // supported/unsupported split, dedup, installed-app filter — runs unchanged.
+  // unreachable / not enrolled). The rest of the pipeline (shim-unwrap,
+  // supported/unsupported split, dedup, installed-app filter) runs unchanged.
   const daemonServers = detectordPrimary() ? await discoverViaDetectord() : null
   const results: DiscoveredMcpServer[] =
     daemonServers ?? (await Promise.all(CLIENT_LIST.map((c) => c.discoverServers()))).flat()
@@ -101,7 +101,7 @@ export async function discoverMcpServers(opts?: { includeRaw?: boolean }): Promi
   //
   // Local stdio is "not yet supported" only for the *client's* http-proxy path.
   // When the list comes from the daemon (primary mode), the daemon can act on
-  // stdio servers, so they're supported (registerable via the daemon) — don't
+  // stdio servers, so they're supported (registerable via the daemon); don't
   // bucket them as unsupported or onboarding would show 0 registerable servers.
   const daemonSourced = daemonServers !== null
   const supported: DiscoveredMcpServer[] = []

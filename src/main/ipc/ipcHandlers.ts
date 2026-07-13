@@ -208,7 +208,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   // Renderer pushes credentials right after sign-in so the daemon can enroll on
   // login. A returning login keeps its API key only in the renderer's auth
   // state (never persisted to the setup file), so app-ready's bootstrap can't
-  // read it — mirror stdiod.login and let the renderer hand them over.
+  // read it, so mirror stdiod.login and let the renderer hand them over.
   ipcMain.handle(
     'detectord:enroll',
     async (
@@ -224,7 +224,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   )
 
   // Register/adopt the org secret key when the user enters or changes it
-  // (OrgKeyCard). Explicit "enroll key" state change — separate from login.
+  // (OrgKeyCard). Explicit "enroll key" state change, separate from login.
   ipcMain.handle('detectord:setSecret', async (_event, key: string) =>
     setDetectordSecret(key)
   )
