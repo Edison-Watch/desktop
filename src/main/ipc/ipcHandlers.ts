@@ -215,10 +215,11 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
       _event,
       input: { apiUrl?: string; mcpUrl?: string; apiKey?: string; edisonSecretKey?: string }
     ) => {
-      await bootstrapDetectord(input).catch((err) =>
+      const ok = await bootstrapDetectord(input).catch((err) => {
         console.error('[detectord] enroll (push) failed:', err)
-      )
-      return { ok: true }
+        return false
+      })
+      return { ok }
     }
   )
 

@@ -50,7 +50,13 @@ export interface DetectordEnrollInput {
  * additive). Without `creds` it reads persisted setup; enroll is skipped (with
  * a log) until credentials are available from either source.
  */
-export async function bootstrapDetectord(creds?: DetectordEnrollInput): Promise<void> {
+/**
+ * Returns whether the daemon ended up enrolled and being observed (subscribed +
+ * listed). `false` means we couldn't reach the daemon, or it isn't enrolled and
+ * this call didn't enroll it — so a caller (e.g. the `detectord:enroll` IPC) can
+ * surface a retry/error instead of assuming success.
+ */
+export async function bootstrapDetectord(creds?: DetectordEnrollInput): Promise<boolean> {
   const primary = detectordPrimary()
   console.log(
     `[detectord] bootstrap mode=${primary ? 'primary (enforce)' : 'shadow (detect-only)'} ` +
@@ -59,7 +65,7 @@ export async function bootstrapDetectord(creds?: DetectordEnrollInput): Promise<
   const ensured = await ensureDetectord((m) => console.log(m), primary)
   if (!ensured.ok) {
     console.error(`[detectord] bootstrap skipped: ${ensured.reason}`)
-    return
+    return false
   }
   const client = ensured.client
 
@@ -77,7 +83,7 @@ export async function bootstrapDetectord(creds?: DetectordEnrollInput): Promise<
     // enrollment, no backend call), so it's reliable even during a backend
     // outage. Only bail when there's genuinely no enrollment to observe.
     const status = await client.status().catch(() => null)
-    if (!status?.enrolled) return
+    if (!status?.enrolled) return false
     console.warn('[detectord] enroll did not run; observing already-enrolled daemon')
   }
 
@@ -87,6 +93,7 @@ export async function bootstrapDetectord(creds?: DetectordEnrollInput): Promise<
   }
 
   await logInitialDetection(client)
+  return true
 }
 
 /**
