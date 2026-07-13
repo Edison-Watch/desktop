@@ -68,7 +68,18 @@ export async function bootstrapDetectord(creds?: DetectordEnrollInput): Promise<
   // the existing one). So we always (re-)enroll whenever credentials are
   // available rather than guarding on prior state; agent/key *additions* still
   // come through here (union) and removals go through unenroll.
-  if (!(await enrollDaemon(client, primary, creds))) return
+  if (!(await enrollDaemon(client, primary, creds))) {
+    // enroll didn't run or failed — no credentials yet, or a transient backend
+    // error (enroll hits the backend). The daemon may still be enrolled and
+    // running/enforcing from a prior session, so don't go blind: if it reports
+    // it's enrolled, fall through to subscribe + list so its quarantines still
+    // reach the UI. status() is a LOCAL IPC read (it reads the on-disk
+    // enrollment, no backend call), so it's reliable even during a backend
+    // outage. Only bail when there's genuinely no enrollment to observe.
+    const status = await client.status().catch(() => null)
+    if (!status?.enrolled) return
+    console.warn('[detectord] enroll did not run; observing already-enrolled daemon')
+  }
 
   if (!eventsSubscribed) {
     eventsSubscribed = true
