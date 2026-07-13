@@ -10,12 +10,6 @@
 # zig (via cargo-zigbuild) supplies that C toolchain with no MSVC SDK. gnullvm
 # binaries are UCRT/MSVC-ABI compatible and run natively on Windows. For official
 # release builds prefer native Windows CI.
-#
-# NOTE: the daemon is NOT yet Windows-capable — it uses a Unix-domain-socket IPC
-# (`peer_cred`) and unix-only platform code, so it currently fails to compile for
-# the windows targets. This script is ready and correct; it starts working once
-# the daemon's Windows port lands (named-pipe IPC + `platform/windows.rs` service
-# + cfg-gated unix code). See the port checklist accompanying this change.
 
 set -euo pipefail
 
