@@ -43,6 +43,19 @@ command -v cargo-zigbuild >/dev/null 2>&1 || {
 ALL_SPECS=("x64:x86_64-unknown-linux-musl" "arm64:aarch64-unknown-linux-musl")
 WANT="${TARGET_ARCHES:-x64 arm64}"
 
+# Validate requested arches up front. An unknown token (typo, or an unsupported
+# value like "amd64") would otherwise be silently skipped by the per-arch filter
+# below, letting the script exit 0 after building nothing (or only a subset) and
+# leaving bin/detectord incomplete for electron-builder.
+KNOWN_ARCHES=""
+for spec in "${ALL_SPECS[@]}"; do KNOWN_ARCHES="$KNOWN_ARCHES ${spec%%:*}"; done
+for arch in $WANT; do
+  case " $KNOWN_ARCHES " in
+    *" $arch "*) ;;
+    *) echo "build-detectord-linux.sh: unsupported arch '$arch' in TARGET_ARCHES (supported:$KNOWN_ARCHES)" >&2; exit 1 ;;
+  esac
+done
+
 for spec in "${ALL_SPECS[@]}"; do
   arch="${spec%%:*}"
   target="${spec##*:}"
