@@ -519,6 +519,13 @@ export function showQuarantinedServersDialog(
     serverActionWindow.once('ready-to-show', () => {
       serverActionWindow?.show()
     })
+    // Linux-only fallback: `ready-to-show` is unreliable there (may never fire),
+    // which would leave this `show: false` window hidden forever. win/mac rely on
+    // ready-to-show for anti-flash timing. The window loads a data: URL once and
+    // never navigates, so `once` is safe. See index.ts / detectord/approvalDialog.ts.
+    if (process.platform === 'linux') {
+      serverActionWindow.webContents.once('did-finish-load', () => serverActionWindow?.show())
+    }
   })
 }
 

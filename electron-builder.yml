@@ -107,14 +107,17 @@ dmg:
 linux:
   icon: resources/icon.png
   category: Development
-  # Bundle the edison-stdiod daemon (static musl binary, staged per-arch by
-  # scripts/build-stdiod-linux.sh) into resources/bin/edison-stdiod. Mirrors the
-  # win rule; getStdiodBinaryPath() resolves it via process.resourcesPath.
+  # Bundle the edison-stdiod + edison-detectord daemons (static musl binaries,
+  # staged per-arch by scripts/build-stdiod-linux.sh and build-detectord-linux.sh)
+  # into resources/bin/. Mirrors the win rule; getStdiodBinaryPath() /
+  # getDetectordBinaryPath() resolve them via process.resourcesPath.
   # Unlike Windows we do NOT bundle Node/uv runtimes - Linux users get npx/uvx
   # from PATH (the systemd unit seeds a sensible PATH), matching the macOS app.
   extraResources:
     - from: bin/stdiod/${arch}/edison-stdiod
       to: bin/edison-stdiod
+    - from: bin/detectord/${arch}/edison-detectord
+      to: bin/edison-detectord
   target:
     - target: AppImage
       arch:

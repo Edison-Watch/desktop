@@ -521,4 +521,9 @@ export function showUpdateKeysWindow(
   const html = buildUpdateKeysHtml(currentSecretKey, canRoll)
   updateKeysWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
   updateKeysWindow.once('ready-to-show', () => updateKeysWindow?.show())
+  // Linux-only fallback: `ready-to-show` may never fire there, leaving this
+  // `show: false` window hidden forever. See detectord/approvalDialog.ts.
+  if (process.platform === 'linux') {
+    updateKeysWindow.webContents.once('did-finish-load', () => updateKeysWindow?.show())
+  }
 }

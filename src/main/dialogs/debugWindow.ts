@@ -390,4 +390,9 @@ export async function showDebugWindow(parentWindow?: BrowserWindow): Promise<voi
   debugWindow.once('ready-to-show', () => {
     debugWindow?.show()
   })
+  // Linux-only fallback: `ready-to-show` may never fire there, leaving this
+  // `show: false` window hidden forever. See detectord/approvalDialog.ts.
+  if (process.platform === 'linux') {
+    debugWindow.webContents.once('did-finish-load', () => debugWindow?.show())
+  }
 }
