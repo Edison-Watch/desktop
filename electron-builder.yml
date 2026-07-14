@@ -109,8 +109,13 @@ linux:
   category: Development
   # Bundle the edison-stdiod + edison-detectord daemons (static musl binaries,
   # staged per-arch by scripts/build-stdiod-linux.sh and build-detectord-linux.sh)
-  # into resources/bin/. Mirrors the win rule; getStdiodBinaryPath() /
-  # getDetectordBinaryPath() resolve them via process.resourcesPath.
+  # into resources/bin/. Mirrors the win rule. The bundled-path helpers
+  # (getBundled{Stdiod,Detectord}BinaryPath) resolve here via process.resourcesPath,
+  # but on Linux they are the *source* for staging, not the run path: the public
+  # get{Stdiod,Detectord}BinaryPath() getters return a stable per-user copy under
+  # ~/.local/share/edison-watch/bin, since the AppImage mount (and thus
+  # resourcesPath) is ephemeral and changes every launch. See runtime/stdiodBinary.ts
+  # and detectord/binary.ts.
   # Unlike Windows we do NOT bundle Node/uv runtimes - Linux users get npx/uvx
   # from PATH (the systemd unit seeds a sensible PATH), matching the macOS app.
   extraResources:
