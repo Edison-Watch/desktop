@@ -1,4 +1,5 @@
-import { existsSync, copyFileSync, mkdirSync, chmodSync, statSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, copyFileSync, mkdirSync, chmodSync, readFileSync, statSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -56,17 +57,28 @@ export function getDetectordBinaryPath(): string {
   return usesStableLinuxCopy() ? getStableLinuxBinaryPath() : getBundledDetectordBinaryPath()
 }
 
-// Copy the bundled daemon to the stable Linux path when missing or changed (size
-// differs -> app was updated with a new daemon). No-op on mac/win and in dev.
-// Idempotent and cheap; safe to call on every startup before any daemon command
-// runs. Returns the resolved binary path.
+// Whether two files have identical contents. Size is checked first as a cheap
+// reject (a differing size can't be the same file); only when sizes match do we
+// hash both. Size alone is NOT a safe "unchanged" signal: an app update can ship
+// a new daemon of identical byte size, which a size-only check would miss,
+// leaving the stale copy in place (running the old daemon). Throws if either
+// file is unreadable, so the caller keeps any existing copy.
+function sameContents(a: string, b: string): boolean {
+  if (statSync(a).size !== statSync(b).size) return false
+  const hash = (p: string): string => createHash('sha256').update(readFileSync(p)).digest('hex')
+  return hash(a) === hash(b)
+}
+
+// Copy the bundled daemon to the stable Linux path when missing or changed
+// (contents differ -> app was updated with a new daemon). No-op on mac/win and
+// in dev. Idempotent and cheap; safe to call on every startup before any daemon
+// command runs. Returns the resolved binary path.
 export function stageDetectordBinary(): string {
   if (!usesStableLinuxCopy()) return getBundledDetectordBinaryPath()
   const src = getBundledDetectordBinaryPath()
   const dst = getStableLinuxBinaryPath()
   try {
-    const srcSize = statSync(src).size
-    const needsCopy = !existsSync(dst) || statSync(dst).size !== srcSize
+    const needsCopy = !existsSync(dst) || !sameContents(src, dst)
     if (needsCopy) {
       mkdirSync(path.dirname(dst), { recursive: true })
       copyFileSync(src, dst)
