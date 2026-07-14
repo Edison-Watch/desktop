@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import type { DiscoveredMcpServer } from '../discovery/mcpDiscovery'
+import { showWhenReady } from './showWindow'
 import { getClientDisplayName } from '../runtime/mcpConfigMonitor'
 import type { ServerAction } from '../discovery/seenServersStore'
 import {
@@ -516,16 +517,7 @@ export function showQuarantinedServersDialog(
     })
 
     serverActionWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
-    serverActionWindow.once('ready-to-show', () => {
-      serverActionWindow?.show()
-    })
-    // Linux-only fallback: `ready-to-show` is unreliable there (may never fire),
-    // which would leave this `show: false` window hidden forever. win/mac rely on
-    // ready-to-show for anti-flash timing. The window loads a data: URL once and
-    // never navigates, so `once` is safe. See index.ts / detectord/approvalDialog.ts.
-    if (process.platform === 'linux') {
-      serverActionWindow.webContents.once('did-finish-load', () => serverActionWindow?.show())
-    }
+    showWhenReady(serverActionWindow)
   })
 }
 

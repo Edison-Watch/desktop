@@ -21,6 +21,7 @@ import {
   REGISTRATION_CSS
 } from '../dialogs/dialogStyles'
 import { escapeHtml, getClientIcon } from '../dialogs/dialogIcons'
+import { showWhenReady } from '../dialogs/showWindow'
 
 import type { ServerView } from './protocol'
 import type { DetectordClient } from './socket'
@@ -117,15 +118,7 @@ export function showDaemonApprovalDialog(
     approvalWindow.loadURL(
       `data:text/html;charset=utf-8,${encodeURIComponent(buildHtml(servers, isAdminOrOwner, channel))}`
     )
-    approvalWindow.once('ready-to-show', () => approvalWindow?.show())
-    // Linux-only fallback: `ready-to-show` is unreliable there (may never fire),
-    // which would leave this `show: false` window hidden forever - the event and
-    // handler still run (the quarantine is logged) but no window appears. win/mac
-    // rely on ready-to-show for anti-flash timing, so only show here on Linux.
-    // The dialog loads a data: URL once and never navigates, so `once` is safe.
-    if (process.platform === 'linux') {
-      approvalWindow.webContents.once('did-finish-load', () => approvalWindow?.show())
-    }
+    showWhenReady(approvalWindow)
   })
 }
 
