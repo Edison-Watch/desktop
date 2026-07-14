@@ -46,10 +46,17 @@ WANT="${TARGET_ARCHES:-x64 arm64}"
 # Validate requested arches up front. An unknown token (typo, or an unsupported
 # value like "amd64") would otherwise be silently skipped by the per-arch filter
 # below, letting the script exit 0 after building nothing (or only a subset) and
-# leaving bin/detectord incomplete for electron-builder.
+# leaving bin/detectord incomplete for electron-builder. Parse into an array so a
+# whitespace-only TARGET_ARCHES (which ${:-} does NOT default, since it is not
+# empty) collapses to zero tokens and is rejected here rather than silently
+# building nothing.
+read -ra WANT_ARCHES <<< "$WANT"
+if [ ${#WANT_ARCHES[@]} -eq 0 ]; then
+  echo "build-detectord-linux.sh: TARGET_ARCHES requests no architectures" >&2; exit 1
+fi
 KNOWN_ARCHES=""
 for spec in "${ALL_SPECS[@]}"; do KNOWN_ARCHES="$KNOWN_ARCHES ${spec%%:*}"; done
-for arch in $WANT; do
+for arch in "${WANT_ARCHES[@]}"; do
   case " $KNOWN_ARCHES " in
     *" $arch "*) ;;
     *) echo "build-detectord-linux.sh: unsupported arch '$arch' in TARGET_ARCHES (supported:$KNOWN_ARCHES)" >&2; exit 1 ;;
