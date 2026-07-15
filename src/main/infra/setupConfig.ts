@@ -151,7 +151,12 @@ export function markSetupComplete(data?: Partial<SetupData>): void {
 
   writeFileSync(getSetupFlagPath(), JSON.stringify(merged, null, 2), "utf-8");
   setupCompleted = true;
-  app.setLoginItemSettings({ openAtLogin: true });
+  // On macOS setLoginItemSettings ignores `path`/`args` (Windows-only) and always
+  // registers the bundle owning process.execPath. Unpackaged that is
+  // node_modules/electron/dist/Electron.app, which then boots with no app path and
+  // shows Electron's default splash window. Only register from a packaged build.
+  const is = { get dev() { return !app.isPackaged; } };
+  if (!is.dev) app.setLoginItemSettings({ openAtLogin: true });
   // Persist to multi-account store (best-effort, non-critical)
   try {
     saveAccount(merged);
@@ -163,6 +168,9 @@ export function markSetupComplete(data?: Partial<SetupData>): void {
 export function markSetupIncomplete(): void {
   writeFileSync(getSetupFlagPath(), JSON.stringify({ completed: false }), "utf-8");
   setupCompleted = false;
+  // Deliberately not dev-guarded: unregistering only ever targets this build's own
+  // bundle, so a dev run clearing a stale dev registration is self-healing and
+  // cannot affect a packaged install's login item.
   app.setLoginItemSettings({ openAtLogin: false });
 }
 
