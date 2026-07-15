@@ -1,0 +1,281 @@
+name: Release macOS (beta upstream)
+
+# Manually-triggered UPSTREAM prerelease to GitHub Releases (channel: beta).
+#
+# How this differs from release-demo.yml (the other beta-channel workflow):
+#   - shared:    built FROM SOURCE at Edison-Watch/shared@main and installed over
+#                the npm-resolved @edison-watch/shared, instead of using whatever
+#                version is published to the npm registry.
+#   - stdiod:    built FROM SOURCE at Edison-Watch/stdiod@main via
+#                scripts/build-stdiod.sh, instead of downloading the last
+#                published universal binary from the stdiod repo's releases.
+#   - detectord: built FROM SOURCE at Edison-Watch/mcp-detector-lib@master via
+#                scripts/build-detectord.sh. (release-demo.yml bundles NO
+#                detectord binary at all - this workflow is the only mac CI that
+#                packages one.)
+#
+# So this is the "does main-of-everything actually integrate" build: it catches
+# breakage between the desktop app and unreleased shared/daemon changes, which
+# the pinned/published-artifact workflows can't see by construction.
+#
+# LAYOUT: the repos are checked out as siblings inside the workspace -
+#   $GITHUB_WORKSPACE/{desktop,shared,stdiod,detectord}
+# because scripts/build-stdiod.sh and scripts/build-detectord.sh resolve their
+# sources as `../stdiod` and `../detectord` relative to the desktop checkout.
+# That mirrors the local ew_env layout, so the scripts run unmodified. Note
+# mcp-detector-lib is checked out AS `detectord/` - the script hardcodes that
+# name while the repo is named mcp-detector-lib.
+#
+# VERSIONING: `${package.json version}-upstream.${run_number}` (e.g.
+# 0.5.4-upstream.12). The distinct `upstream` prerelease id avoids tag collisions
+# with release-demo.yml's `-beta.${run_number}` (independent run_number counters
+# would otherwise clash). electron-updater resolves the beta channel through
+# beta.yml, not the tag text, so `-upstream.N` still serves beta installs.
+#
+# CAVEAT - upstream outranks demo at the same base version: semver compares
+# prerelease identifiers alphabetically, so 0.5.4-upstream.N > 0.5.4-beta.N. Once
+# an upstream build ships on the beta channel, a demo prerelease cut at the SAME
+# base version will NOT be picked up by installs that already took the upstream
+# build. Bump package.json's base version before cutting demo again, or keep
+# upstream builds off the beta channel if that matters.
+
+on:
+  workflow_dispatch:
+    inputs:
+      notarize:
+        description: 'Notarize the build (false = faster, signed-only; testers must run xattr -dr com.apple.quarantine to open)'
+        type: boolean
+        default: true
+      shared_ref:
+        description: 'Edison-Watch/shared ref to build'
+        type: string
+        default: main
+      stdiod_ref:
+        description: 'Edison-Watch/stdiod ref to build'
+        type: string
+        default: main
+      detectord_ref:
+        description: 'Edison-Watch/mcp-detector-lib ref to build (default branch is master, not main)'
+        type: string
+        default: master
+
+concurrency:
+  group: release-macos-upstream
+  cancel-in-progress: false
+
+permissions:
+  contents: write # create / publish the prerelease
+
+jobs:
+  release-upstream:
+    name: Build deps from source, sign, notarize & publish (beta upstream)
+    runs-on: macos-latest
+    env:
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      # APPLE_ID / APPLE_TEAM_ID are non-sensitive repo Variables; the
+      # app-specific password is a Secret.
+      APPLE_ID: ${{ vars.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Demo backend config (DEMO_VITE_* repository variables).
+      VITE_DEPLOY_ENV: ${{ vars.DEMO_VITE_DEPLOY_ENV }}
+      VITE_API_BASE_URL: ${{ vars.DEMO_VITE_API_BASE_URL }}
+      VITE_MCP_BASE_URL: ${{ vars.DEMO_VITE_MCP_BASE_URL }}
+    steps:
+      # --- Sources: this repo + the three siblings, at their latest refs -------
+      # All four repos are public, so the default GITHUB_TOKEN can read them.
+      - name: Checkout desktop
+        uses: actions/checkout@v4
+        with:
+          path: desktop
+
+      - name: Checkout shared (${{ inputs.shared_ref }})
+        uses: actions/checkout@v4
+        with:
+          repository: Edison-Watch/shared
+          ref: ${{ inputs.shared_ref }}
+          path: shared
+
+      - name: Checkout stdiod (${{ inputs.stdiod_ref }})
+        uses: actions/checkout@v4
+        with:
+          repository: Edison-Watch/stdiod
+          ref: ${{ inputs.stdiod_ref }}
+          path: stdiod
+
+      - name: Checkout mcp-detector-lib (${{ inputs.detectord_ref }})
+        uses: actions/checkout@v4
+        with:
+          repository: Edison-Watch/mcp-detector-lib
+          ref: ${{ inputs.detectord_ref }}
+          # Checked out as `detectord/` - build-detectord.sh expects that name.
+          path: detectord
+
+      - name: Record source commits
+        id: srcs
+        run: |
+          {
+            echo "desktop=$(git -C desktop rev-parse --short HEAD)"
+            echo "shared=$(git -C shared rev-parse --short HEAD)"
+            echo "stdiod=$(git -C stdiod rev-parse --short HEAD)"
+            echo "detectord=$(git -C detectord rev-parse --short HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            desktop/package-lock.json
+            shared/package-lock.json
+
+      # --- Caches -------------------------------------------------------------
+      # Electron runtime is pinned by electronVersion in electron-builder.yml
+      # (independent of the resolved `electron` devDep), so key on that value -
+      # an unrelated dependency bump shouldn't re-download ~200 MB.
+      - name: Resolve Electron runtime version (cache key)
+        id: electron
+        working-directory: desktop
+        run: echo "version=$(grep '^electronVersion:' electron-builder.yml | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache electron-builder downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: ${{ runner.os }}-electron-${{ steps.electron.outputs.version }}
+          restore-keys: ${{ runner.os }}-electron-
+
+      # Cargo registry + both daemons' target dirs. Keyed on the lockfiles: a
+      # source-only change to either daemon still reuses the dependency builds,
+      # which is the bulk of a cold Rust release build.
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            stdiod/target
+            detectord/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('stdiod/Cargo.lock', 'detectord/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      # --- shared: build from source, install over the npm-resolved copy ------
+      - name: Build shared from source
+        id: shared
+        working-directory: shared
+        run: |
+          npm ci
+          npm run build
+          # npm pack prints the tarball filename it wrote.
+          TGZ=$(npm pack --silent --pack-destination "$RUNNER_TEMP")
+          echo "tgz=$RUNNER_TEMP/$TGZ" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "Packed shared $(node -p "require('./package.json').version") -> $TGZ"
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Install source-built shared over the registry version
+        # `npm ci` above resolved @edison-watch/shared from registry.npmjs.org per
+        # package-lock.json. Overwrite it with the tarball built from source.
+        # --no-save keeps package.json/package-lock.json untouched (nothing runs
+        # `npm ci` after this, which would otherwise revert the override).
+        working-directory: desktop
+        run: npm install --no-save "${{ steps.shared.outputs.tgz }}"
+
+      - name: Verify shared came from source
+        # Guard against a silent fallback to the registry copy: if the override
+        # didn't take, everything downstream would still build and publish, just
+        # against the published shared - defeating the point of this workflow.
+        working-directory: desktop
+        run: |
+          # Read via a relative path, NOT the bare specifier: shared's `exports`
+          # map has no "./package.json" entry, so require('@edison-watch/shared/
+          # package.json') dies with ERR_PACKAGE_PATH_NOT_EXPORTED. A filesystem
+          # path bypasses exports resolution.
+          INSTALLED=$(node -p "require('./node_modules/@edison-watch/shared/package.json').version")
+          EXPECTED="${{ steps.shared.outputs.version }}"
+          echo "installed=$INSTALLED expected=$EXPECTED"
+          if [ "$INSTALLED" != "$EXPECTED" ]; then
+            echo "::error::@edison-watch/shared is $INSTALLED, expected the source-built $EXPECTED" >&2
+            exit 1
+          fi
+
+      # --- daemons: build from source via the existing sibling-aware scripts ---
+      - name: Build edison-stdiod from source
+        working-directory: desktop
+        run: npm run build:stdiod
+
+      - name: Build edison-detectord from source
+        working-directory: desktop
+        run: npm run build:detectord
+
+      # --- version, bundle, package ------------------------------------------
+      - name: Compute upstream prerelease version
+        id: ver
+        working-directory: desktop
+        run: |
+          BASE=$(node -p "require('./package.json').version")
+          UPSTREAM="${BASE}-upstream.${{ github.run_number }}"
+          echo "version=$UPSTREAM" >> "$GITHUB_OUTPUT"
+          echo "Upstream prerelease version: $UPSTREAM (beta channel)"
+
+      - name: Build renderer/main/preload bundles (demo mode)
+        # Runs typecheck against the source-built shared - this is where an
+        # unreleased breaking change in shared surfaces.
+        working-directory: desktop
+        run: npm run build:demo
+
+      - name: Pre-create draft release
+        # electron-builder races itself creating the GitHub release: the dmg and
+        # zip finish near-simultaneously, PublishManager spawns two
+        # GitHubPublisher instances (async cache-miss race), and both POST
+        # /releases for the same tag - the loser dies with 422 after a successful
+        # notarization. Pre-creating means every publisher instance finds and
+        # reuses it. Draft keeps it invisible to auto-updaters until all assets
+        # (incl. beta.yml) are up.
+        working-directory: desktop
+        run: |
+          TAG="v${{ steps.ver.outputs.version }}"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "${{ steps.ver.outputs.version }}" \
+              --draft --prerelease \
+              --notes "$(cat <<EOF
+          Beta upstream build (run ${{ github.run_number }}) - all dependencies built from source.
+
+          | component | ref | commit |
+          | --- | --- | --- |
+          | desktop | \`${{ github.ref_name }}\` | \`${{ steps.srcs.outputs.desktop }}\` |
+          | shared | \`${{ inputs.shared_ref }}\` | \`${{ steps.srcs.outputs.shared }}\` |
+          | stdiod | \`${{ inputs.stdiod_ref }}\` | \`${{ steps.srcs.outputs.stdiod }}\` |
+          | mcp-detector-lib | \`${{ inputs.detectord_ref }}\` | \`${{ steps.srcs.outputs.detectord }}\` |
+          EOF
+          )"
+
+      - name: Package, sign, notarize & upload prerelease assets
+        # extraMetadata.version sets the app/asset/yaml version without editing
+        # package.json. channel: beta writes beta.yml; releaseType: prerelease
+        # marks the GitHub release a prerelease (both required for the GitHub
+        # provider to resolve the beta channel). Assets go into the draft
+        # pre-created above; the next step flips it public.
+        working-directory: desktop
+        run: |
+          npx electron-builder --mac --publish always \
+            -c.extraMetadata.version="${{ steps.ver.outputs.version }}" \
+            -c.mac.notarize=${{ inputs.notarize }} \
+            -c.publish.channel=beta \
+            -c.publish.releaseType=prerelease
+
+      - name: Publish prerelease
+        # All assets + beta.yml are uploaded - make the release visible.
+        working-directory: desktop
+        run: |
+          gh release edit "v${{ steps.ver.outputs.version }}" \
+            --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
