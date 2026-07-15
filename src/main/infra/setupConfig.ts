@@ -22,15 +22,21 @@ if (DRY_RUN) console.log("[dry-run] Dry-run mode enabled - config files will not
 
 // ── Debug environment switcher ───────────────────────────────────────
 
-export const DEBUG_ENV_NAMES = ["demo", "release", "dev"] as const;
+// "temp-local-stack" = Railway-hosted offline stack (local-stack-backend in the
+// edison-watch demo project); URLs come from the shared TEMP_LOCAL_STACK_CONFIG.
+export const DEBUG_ENV_NAMES = ["demo", "release", "dev", "temp-local-stack"] as const;
 export type DebugEnvName = (typeof DEBUG_ENV_NAMES)[number];
+
+function isDebugEnvName(v: string | undefined): v is DebugEnvName {
+  return (DEBUG_ENV_NAMES as readonly string[]).includes(v ?? "");
+}
 
 /** The environment this binary was compiled for (from VITE_DEPLOY_ENV at build time). */
 export function getBuildDefaultEnv(): DebugEnvName | null {
   const is = { get dev() { return !app.isPackaged; } };
   if (is.dev) return "dev";
   const v = import.meta.env.VITE_DEPLOY_ENV as string | undefined;
-  if (v === "demo" || v === "release" || v === "dev") return v;
+  if (isDebugEnvName(v)) return v;
   return null;
 }
 
@@ -60,7 +66,7 @@ export function getDebugEnvOverride(): DebugEnvName | null {
     if (!existsSync(p)) return null;
     const raw = readFileSync(p, "utf-8");
     const data = JSON.parse(raw) as { env?: string };
-    if (data.env === "demo" || data.env === "release" || data.env === "dev") return data.env;
+    if (isDebugEnvName(data.env)) return data.env;
     return null;
   } catch {
     return null;
