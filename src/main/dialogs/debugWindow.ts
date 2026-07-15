@@ -4,6 +4,7 @@ import { discoverMcpServers } from '../discovery/mcpDiscovery'
 import type { DiscoveredMcpServer } from '../discovery/mcpDiscovery'
 import { getClientDisplayName } from '../runtime/mcpConfigMonitor'
 import { escapeHtml, getClientIcon } from './dialogIcons'
+import { showWhenReady } from './showWindow'
 import { BASE_CSS, HEADER_CSS, SERVER_CARD_CSS, DEBUG_CSS } from './dialogStyles'
 import {
   getCursorProjectMcpPaths,
@@ -387,7 +388,5 @@ export async function showDebugWindow(parentWindow?: BrowserWindow): Promise<voi
 
   const html = buildDebugHtml(servers, buildProjectPathsHtml(projectGroups))
   debugWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
-  debugWindow.once('ready-to-show', () => {
-    debugWindow?.show()
-  })
+  showWhenReady(debugWindow)
 }

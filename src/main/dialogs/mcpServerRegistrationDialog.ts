@@ -10,6 +10,7 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'path'
 import { getClientDisplayName, filterOutEdisonWatchServers } from '../runtime/mcpConfigMonitor'
+import { showWhenReady } from './showWindow'
 import type { ServerActionResult } from './mcpServerActionDialog'
 import { discoverMcpServers, getServerFingerprint } from '../discovery/mcpDiscovery'
 import {
@@ -484,8 +485,6 @@ export async function showServerRegistrationDialog(
     })
 
     serverRegistrationWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
-    serverRegistrationWindow.once('ready-to-show', () => {
-      serverRegistrationWindow?.show()
-    })
+    showWhenReady(serverRegistrationWindow)
   })
 }

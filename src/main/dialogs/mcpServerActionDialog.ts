@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import type { DiscoveredMcpServer } from '../discovery/mcpDiscovery'
+import { showWhenReady } from './showWindow'
 import { getClientDisplayName } from '../runtime/mcpConfigMonitor'
 import type { ServerAction } from '../discovery/seenServersStore'
 import {
@@ -516,9 +517,7 @@ export function showQuarantinedServersDialog(
     })
 
     serverActionWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
-    serverActionWindow.once('ready-to-show', () => {
-      serverActionWindow?.show()
-    })
+    showWhenReady(serverActionWindow)
   })
 }
 

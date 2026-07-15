@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { submitUserFeedback } from '../infra/sentry'
+import { showWhenReady } from './showWindow'
 import { BASE_CSS } from './dialogStyles'
 
 let feedbackWindow: BrowserWindow | null = null
@@ -202,5 +203,5 @@ export function showFeedbackWindow(): void {
 
   const html = buildFeedbackHtml()
   feedbackWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
-  feedbackWindow.once('ready-to-show', () => feedbackWindow?.show())
+  showWhenReady(feedbackWindow)
 }

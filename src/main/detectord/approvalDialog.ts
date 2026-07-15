@@ -21,6 +21,7 @@ import {
   REGISTRATION_CSS
 } from '../dialogs/dialogStyles'
 import { escapeHtml, getClientIcon } from '../dialogs/dialogIcons'
+import { showWhenReady } from '../dialogs/showWindow'
 
 import type { ServerView } from './protocol'
 import type { DetectordClient } from './socket'
@@ -117,7 +118,7 @@ export function showDaemonApprovalDialog(
     approvalWindow.loadURL(
       `data:text/html;charset=utf-8,${encodeURIComponent(buildHtml(servers, isAdminOrOwner, channel))}`
     )
-    approvalWindow.once('ready-to-show', () => approvalWindow?.show())
+    showWhenReady(approvalWindow)
   })
 }
 

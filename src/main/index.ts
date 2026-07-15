@@ -91,6 +91,7 @@ import {
 } from './ipc/approvalsHandler'
 import { registerIpcHandlers } from './ipc/ipcHandlers'
 import { bootstrapDetectord } from './detectord/bootstrap'
+import { stageDetectordBinary } from './detectord/binary'
 import { detectordPrimary } from './detectord/mode'
 import { buildAppMenu as buildAppMenuFromDeps } from './menus/appMenu'
 import { buildTrayMenuItems as buildTrayMenuItemsFromDeps } from './menus/trayMenu'
@@ -469,12 +470,13 @@ app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.edisonwatch.desktop')
   updateAppMenu()
 
-  // Linux/AppImage: copy the daemon out of the ephemeral FUSE mount to a stable
-  // path BEFORE anything invokes or installs it. The AppImage mounts at a fresh
-  // /tmp/.mount_* dir each launch, so a systemd unit pointing ExecStart there
-  // breaks the moment the app exits (status=203/EXEC -> crash-loop). No-op on
-  // mac/win/dev. See runtime/stdiodBinary.ts.
+  // Linux/AppImage: copy the daemons out of the ephemeral FUSE mount to stable
+  // paths BEFORE anything invokes or installs them. The AppImage mounts at a
+  // fresh /tmp/.mount_* dir each launch, so a systemd unit pointing ExecStart
+  // there breaks the moment the app exits (status=203/EXEC -> crash-loop). No-op
+  // on mac/win/dev. See runtime/stdiodBinary.ts and detectord/binary.ts.
   stageStdiodBinary()
+  stageDetectordBinary()
 
   // Linux/AppImage: self-install a .desktop entry + icon so the dock/taskbar
   // shows the Edison icon and the app is pinnable. No-op on mac/win/dev and for
