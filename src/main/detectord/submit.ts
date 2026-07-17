@@ -77,8 +77,15 @@ export async function submitServersViaDetectord(
   let autoApproved = 0
   const failures: DetectordSubmitFailure[] = []
   for (const s of servers) {
+    // Client-side dedup renames name-conflicting servers (e.g. name "sqlite_cursor",
+    // originalName "sqlite"). The daemon only knows the discovered (original) name,
+    // so submit under that and pass the deduped name as the disposition rename -
+    // mirroring resubmitServerViaDetectord. Non-conflicting servers have no
+    // originalName, so daemonName === s.name and rename stays undefined.
+    const daemonName = s.originalName ?? s.name
+    const rename = s.originalName ? s.name : undefined
     try {
-      await client.disposition(s.name, 'send_to_ew', toAgent(s.client))
+      await client.disposition(daemonName, 'send_to_ew', toAgent(s.client), rename)
       submitted++
       if (isAdminOrOwner) autoApproved++
     } catch (err) {
