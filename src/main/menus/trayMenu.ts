@@ -28,8 +28,6 @@ import {
   markSetupComplete
 } from '../infra/setupConfig'
 import { isSseConnected, pendingApprovals, showPendingApprovalsDialog } from '../ipc/approvalsHandler'
-import { getAutoQuarantineEnabled } from '../quarantine/quarantineManager'
-import { getHookStatusLabel } from '../runtime/hookHealthMonitor'
 import { applyAppIntegrations } from '../runtime/mcpConfigWriter'
 import { buildStdiodMenuItems } from '../stdiod/trayMenu'
 import { handleStdiodReset } from '../stdiod/trayReset'
@@ -160,19 +158,7 @@ export function buildTrayMenuItems(deps: TrayMenuDeps): MenuItemConstructorOptio
       },
       compactTray
     ),
-    { type: 'separator' },
-    // Linux compact: drop Hooks + Auto-Quarantine status lines.
-    ...(compactTray
-      ? []
-      : [
-          { label: getHookStatusLabel(), enabled: false },
-          {
-            label: getAutoQuarantineEnabled()
-              ? 'MCP Auto-Quarantine: Enabled'
-              : 'MCP Auto-Quarantine: Disabled',
-            enabled: false
-          }
-        ])
+    { type: 'separator' }
   ]
 
   const pendingVersion = getPendingUpdateVersion()

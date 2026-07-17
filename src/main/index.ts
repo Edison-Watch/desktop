@@ -47,40 +47,18 @@ const optimizer = {
   }
 }
 import windowStateKeeper from 'electron-window-state'
-import { injectAllHooks, isCodexInstalled } from './runtime/hookInjection'
 import { initSentry } from './infra/sentry'
-import { startHookHealthMonitor, stopHookHealthMonitor } from './runtime/hookHealthMonitor'
 import { initUpdateManager, stopUpdateManager } from './infra/updateManager'
 import { warmOrgIdCacheOnStartup } from './infra/orgIdCache'
-import {
-  applyAppIntegrations,
-  findAppsMissingClientTag,
-  findAppsNeedingReRegistration
-} from './runtime/mcpConfigWriter'
-import {
-  initQuarantineManager,
-  startQuarantineMonitorIfEnabled,
-  handleQuarantineEnabled,
-  handleQuarantineDisabled,
-  stopQuarantineMonitor,
-  startQuarantinePolling,
-  stopQuarantinePolling,
-  pollQuarantineConfig
-} from './quarantine/quarantineManager'
 import {
   getBuildDefaultEnv,
   getActiveEnv,
   getApiBaseUrl,
   getMcpBaseUrl,
-  ALL_SUPPORTED_APPS,
-  getSetupData,
   isSetupComplete,
-  markSetupComplete,
-  getCredentialsForEnv,
   markSetupIncomplete,
   startServerStatusChecks,
-  stopServerStatusChecks,
-  checkClaudeCodeMcpConnection
+  stopServerStatusChecks
 } from './infra/setupConfig'
 import {
   pendingApprovals,
@@ -92,7 +70,6 @@ import {
 import { registerIpcHandlers } from './ipc/ipcHandlers'
 import { bootstrapDetectord } from './detectord/bootstrap'
 import { stageDetectordBinary } from './detectord/binary'
-import { detectordPrimary } from './detectord/mode'
 import { buildAppMenu as buildAppMenuFromDeps } from './menus/appMenu'
 import { buildTrayMenuItems as buildTrayMenuItemsFromDeps } from './menus/trayMenu'
 import { integrateDesktopEntry } from './runtime/desktopIntegration'
@@ -122,9 +99,7 @@ let approvalWindow: BrowserWindow | null = null
 let isRestarting = false // suppress app.quit() during intentional restarts
 
 function startEventSubscription(): void {
-  _startEventSubscription(handleQuarantineEnabled, handleQuarantineDisabled, () => {
-    pollQuarantineConfig().catch(() => {})
-  })
+  _startEventSubscription()
 }
 
 function buildTrayMenuItems(): MenuItemConstructorOptions[] {
@@ -250,9 +225,6 @@ function stopAllServices(): void {
   stopServerStatusChecks()
   stopUpdateManager()
   stopEventSubscription()
-  stopHookHealthMonitor()
-  stopQuarantineMonitor()
-  stopQuarantinePolling()
   pendingApprovals.clear()
 }
 
@@ -446,9 +418,6 @@ function logEnvConfig(context: string): void {
 
 slog('module loaded, waiting for app.whenReady')
 
-// Wire up the quarantine manager so it can trigger tray menu updates
-initQuarantineManager(updateTrayMenu, () => mainWindow)
-
 // Wire up SSE connection status changes to refresh tray menu
 setSseStatusCallback(updateTrayMenu)
 
@@ -511,9 +480,7 @@ app.whenReady().then(async () => {
     getMainWindow: () => mainWindow,
     getAuthLoopbackUrl: () => getAuthLoopbackUrl(),
     createTray,
-    startEventSubscription,
-    startQuarantineMonitorIfEnabled,
-    startQuarantinePolling
+    startEventSubscription
   })
   slog('registerIpcHandlers ok')
 
@@ -536,104 +503,8 @@ app.whenReady().then(async () => {
     slog('setup complete, creating tray')
     createTray()
     startEventSubscription()
-    // The TS hooks/quarantine pipeline stands down when the daemon is primary
-    // (it owns those). See detectord/mode.ts.
-    if (!detectordPrimary()) {
-      startHookHealthMonitor()
-      // Await hook injection before quarantine monitor to avoid config file races
-      await injectAllHooks().catch((err) => console.error('[HookInjection] Failed:', err))
-    }
 
     await warmOrgIdCacheOnStartup()
-    if (!detectordPrimary()) {
-      startQuarantineMonitorIfEnabled().catch((err) => console.error('[Quarantine] Failed:', err))
-      startQuarantinePolling()
-    }
-
-    // Self-heal: re-register edison-watch for any apps where the config was
-    // cleared externally. Skipped when the daemon is primary; it owns install.
-    const setup = getSetupData()
-    const mcpBaseUrl = getMcpBaseUrl()
-    const creds = getCredentialsForEnv()
-    if (!detectordPrimary() && mcpBaseUrl && creds?.apiKey) {
-      const rawApps = setup.configuredApps?.length ? setup.configuredApps : ALL_SUPPORTED_APPS
-      let configuredApps = rawApps.filter((app) => ALL_SUPPORTED_APPS.includes(app))
-
-      // One-time backfill: add Codex for users who onboarded before it was in the detection list
-      const migrations = setup.appliedMigrations ?? []
-      if (
-        !migrations.includes('codex-backfill') &&
-        !configuredApps.includes('codex') &&
-        isCodexInstalled()
-      ) {
-        slog('startup: backfilling codex into configuredApps')
-        configuredApps = [...configuredApps, 'codex']
-        markSetupComplete({ configuredApps, appliedMigrations: [...migrations, 'codex-backfill'] })
-      } else if (!migrations.includes('codex-backfill')) {
-        markSetupComplete({ appliedMigrations: [...migrations, 'codex-backfill'] })
-      }
-
-      // Claude Code: check via CLI (separate path since it uses `claude mcp get`)
-      if (configuredApps.includes('claude-code')) {
-        checkClaudeCodeMcpConnection()
-          .then(async (status) => {
-            if (status === 'connected') {
-              slog('startup: Claude Code MCP already connected, skipping re-registration')
-              return
-            }
-            slog(`startup: Claude Code MCP status is "${status}", re-registering`)
-            await applyAppIntegrations({
-              serverAddress: setup.serverAddress ?? '',
-              mcpBaseUrl,
-              apiKey: creds.apiKey,
-              edisonSecretKey: creds.edisonSecretKey,
-              apps: ['claude-code']
-            })
-            slog('startup: Claude Code MCP re-registration complete')
-          })
-          .catch((err) =>
-            console.error('[Startup] Failed to check/re-register Claude Code MCP:', err)
-          )
-      }
-
-      // All other apps: check config files for missing or stale edison-watch entry
-      const expectedUrl = `${mcpBaseUrl.replace(/\/$/, '')}/mcp/${creds.apiKey}/`
-      findAppsNeedingReRegistration(configuredApps, expectedUrl)
-        .then(async (missingApps) => {
-          if (missingApps.length === 0) {
-            slog('startup: all configured apps have edison-watch registered')
-            return
-          }
-          slog(`startup: edison-watch missing from ${missingApps.join(', ')}, re-registering`)
-          await applyAppIntegrations({
-            serverAddress: setup.serverAddress ?? '',
-            mcpBaseUrl,
-            apiKey: creds.apiKey,
-            edisonSecretKey: creds.edisonSecretKey,
-            apps: missingApps
-          })
-          slog(`startup: re-registered edison-watch for ${missingApps.join(', ')}`)
-        })
-        .catch((err) =>
-          console.error('[Startup] Failed to check/re-register app MCP configs:', err)
-        )
-
-      // One-time migration: add ?client= tag to URLs missing it (includes claude-code)
-      findAppsMissingClientTag(configuredApps)
-        .then(async (apps) => {
-          if (apps.length === 0) return
-          slog(`startup: adding client tag to ${apps.join(', ')}`)
-          await applyAppIntegrations({
-            serverAddress: setup.serverAddress ?? '',
-            mcpBaseUrl,
-            apiKey: creds.apiKey,
-            edisonSecretKey: creds.edisonSecretKey,
-            apps
-          })
-          slog(`startup: client tag migration done for ${apps.join(', ')}`)
-        })
-        .catch((err) => console.error('[Startup] client tag migration failed:', err))
-    }
 
     slog('tray/subscription/monitor ok')
   } else {

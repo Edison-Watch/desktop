@@ -1,14 +1,11 @@
 /**
- * Hook Injection Module - orchestration layer.
+ * Hook status module.
  *
- * Injects hooks into MCP client applications to register project contexts
- * with Edison Watch when tool calls are executed.
- *
- * The three public functions iterate `CLIENT_LIST` from
- * `../clients/registry.ts` and delegate per-client work to each integration's
- * `hooks` sub-object. Clients without a hook system (Zed, JetBrains) have
- * `hooks === undefined` and are skipped by inject/remove but still surface an
- * MCP-only status entry in `getHookStatus`.
+ * Hook installation/removal is owned by the detector daemon; this module only
+ * reports status. `getHookStatus` iterates `CLIENT_LIST` from
+ * `../clients/registry.ts` and probes each integration's `hooks` sub-object.
+ * Clients without a hook system (Zed, JetBrains) have `hooks === undefined` and
+ * surface an MCP-only status entry.
  *
  * MCP-configured probing still lives here; it moves into each integration's
  * `edisonMcp` sub-object in a separate PR.
@@ -17,11 +14,9 @@
  */
 
 import { promises as fs, existsSync } from 'fs'
-import { platform } from 'os'
 import { parse as parseJsonc } from 'jsonc-parser'
 import type { McpClientId } from '../discovery/types'
 import { CLIENT_LIST } from '../clients/registry'
-import type { ClientIntegration } from '../clients/types'
 import { getVscodeUserMcpPath } from '../clients/vscode/discovery'
 import { getCursorConfigPath } from '../clients/cursor/discovery'
 import { getWindsurfConfigPath } from '../clients/windsurf/discovery'
@@ -34,13 +29,7 @@ import {
   getJetBrainsMcpConfigPaths,
   getInstalledJetBrainsIdes,
 } from '../clients/jetbrains/discovery'
-import { captureError } from '../infra/sentry'
-import { getVsCodeWorkspacePaths } from './mcpProjectPaths'
 import { getCodexConfigPath } from '../clients/codex/hooks'
-import {
-  injectVsCodeWorkspaceHook,
-  removeVsCodeWorkspaceHook,
-} from '../clients/vscode/hooks'
 import type { ClaudeCodeMcpStatus } from '../infra/setupConfig'
 
 // Re-export all helpers so existing imports of hookInjection still work.
@@ -52,91 +41,6 @@ export * from '../clients/windsurf/hooks'
 export * from '../clients/codex/hooks'
 export * from '../clients/vscode/hooks'
 
-/**
- * Result of hook injection for a client.
- */
-export interface HookInjectionResult {
-  client: McpClientId
-  installed: boolean
-  alreadyExists: boolean
-  error?: string
-}
-
-// ── Inject / Remove ─────────────────────────────────────────────────────────
-
-async function runHookOp(
-  client: ClientIntegration,
-  op: 'inject' | 'remove',
-  operation: 'injectAllHooks' | 'removeAllHooks',
-): Promise<HookInjectionResult> {
-  const hooks = client.hooks!
-  try {
-    const changed = op === 'inject' ? await hooks.inject() : await hooks.remove()
-    const installed = op === 'inject' ? changed : false
-    return { client: client.id, installed, alreadyExists: !changed }
-  } catch (err) {
-    captureError(err instanceof Error ? err : new Error(String(err)), {
-      client: client.id, operation, platform: platform()
-    })
-    return { client: client.id, installed: false, alreadyExists: false, error: String(err) }
-  }
-}
-
-/**
- * Inject hooks into all supported MCP clients.
- */
-export async function injectAllHooks(): Promise<HookInjectionResult[]> {
-  const results: HookInjectionResult[] = []
-
-  for (const client of CLIENT_LIST) {
-    if (!client.hooks) continue
-    if (!client.isInstalled()) continue
-    results.push(await runHookOp(client, 'inject', 'injectAllHooks'))
-  }
-
-  // VS Code workspace tasks: per-workspace, orchestrated separately from the
-  // client-level hook registry. Kept out of the loop because these call sites
-  // are also reused from ipcHandlers.
-  try {
-    const workspacePaths = await getVsCodeWorkspacePaths()
-    for (const wsPath of workspacePaths) {
-      await injectVsCodeWorkspaceHook(wsPath)
-    }
-  } catch (err) {
-    captureError(err instanceof Error ? err : new Error(String(err)), {
-      client: 'vscode', operation: 'injectAllHooks', platform: platform()
-    })
-  }
-
-  return results
-}
-
-/**
- * Remove hooks from all MCP clients.
- */
-export async function removeAllHooks(): Promise<HookInjectionResult[]> {
-  const results: HookInjectionResult[] = []
-
-  for (const client of CLIENT_LIST) {
-    if (!client.hooks) continue
-    if (!client.isInstalled()) continue
-    results.push(await runHookOp(client, 'remove', 'removeAllHooks'))
-  }
-
-  // VS Code workspace tasks removal (see note in injectAllHooks).
-  try {
-    const workspacePaths = await getVsCodeWorkspacePaths()
-    for (const wsPath of workspacePaths) {
-      await removeVsCodeWorkspaceHook(wsPath)
-    }
-  } catch (err) {
-    captureError(err instanceof Error ? err : new Error(String(err)), {
-      client: 'vscode', operation: 'removeAllHooks', platform: platform()
-    })
-  }
-
-  return results
-}
 
 // ── Status ──────────────────────────────────────────────────────────────────
 

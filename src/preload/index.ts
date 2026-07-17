@@ -157,8 +157,6 @@ const api = {
       error?: string
       errors?: string[]
     }> => ipcRenderer.invoke('mcp:submitAllDiscovered', params),
-    injectHooks: (): Promise<unknown[]> => ipcRenderer.invoke('mcp:injectHooks'),
-    removeHooks: (): Promise<unknown[]> => ipcRenderer.invoke('mcp:removeHooks'),
     getHookStatus: (): Promise<unknown[]> => ipcRenderer.invoke('mcp:getHookStatus'),
     injectVsCodeWorkspaceHook: (workspacePath: string): Promise<boolean> =>
       ipcRenderer.invoke('mcp:injectVsCodeWorkspaceHook', workspacePath),

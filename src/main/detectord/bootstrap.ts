@@ -20,7 +20,6 @@ import {
 import { showDaemonApprovalDialog } from './approvalDialog'
 import { detectordBinaryExists, getDetectordBinaryPath } from './binary'
 import { ensureDetectord } from './lifecycle'
-import { detectordPrimary } from './mode'
 import type { DetectordEvent, SecretOutcome, ServerView } from './protocol'
 import type { DetectordClient } from './socket'
 
@@ -65,7 +64,7 @@ export async function bootstrapDetectord(creds?: DetectordEnrollInput): Promise<
   ) {
     return false
   }
-  const primary = detectordPrimary()
+  const primary = true
   console.log(
     `[detectord] bootstrap mode=${primary ? 'primary (enforce)' : 'shadow (detect-only)'} ` +
       `binary=${getDetectordBinaryPath()} available=${detectordBinaryExists()}`
@@ -113,7 +112,7 @@ export async function bootstrapDetectord(creds?: DetectordEnrollInput): Promise<
 export async function setDetectordSecret(
   key: string
 ): Promise<{ ok: boolean; outcome?: SecretOutcome; reason?: string }> {
-  const ensured = await ensureDetectord((m) => console.log(m), detectordPrimary())
+  const ensured = await ensureDetectord((m) => console.log(m), true)
   if (!ensured.ok) {
     console.warn(`[detectord] set secret skipped: ${ensured.reason}`)
     return { ok: false, reason: ensured.reason }

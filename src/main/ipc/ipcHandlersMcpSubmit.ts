@@ -15,7 +15,6 @@ const execFileAsync = promisify(execFile);
 
 import { discoverMcpServers, describeUnsupportedReason } from "../discovery/mcpDiscovery";
 import type { DiscoveredMcpServer, McpClientId, McpServerConfig } from "../discovery/mcpDiscovery";
-import { detectordPrimary } from "../detectord/mode";
 import { submitServersViaDetectord, resubmitServerViaDetectord } from "../detectord/submit";
 import { removeServerFromConfig } from "../runtime/mcpConfigActions";
 import { quarantineCursorPlugin } from "../clients/cursor/quarantinePlugins";
@@ -32,7 +31,7 @@ import { detectSecrets } from "../discovery/secretDetection";
 import type { TemplatizedConfig } from "../discovery/secretDetection";
 import { filterOutEdisonWatchServers } from "../runtime/mcpConfigMonitor";
 import { applyAppIntegrations } from "../runtime/mcpConfigWriter";
-import { deduplicateServers, findDuplicateGroups, buildRemovalMap } from "../discovery/serverDeduplication";
+import { deduplicateServers, findDuplicateGroups } from "../discovery/serverDeduplication";
 import { DRY_RUN, getApiBaseUrl, getSetupData, getCredentialsForEnv } from "../infra/setupConfig";
 import { getSharedSeenStore } from "../discovery/seenServersStore";
 import { getCachedOrgId, refreshOrgIdFromBackend } from "../infra/orgIdCache";
@@ -161,79 +160,15 @@ export function registerMcpSubmitHandlers(): void {
     const creds = getCredentialsForEnv();
     const apiKey = params.apiKey || creds?.apiKey;
     const apiBaseUrl = getApiBaseUrl() || params.apiBaseUrl || setup.apiBaseUrl;
-    const userId = params.userId || setup.userId;
 
     if (!apiKey || !apiBaseUrl) {
       return { success: false, error: "Not signed in or server URL not configured." };
     }
 
-    // Primary mode: resubmit-under-new-name is a daemon disposition with rename.
-    // Pass client through as-is (may be undefined) so the daemon matches by name
-    // alone when it's omitted, preserving the optional-client contract.
-    if (detectordPrimary()) {
-      return resubmitServerViaDetectord(params.originalName, params.newName, params.client);
-    }
-
-    // Use cache first, fall back to passed config
-    const { servers: cached, raw: cachedRaw } = getCachedDiscovery();
-    let server: DiscoveredMcpServer | undefined = cached.find((s) => s.name === params.originalName);
-    const rawEntries = cachedRaw.filter((s) => s.name === (server?.originalName ?? params.originalName));
-
-    if (!server && params.config && params.client) {
-      server = {
-        name: params.originalName,
-        client: params.client as McpClientId,
-        source: (params.source as DiscoveredMcpServer['source']) || "user",
-        path: params.configPath ?? "",
-        config: params.config as McpServerConfig,
-      };
-    }
-    if (!server) {
-      return { success: false, error: `Server "${params.originalName}" not found.` };
-    }
-
-    try {
-      const renamed = { ...server, name: params.newName, originalName: server.name };
-      const result = await submitServerRequest(renamed, apiBaseUrl, apiKey, userId);
-      console.log(`[mcp:resubmitServer] Submit result for "${params.newName}":`, JSON.stringify(result));
-      if (result.alreadyPending) {
-        return { success: false, error: `"${params.newName}" already has a pending request.` };
-      }
-      if (result.alreadyExists) {
-        return { success: false, error: result.errorMessage ?? `"${params.newName}" already exists.` };
-      }
-
-      let wasAutoApproved = result.autoApproved === true;
-      if (!wasAutoApproved) {
-        const role = await fetchUserRole(apiBaseUrl, apiKey);
-        if (role === "admin" || role === "owner") {
-          try { await approveServerRequest(result.request_id, apiBaseUrl, apiKey); wasAutoApproved = true; } catch { /* non-fatal */ }
-        }
-      }
-
-      // Mark in seen store so quarantine recognises it as known.
-      // Skipped silently if we don't yet know the caller's org_id - the next
-      // sync/rescan will reach the user via the dialog path instead of silent quarantine.
-      {
-        const orgId = await getOrRefreshOrgId(apiBaseUrl, apiKey);
-        if (orgId) {
-          try { await getSharedSeenStore().markSeen(orgId, server, wasAutoApproved ? "registered" : "requested"); } catch { /* non-fatal */ }
-        } else {
-          console.warn(`[mcp:submit] No org_id available - "${server.name}" won't be marked as seen; next detection will prompt.`);
-        }
-      }
-
-      // Remove from all agent configs if still present (using original name, not renamed)
-      const entriesToRemove = rawEntries.length > 0 ? rawEntries : [server];
-      for (const entry of entriesToRemove) {
-        try { await removeOrDisableServer(entry); } catch { /* non-fatal */ }
-      }
-      return { success: true };
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.error(`[mcp:resubmitServer] Error:`, msg);
-      return { success: false, error: msg };
-    }
+    // Resubmit-under-new-name is a daemon disposition with rename. Pass client
+    // through as-is (may be undefined) so the daemon matches by name alone when
+    // it's omitted, preserving the optional-client contract.
+    return resubmitServerViaDetectord(params.originalName, params.newName, params.client);
   });
 
   /** Remove specific servers from their agent config files.
@@ -243,52 +178,12 @@ export function registerMcpSubmitHandlers(): void {
     removed: string[];
     errors: string[];
   }> => {
-    // Primary mode: the daemon owns removal. Servers the user didn't send to EW
-    // are auto-quarantined once enforcement arms at setup:complete, so there's
+    // The daemon owns removal. Servers the user didn't send to EW are
+    // auto-quarantined once enforcement arms at setup:complete, so there's
     // nothing for the client to remove here.
-    if (detectordPrimary()) {
-      const names = targets.map((t) => (typeof t === "string" ? t : t.name));
-      console.log(`[detectord] removeServers no-op in primary (daemon quarantines when armed): ${names.join(", ")}`);
-      return { removed: [], errors: [] };
-    }
-
-    // Use cached raw (pre-dedup) list so we find ALL per-agent instances
-    const { servers: deduped, raw: filtered } = getCachedDiscovery();
-    const removed: string[] = [];
-    const errors: string[] = [];
-
-    // Build lookup sets from targets
-    const nameOnly = new Set<string>();
-    const nameAndClient = new Set<string>();
-    for (const t of targets) {
-      if (typeof t === "string") nameOnly.add(t);
-      else nameAndClient.add(`${t.name}:${t.client}`);
-    }
-
-    // Resolve dedup-renamed names back to original names so they match the raw list.
-    // e.g. target "same_cursor" → deduped server with originalName "same" → matches raw server "same"
-    for (const s of deduped) {
-      if (s.originalName && nameOnly.has(s.name)) {
-        nameOnly.add(s.originalName);
-      }
-      if (s.originalName && nameAndClient.has(`${s.name}:${s.client}`)) {
-        nameAndClient.add(`${s.originalName}:${s.client}`);
-      }
-    }
-
-    for (const server of filtered) {
-      const matchByName = nameOnly.has(server.name);
-      const matchByPair = nameAndClient.has(`${server.name}:${server.client}`);
-      if (!matchByName && !matchByPair) continue;
-      try {
-        await removeOrDisableServer(server);
-        removed.push(`${server.name} (${server.client})`);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        errors.push(`${server.name} [${server.client}]: ${msg}`);
-      }
-    }
-    return { removed, errors };
+    const names = targets.map((t) => (typeof t === "string" ? t : t.name));
+    console.log(`[detectord] removeServers no-op (daemon quarantines when armed): ${names.join(", ")}`);
+    return { removed: [], errors: [] };
   });
 
   ipcMain.handle("mcp:readConfig", async (_event, configPath: string) => {
@@ -428,123 +323,22 @@ export function registerMcpSubmitHandlers(): void {
     const creds = getCredentialsForEnv();
     const apiKey = params.apiKey || creds?.apiKey;
     const apiBaseUrl = getApiBaseUrl() || params.apiBaseUrl || setup.apiBaseUrl;
-    const userId = params.userId || setup.userId;
 
     if (!apiKey || !apiBaseUrl) {
       return { submitted: 0, autoApproved: 0, skipped: 0, alreadyOnBackend: 0, total: 0,
         error: "Not signed in or server URL not configured." };
     }
 
-    const { servers: cached, raw: cachedRaw } = getCachedDiscovery();
+    const { servers: cached } = getCachedDiscovery();
     const allServers = deduplicateServers(cached);
     const skipSet = new Set(params.skipServers ?? []);
     const servers = skipSet.size > 0 ? allServers.filter((s) => !skipSet.has(s.name)) : allServers;
 
-    // Primary mode: the daemon owns submit and auto-templatizes detected secrets,
-    // so the manual template overrides don't apply; route through the daemon.
-    if (detectordPrimary()) {
-      const summary = await submitServersViaDetectord(servers);
-      console.log(`[detectord] onboarding submit (templates ignored; daemon auto-templatizes): ${summary.submitted} submitted, ${summary.failures.length} failed`);
-      return summary;
-    }
-
-    const removalMap = buildRemovalMap(cachedRaw, servers);
-
-    const serverList = servers.map((s) => ({ name: s.name, client: s.client, clients: s.clients, source: s.source }));
-    let submitted = 0;
-    let autoApproved = 0;
-    let alreadyOnBackend = 0;
-    const errors: string[] = [];
-    const failures: Array<{ name: string; client: string; reason: "conflict" | "error" | "already-on-backend"; message: string; config?: Record<string, unknown>; configPath?: string; backendStatus?: "registered" | "requested" }> = [];
-
-    // Preflight: pull org fingerprints to short-circuit servers already on the
-    // backend (registered/pending) as a non-error state, not a rename prompt.
-    const backendIndex = await fetchBackendFingerprints(apiBaseUrl, apiKey);
-
-    const role = await fetchUserRole(apiBaseUrl, apiKey);
-    const canAutoApprove = role === "admin" || role === "owner";
-
-    for (const server of servers) {
-      const backendMatch = findBackendFingerprintMatch(server, backendIndex);
-      if (backendMatch) {
-        alreadyOnBackend++;
-        await handleAlreadyOnBackend(server, backendMatch, apiBaseUrl, apiKey, removalMap);
-        failures.push({
-          name: server.name,
-          client: server.client,
-          reason: "already-on-backend",
-          message: backendMatch.status === "registered"
-            ? `Already registered on Edison Watch as "${backendMatch.name}"`
-            : `Already pending review on Edison Watch as "${backendMatch.name}"`,
-          backendStatus: backendMatch.status,
-          config: server.config as unknown as Record<string, unknown>,
-          configPath: server.path,
-        });
-        continue;
-      }
-
-      try {
-        const overrides = params.templateOverrides[server.name];
-        const submitResult = overrides
-          ? await submitServerWithOverrides(server, overrides, apiBaseUrl, apiKey, userId)
-          : await submitServerRequest(server, apiBaseUrl, apiKey, userId);
-
-        if (submitResult.alreadyPending) continue;
-        if (submitResult.alreadyExists) {
-          failures.push({
-            name: server.name,
-            client: server.client,
-            reason: "conflict",
-            message: submitResult.errorMessage ?? "A server with this name already exists",
-            config: server.config as unknown as Record<string, unknown>,
-            configPath: server.path,
-          });
-          continue;
-        }
-        submitted++;
-
-        let wasAutoApproved = submitResult.autoApproved === true;
-        if (wasAutoApproved) {
-          autoApproved++;
-        } else if (canAutoApprove) {
-          try {
-            await approveServerRequest(submitResult.request_id, apiBaseUrl, apiKey);
-            autoApproved++;
-            wasAutoApproved = true;
-          } catch (approveErr) {
-            const msg = approveErr instanceof Error ? approveErr.message : String(approveErr);
-            errors.push(`${server.name}: auto-approval failed - ${msg}`);
-          }
-        }
-
-        // Mark in seen store so quarantine recognises it as known
-        {
-          const orgId = await getOrRefreshOrgId(apiBaseUrl, apiKey);
-          if (orgId) {
-            try { await getSharedSeenStore().markSeen(orgId, server, wasAutoApproved ? "registered" : "requested"); } catch { /* non-fatal */ }
-          } else {
-            console.warn(`[mcp:submit] No org_id available - "${server.name}" won't be marked as seen; next detection will prompt.`);
-          }
-        }
-
-        // Remove from ALL agent configs, not just the first
-        const rawEntries = removalMap.get(server.name) ?? [server];
-        for (const entry of rawEntries) {
-          try { await removeOrDisableServer(entry); } catch { /* non-fatal */ }
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        failures.push({ name: server.name, client: server.client, reason: "error", message: msg, config: server.config as unknown as Record<string, unknown>, configPath: server.path });
-      }
-    }
-    return {
-      submitted, autoApproved, alreadyOnBackend,
-      skipped: servers.length - submitted - failures.length,
-      total: servers.length,
-      servers: serverList,
-      errors: errors.length > 0 ? errors : undefined,
-      failures: failures.length > 0 ? failures : undefined,
-    };
+    // The daemon owns submit and auto-templatizes detected secrets, so the
+    // manual template overrides don't apply; route through the daemon.
+    const summary = await submitServersViaDetectord(servers);
+    console.log(`[detectord] onboarding submit (templates ignored; daemon auto-templatizes): ${summary.submitted} submitted, ${summary.failures.length} failed`);
+    return summary;
   });
 
   // Submit all discovered MCP servers for approval
@@ -568,129 +362,24 @@ export function registerMcpSubmitHandlers(): void {
     const creds = getCredentialsForEnv();
     const apiKey = params?.apiKey || creds?.apiKey;
     const apiBaseUrl = getApiBaseUrl() || params?.apiBaseUrl || setup.apiBaseUrl;
-    const userId = params?.userId || setup.userId;
 
     if (!apiKey || !apiBaseUrl) {
       return { submitted: 0, autoApproved: 0, skipped: 0, alreadyOnBackend: 0, total: 0,
         error: "Not signed in or server URL not configured." };
     }
 
-    const { servers: cached, raw: cachedRaw } = getCachedDiscovery();
+    const { servers: cached } = getCachedDiscovery();
 
     // Deduplicate servers with the same name across different clients.
     const allServers = deduplicateServers(cached);
     const skipSet = new Set(params?.skipServers ?? []);
     const servers = skipSet.size > 0 ? allServers.filter((s) => !skipSet.has(s.name)) : allServers;
 
-    // Primary mode: the daemon owns submit (and handles stdio). Route each
-    // registration through it instead of the client's http-only submit path.
-    if (detectordPrimary()) {
-      const summary = await submitServersViaDetectord(servers);
-      console.log(`[detectord] onboarding submit: ${summary.submitted} submitted, ${summary.failures.length} failed`);
-      return summary;
-    }
-
-    const removalMap = buildRemovalMap(cachedRaw, servers);
-
-    const serverList = servers.map((s) => ({ name: s.name, client: s.client, clients: s.clients, source: s.source }));
-    let submitted = 0;
-    let autoApproved = 0;
-    let alreadyOnBackend = 0;
-    const errors: string[] = [];
-    const failures: Array<{ name: string; client: string; reason: "conflict" | "error" | "already-on-backend"; message: string; config?: Record<string, unknown>; configPath?: string; backendStatus?: "registered" | "requested" }> = [];
-
-    // Preflight: pull org's existing fingerprints. See note on the
-    // submitWithTemplates handler for why this matters.
-    const backendIndex = await fetchBackendFingerprints(apiBaseUrl, apiKey);
-
-    const role = await fetchUserRole(apiBaseUrl, apiKey);
-    const canAutoApprove = role === "admin" || role === "owner";
-
-    for (const server of servers) {
-      const backendMatch = findBackendFingerprintMatch(server, backendIndex);
-      if (backendMatch) {
-        alreadyOnBackend++;
-        await handleAlreadyOnBackend(server, backendMatch, apiBaseUrl, apiKey, removalMap);
-        failures.push({
-          name: server.name,
-          client: server.client,
-          reason: "already-on-backend",
-          message: backendMatch.status === "registered"
-            ? `Already registered on Edison Watch as "${backendMatch.name}"`
-            : `Already pending review on Edison Watch as "${backendMatch.name}"`,
-          backendStatus: backendMatch.status,
-          config: server.config as unknown as Record<string, unknown>,
-          configPath: server.path,
-        });
-        continue;
-      }
-
-      try {
-        const submitResult = await submitServerRequest(server, apiBaseUrl, apiKey, userId);
-        if (submitResult.alreadyPending) continue;
-        if (submitResult.alreadyExists) {
-          failures.push({
-            name: server.name,
-            client: server.client,
-            reason: "conflict",
-            message: submitResult.errorMessage ?? "A server with this name already exists",
-            config: server.config as unknown as Record<string, unknown>,
-            configPath: server.path,
-          });
-          continue;
-        }
-        submitted++;
-        const { request_id } = submitResult;
-        let wasAutoApproved = submitResult.autoApproved === true;
-        if (wasAutoApproved) {
-          autoApproved++;
-        } else if (canAutoApprove) {
-          try {
-            await approveServerRequest(request_id, apiBaseUrl, apiKey);
-            autoApproved++;
-            wasAutoApproved = true;
-          } catch (approveErr) {
-            const msg = approveErr instanceof Error ? approveErr.message : String(approveErr);
-            errors.push(`${server.name}: auto-approval failed - ${msg}`);
-            console.error(`[mcp:submitAllDiscovered] Auto-approval failed for "${server.name}":`, approveErr);
-          }
-        }
-
-        // Mark in seen store so quarantine recognises it as known
-        {
-          const orgId = await getOrRefreshOrgId(apiBaseUrl, apiKey);
-          if (orgId) {
-            try { await getSharedSeenStore().markSeen(orgId, server, wasAutoApproved ? "registered" : "requested"); } catch { /* non-fatal */ }
-          } else {
-            console.warn(`[mcp:submit] No org_id available - "${server.name}" won't be marked as seen; next detection will prompt.`);
-          }
-        }
-
-        // Remove from ALL agent configs, not just the first
-        const rawEntries = removalMap.get(server.name) ?? [server];
-        for (const entry of rawEntries) {
-          try {
-            await removeOrDisableServer(entry);
-          } catch (removeErr) {
-            console.error(`[mcp:submitAllDiscovered] Failed to remove "${entry.name}" from ${entry.path}:`, removeErr);
-          }
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        failures.push({ name: server.name, client: server.client, reason: "error", message: msg, config: server.config as unknown as Record<string, unknown>, configPath: server.path });
-        console.error("[mcp:submitAllDiscovered]", `${server.name}: ${msg}`);
-      }
-    }
-    return {
-      submitted,
-      autoApproved,
-      alreadyOnBackend,
-      skipped: servers.length - submitted - failures.length,
-      total: servers.length,
-      servers: serverList,
-      errors: errors.length > 0 ? errors : undefined,
-      failures: failures.length > 0 ? failures : undefined,
-    };
+    // The daemon owns submit (and handles stdio). Route each registration
+    // through it instead of the client's http-only submit path.
+    const summary = await submitServersViaDetectord(servers);
+    console.log(`[detectord] onboarding submit: ${summary.submitted} submitted, ${summary.failures.length} failed`);
+    return summary;
   });
 
   // Handle individual server actions from the registration/quarantine dialogs

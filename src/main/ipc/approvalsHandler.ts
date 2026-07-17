@@ -124,7 +124,7 @@ export function initApprovalsHandler(
 // ── SSE event subscription ──────────────────────────────────────────
 
 export function startEventSubscription(
-  onQuarantineEnabled: (domain?: string) => void,
+  onQuarantineEnabled?: (domain?: string) => void,
   onQuarantineDisabled?: (domain?: string) => void,
   onReconnected?: () => void
 ): void {
@@ -172,7 +172,7 @@ export function startEventSubscription(
         } else if (data.type === 'quarantine_enabled') {
           const userDomain = getSetupData().userEmail?.split('@')[1]
           if (!data.domain || data.domain === userDomain) {
-            onQuarantineEnabled(data.domain)
+            onQuarantineEnabled?.(data.domain)
           }
         } else if (data.type === 'quarantine_disabled') {
           const userDomain = getSetupData().userEmail?.split('@')[1]
@@ -232,7 +232,7 @@ export function stopEventSubscription(): void {
 }
 
 function handleReconnect(
-  onQuarantineEnabled: (domain?: string) => void,
+  onQuarantineEnabled?: (domain?: string) => void,
   onQuarantineDisabled?: (domain?: string) => void,
   onReconnected?: () => void
 ): void {
