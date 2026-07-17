@@ -22,8 +22,6 @@ import {
 } from '../discovery/mcpDiscovery'
 import {
   getHookStatus,
-  injectVsCodeWorkspaceHook,
-  removeVsCodeWorkspaceHook,
   getCodexConfigPath
 } from '../runtime/hookInjection'
 import { bootstrapDetectord, setDetectordSecret } from '../detectord/bootstrap'
@@ -480,14 +478,6 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   ipcMain.handle('mcp:getHookStatus', async () => {
     const claudeCodeMcpStatus = await checkClaudeCodeMcpConnection()
     return await getHookStatus(getMcpUrl(), getIsServerOnline(), claudeCodeMcpStatus)
-  })
-
-  ipcMain.handle('mcp:injectVsCodeWorkspaceHook', async (_event, workspacePath: string) => {
-    return await injectVsCodeWorkspaceHook(workspacePath)
-  })
-
-  ipcMain.handle('mcp:removeVsCodeWorkspaceHook', async (_event, workspacePath: string) => {
-    return await removeVsCodeWorkspaceHook(workspacePath)
   })
 
   // Keychain: store/load the user's personal encryption key via OS keychain (safeStorage)

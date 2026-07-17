@@ -138,8 +138,6 @@ interface EdisonAPI {
       }>
     }>
     getHookStatus: () => Promise<unknown[]>
-    injectVsCodeWorkspaceHook: (workspacePath: string) => Promise<boolean>
-    removeVsCodeWorkspaceHook: (workspacePath: string) => Promise<boolean>
   }
   config: {
     getEffectiveBaseUrls: () => Promise<{

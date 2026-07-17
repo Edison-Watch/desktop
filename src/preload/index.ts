@@ -157,11 +157,7 @@ const api = {
       error?: string
       errors?: string[]
     }> => ipcRenderer.invoke('mcp:submitAllDiscovered', params),
-    getHookStatus: (): Promise<unknown[]> => ipcRenderer.invoke('mcp:getHookStatus'),
-    injectVsCodeWorkspaceHook: (workspacePath: string): Promise<boolean> =>
-      ipcRenderer.invoke('mcp:injectVsCodeWorkspaceHook', workspacePath),
-    removeVsCodeWorkspaceHook: (workspacePath: string): Promise<boolean> =>
-      ipcRenderer.invoke('mcp:removeVsCodeWorkspaceHook', workspacePath)
+    getHookStatus: (): Promise<unknown[]> => ipcRenderer.invoke('mcp:getHookStatus')
   },
 
   /** Config: effective base URLs and active env (respects debug env override) */
