@@ -335,7 +335,8 @@ export function registerMcpSubmitHandlers(): void {
     const servers = skipSet.size > 0 ? allServers.filter((s) => !skipSet.has(s.name)) : allServers;
 
     // The daemon owns submit. Pass the credential-review overrides so the user's
-    // manual redactions are honored (the daemon still auto-templatizes on top).
+    // manual redactions are honored verbatim (servers without an override entry
+    // still get the daemon's auto-templatization).
     const summary = await submitServersViaDetectord(servers, params.templateOverrides);
     console.log(`[detectord] onboarding submit (with template overrides): ${summary.submitted} submitted, ${summary.failures.length} failed`);
     return summary;

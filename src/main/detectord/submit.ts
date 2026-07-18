@@ -132,11 +132,14 @@ export async function submitServersViaDetectord(
     // originalName, so daemonName === s.name and rename stays undefined.
     const daemonName = s.originalName ?? s.name
     const rename = s.originalName ? s.name : undefined
-    // Honor the credential-review overrides for this server: submit the manually
-    // redacted config instead of letting the daemon auto-templatize alone.
+    // An explicitly provided overrides array is the user's complete, authoritative
+    // redaction set from credential review (even an empty array means "nothing
+    // here is a secret" - the daemon must submit it verbatim, not auto-templatize).
+    // Absent (undefined) => no review for this server => let the daemon
+    // auto-templatize its discovered config.
     const ov = overrides?.[s.name]
     const submitConfig =
-      ov && ov.length > 0 ? (toDaemonSubmitConfig(applyTemplateOverrides(s.config, ov)) ?? undefined) : undefined
+      ov !== undefined ? (toDaemonSubmitConfig(applyTemplateOverrides(s.config, ov)) ?? undefined) : undefined
     try {
       await client.disposition(daemonName, 'send_to_ew', toAgent(s.client), rename, submitConfig)
       submitted++
