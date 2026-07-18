@@ -176,18 +176,14 @@ export default function ClientsView(): React.ReactNode {
     }
   }, []);
 
-  /** Re-inject hooks and refresh status. Does NOT re-apply MCP configs
-   *  (that's destructive and handled by setup/account-switch). */
+  /** Refresh hook status. Hook installation is owned by the detector daemon;
+   *  the client only re-reads and displays the current status. */
   const refreshIntegrations = useCallback(async () => {
     if (refreshing) return; // debounce
     setRefreshing(true);
     try {
-      // Re-inject any missing hooks (non-destructive - skips if already present)
-      await window.api.mcp.injectHooks();
-    } catch (err) {
-      console.error("[ClientsView] Failed to refresh hooks:", err);
-    } finally {
       await refresh();
+    } finally {
       setRefreshing(false);
     }
   }, [refresh, refreshing]);

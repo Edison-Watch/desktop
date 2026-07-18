@@ -101,7 +101,10 @@ export async function removeVsCodeCopilotHook(): Promise<boolean> {
   return true
 }
 
-// ── VS Code Workspace Task Hooks ────────────────────────────────────────────
+// ── VS Code Workspace Task (status detection only) ──────────────────────────
+// The label + task shape are retained so getStatus() can detect a previously
+// injected workspace task. Installing/removing the task is owned by the detector
+// daemon; the client no longer writes .vscode/tasks.json.
 
 export const VSCODE_TASK_LABEL = 'Edison Watch Registration'
 
@@ -117,74 +120,4 @@ interface VsCodeTask {
 export interface VsCodeTasksFile {
   version: string
   tasks: VsCodeTask[]
-}
-
-/**
- * Inject an Edison Watch registration task into a VS Code workspace's .vscode/tasks.json.
- * The task runs the hook script on folder open, discovering the workspace's MCP config
- * for quarantine monitoring.
- */
-export async function injectVsCodeWorkspaceHook(workspacePath: string): Promise<boolean> {
-  const vscodePath = join(workspacePath, '.vscode')
-  const tasksPath = join(vscodePath, 'tasks.json')
-  const scriptPath = await ensureHookScript()
-
-  let tasksFile: VsCodeTasksFile = { version: '2.0.0', tasks: [] }
-
-  if (existsSync(tasksPath)) {
-    try {
-      const content = await fs.readFile(tasksPath, 'utf-8')
-      tasksFile = JSON.parse(content) as VsCodeTasksFile
-    } catch {
-      tasksFile = { version: '2.0.0', tasks: [] }
-    }
-  }
-
-  if (!Array.isArray(tasksFile.tasks)) tasksFile.tasks = []
-
-  const alreadyExists = tasksFile.tasks.some((t) => t.label === VSCODE_TASK_LABEL)
-  if (alreadyExists) return false
-
-  if (existsSync(tasksPath)) {
-    await fs.copyFile(tasksPath, `${tasksPath}.backup.${Date.now()}`)
-  }
-
-  await fs.mkdir(vscodePath, { recursive: true })
-
-  tasksFile.tasks.push({
-    label: VSCODE_TASK_LABEL,
-    type: 'shell',
-    command: `"${scriptPath}"`,
-    args: ['vscode'],
-    runOptions: { runOn: 'folderOpen' },
-    presentation: { reveal: 'never', panel: 'shared' },
-  })
-
-  await fs.writeFile(tasksPath, JSON.stringify(tasksFile, null, 2), 'utf-8')
-  console.log(`[HookInjection] Injected VS Code workspace hook into ${tasksPath}`)
-  return true
-}
-
-/**
- * Remove the Edison Watch registration task from a VS Code workspace's .vscode/tasks.json.
- */
-export async function removeVsCodeWorkspaceHook(workspacePath: string): Promise<boolean> {
-  const tasksPath = join(workspacePath, '.vscode', 'tasks.json')
-  if (!existsSync(tasksPath)) return false
-
-  let tasksFile: VsCodeTasksFile
-  try {
-    const content = await fs.readFile(tasksPath, 'utf-8')
-    tasksFile = JSON.parse(content) as VsCodeTasksFile
-  } catch {
-    return false
-  }
-
-  const before = tasksFile.tasks?.length ?? 0
-  tasksFile.tasks = (tasksFile.tasks ?? []).filter((t) => t.label !== VSCODE_TASK_LABEL)
-  if (tasksFile.tasks.length === before) return false
-
-  await fs.writeFile(tasksPath, JSON.stringify(tasksFile, null, 2), 'utf-8')
-  console.log(`[HookInjection] Removed VS Code workspace hook from ${tasksPath}`)
-  return true
 }

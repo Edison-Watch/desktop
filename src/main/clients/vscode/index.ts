@@ -9,9 +9,9 @@
  * MCP discovery reads both the user `mcp.json` and the VS Code `state.vscdb`
  * which Extension API installs populate.
  *
- * For this scaffolding PR, `hooks.inject` / `hooks.remove` only cover the
- * Copilot hook - workspace task injection is per-workspace and orchestrated
- * separately by `injectVsCodeWorkspaceHook`.
+ * `hooks.inject` / `hooks.remove` only cover the Copilot hook. Per-workspace
+ * task injection is owned by the detector daemon; the client only detects an
+ * existing workspace task (via `VSCODE_TASK_LABEL`) for status reporting.
  */
 import { CLIENT_DISPLAY } from '../displayMeta'
 import type { ClientHookStatus, ClientIntegration, WatchTargets } from '../types'

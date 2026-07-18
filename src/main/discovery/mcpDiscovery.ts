@@ -12,7 +12,6 @@ import type { DiscoveredMcpServer, DiscoveryResult } from './types'
 import { isOpaqueConfig, hasMalformedHeaders } from './types'
 import { clientAlias } from './serverDeduplication'
 import { MAC_APP_NAMES, macAppExists } from './macAppNames'
-import { detectordPrimary } from '../detectord/mode'
 import { discoverViaDetectord } from '../detectord/discovery'
 
 // ── Re-exports (backward compatibility) ────────────────────────────────────
@@ -82,7 +81,7 @@ export async function discoverMcpServers(opts?: { includeRaw?: boolean }): Promi
   // client can't). Fall back to a local scan only when it returns null (daemon
   // unreachable / not enrolled). The rest of the pipeline (shim-unwrap,
   // supported/unsupported split, dedup, installed-app filter) runs unchanged.
-  const daemonServers = detectordPrimary() ? await discoverViaDetectord() : null
+  const daemonServers = await discoverViaDetectord()
   const results: DiscoveredMcpServer[] =
     daemonServers ?? (await Promise.all(CLIENT_LIST.map((c) => c.discoverServers()))).flat()
 

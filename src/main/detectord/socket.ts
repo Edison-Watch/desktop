@@ -19,6 +19,7 @@ import {
   type Reply,
   type Request,
   type SecretOutcome,
+  type ServerConfig,
   type ServerView,
   type Status
 } from './protocol'
@@ -165,8 +166,14 @@ export class DetectordClient extends EventEmitter {
     return r
   }
 
-  async disposition(name: string, choice: Choice, agent?: string, rename?: string): Promise<void> {
-    await this.expect({ op: 'disposition', name, agent, choice, rename })
+  async disposition(
+    name: string,
+    choice: Choice,
+    agent?: string,
+    rename?: string,
+    submitConfig?: ServerConfig
+  ): Promise<void> {
+    await this.expect({ op: 'disposition', name, agent, choice, rename, submit_config: submitConfig })
   }
 
   async verifySecret(key: string): Promise<SecretOutcome> {

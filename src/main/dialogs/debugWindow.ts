@@ -170,10 +170,6 @@ function buildDebugHtml(servers: DiscoveredMcpServer[], projectPathsHtml: string
       <div class="debug-actions">
         <h2>Debug Actions</h2>
         <div class="actions-row">
-          <button class="action-btn" id="run-quarantine">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3zm-1 6h2v6h-2V8zm0 8h2v2h-2v-2z"/></svg>
-            Run Quarantine Workflow
-          </button>
           <button class="action-btn" id="reset-quarantine">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
             Reset Quarantine
@@ -184,27 +180,6 @@ function buildDebugHtml(servers: DiscoveredMcpServer[], projectPathsHtml: string
       <div id="servers">${serversHtml}${emptyState}</div>
       <script>
         const { ipcRenderer } = require('electron')
-
-        document.getElementById('run-quarantine').addEventListener('click', async function () {
-          if (this.disabled) return
-          this.disabled = true
-          const originalHtml = this.innerHTML
-          this.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3zm-1 6h2v6h-2V8zm0 8h2v2h-2v-2z"/></svg> Running... <span class="status">(quarantine dialog will appear)</span>'
-          try {
-            const result = await ipcRenderer.invoke('debug:runQuarantine')
-            if (!result.success) {
-              this.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3zm-1 6h2v6h-2V8zm0 8h2v2h-2v-2z"/></svg> Failed: ' + (result.error || 'unknown error')
-              setTimeout(() => { this.innerHTML = originalHtml; this.disabled = false }, 3000)
-              return
-            }
-            this.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3zm-1 6h2v6h-2V8zm0 8h2v2h-2v-2z"/></svg> Done'
-            setTimeout(() => { this.innerHTML = originalHtml; this.disabled = false }, 2000)
-          } catch (err) {
-            console.error('Quarantine failed:', err)
-            this.innerHTML = originalHtml
-            this.disabled = false
-          }
-        })
 
         document.getElementById('reset-quarantine').addEventListener('click', async function () {
           if (this.disabled) return

@@ -20,7 +20,16 @@ export type Request =
   | { op: 'status'; refresh?: boolean }
   | { op: 'list_agents' }
   | { op: 'list_servers' }
-  | { op: 'disposition'; name: string; agent?: string; choice: Choice; rename?: string }
+  | {
+      op: 'disposition'
+      name: string
+      agent?: string
+      choice: Choice
+      rename?: string
+      /** For SendToEw: submit this (manually redacted) config instead of the
+       *  daemon's discovered one, honoring the credential-review overrides. */
+      submit_config?: ServerConfig
+    }
   | { op: 'refresh_policy' }
   | { op: 'verify_secret'; key: string }
   | { op: 'reset_secret'; key: string; confirm: boolean }

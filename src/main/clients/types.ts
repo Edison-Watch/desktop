@@ -52,7 +52,7 @@ export interface HookBinding {
 
 export interface DirWatchTarget {
   path: string
-  /** chokidar depth. Cursor's workspaceStorage uses depth:1; plugin cache depth:3. */
+  /** Watch recursion depth. Cursor's workspaceStorage uses depth:1; plugin cache depth:3. */
   depth: number
   /** Optional predicate on the changed path to decide whether to react. */
   filter?: (path: string) => boolean
@@ -60,7 +60,7 @@ export interface DirWatchTarget {
 }
 
 export interface WatchTargets {
-  /** Files watched directly (chokidar depth:0). Same entries as configEntries(). */
+  /** Files watched directly (depth:0). Same entries as configEntries(). */
   files: McpConfigEntry[]
   /** Directory watchers with depth > 0. */
   dirs: DirWatchTarget[]

@@ -21,17 +21,11 @@ import {
   getZedConfigPath
 } from '../discovery/mcpDiscovery'
 import {
-  injectAllHooks,
-  removeAllHooks,
   getHookStatus,
-  injectVsCodeWorkspaceHook,
-  removeVsCodeWorkspaceHook,
   getCodexConfigPath
 } from '../runtime/hookInjection'
 import { bootstrapDetectord, setDetectordSecret } from '../detectord/bootstrap'
 import { uninstallService as uninstallDetectord } from '../detectord/controller'
-import { detectordPrimary } from '../detectord/mode'
-import { startHookHealthMonitor } from '../runtime/hookHealthMonitor'
 import {
   getUpdateState,
   checkForUpdates,
@@ -42,7 +36,6 @@ import {
 } from '../infra/updateManager'
 import { showFeedbackWindow } from '../dialogs/feedbackWindow'
 import { restoreAllQuarantinedServers } from '../runtime/mcpConfigActions'
-import { runDebugQuarantine, handleQuarantineDisabled } from '../quarantine/quarantineManager'
 import { applyAppIntegrations } from '../runtime/mcpConfigWriter'
 import { registerMcpSubmitHandlers } from './ipcHandlersMcpSubmit'
 import { registerStdiodHandlers } from './ipcHandlersStdiod'
@@ -73,8 +66,6 @@ export interface IpcHandlerDeps {
   getAuthLoopbackUrl: () => string | null
   createTray: () => void
   startEventSubscription: () => void
-  startQuarantineMonitorIfEnabled: () => Promise<void>
-  startQuarantinePolling: () => void
 }
 
 export function registerIpcHandlers(deps: IpcHandlerDeps): void {
@@ -82,9 +73,7 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     getMainWindow,
     getAuthLoopbackUrl,
     createTray,
-    startEventSubscription,
-    startQuarantineMonitorIfEnabled,
-    startQuarantinePolling
+    startEventSubscription
   } = deps
 
   // Auth: open SAML/SSO URL in a separate BrowserWindow
@@ -168,16 +157,6 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
 
     // Start background services
     startEventSubscription()
-    // The TS install/hooks/quarantine pipeline stands down when the daemon is
-    // primary (it owns those). See detectord/mode.ts.
-    if (!detectordPrimary()) {
-      startHookHealthMonitor()
-      injectAllHooks().catch((err) => console.error('[HookInjection] Failed to inject hooks:', err))
-      startQuarantineMonitorIfEnabled().catch((err) =>
-        console.error('[Quarantine] Failed to start monitor after setup:', err)
-      )
-      startQuarantinePolling()
-    }
     // Install + enroll the detector daemon and mirror its work into the client logs.
     bootstrapDetectord().catch((err) => console.error('[detectord] bootstrap failed:', err))
 
@@ -306,11 +285,6 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     pendingApprovals.clear()
     // Restart background services for the new account
     startEventSubscription()
-    startHookHealthMonitor()
-    startQuarantineMonitorIfEnabled().catch((err) =>
-      console.error('[Quarantine] Failed to start monitor on account switch:', err)
-    )
-    startQuarantinePolling()
 
     // Re-apply MCP integrations so client configs point to the new account's URL.
     // Without this, configs would keep the previous account's server/API key.
@@ -501,25 +475,9 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   // edison-stdiod daemon control (install / login / uninstall / status).
   registerStdiodHandlers()
 
-  ipcMain.handle('mcp:injectHooks', async () => {
-    return await injectAllHooks()
-  })
-
-  ipcMain.handle('mcp:removeHooks', async () => {
-    return await removeAllHooks()
-  })
-
   ipcMain.handle('mcp:getHookStatus', async () => {
     const claudeCodeMcpStatus = await checkClaudeCodeMcpConnection()
     return await getHookStatus(getMcpUrl(), getIsServerOnline(), claudeCodeMcpStatus)
-  })
-
-  ipcMain.handle('mcp:injectVsCodeWorkspaceHook', async (_event, workspacePath: string) => {
-    return await injectVsCodeWorkspaceHook(workspacePath)
-  })
-
-  ipcMain.handle('mcp:removeVsCodeWorkspaceHook', async (_event, workspacePath: string) => {
-    return await removeVsCodeWorkspaceHook(workspacePath)
   })
 
   // Keychain: store/load the user's personal encryption key via OS keychain (safeStorage)
@@ -554,13 +512,8 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   })
 
   // Debug window actions
-  ipcMain.handle('debug:runQuarantine', async () => {
-    return runDebugQuarantine()
-  })
-
   ipcMain.handle('debug:resetQuarantine', async () => {
     try {
-      handleQuarantineDisabled() // stop monitor + update tray before restoring, to prevent re-quarantine
       const result = await restoreAllQuarantinedServers()
       return { success: true, restored: result.restored, errors: result.errors }
     } catch (err) {
