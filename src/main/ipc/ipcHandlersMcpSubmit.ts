@@ -334,10 +334,10 @@ export function registerMcpSubmitHandlers(): void {
     const skipSet = new Set(params.skipServers ?? []);
     const servers = skipSet.size > 0 ? allServers.filter((s) => !skipSet.has(s.name)) : allServers;
 
-    // The daemon owns submit and auto-templatizes detected secrets, so the
-    // manual template overrides don't apply; route through the daemon.
-    const summary = await submitServersViaDetectord(servers);
-    console.log(`[detectord] onboarding submit (templates ignored; daemon auto-templatizes): ${summary.submitted} submitted, ${summary.failures.length} failed`);
+    // The daemon owns submit. Pass the credential-review overrides so the user's
+    // manual redactions are honored (the daemon still auto-templatizes on top).
+    const summary = await submitServersViaDetectord(servers, params.templateOverrides);
+    console.log(`[detectord] onboarding submit (with template overrides): ${summary.submitted} submitted, ${summary.failures.length} failed`);
     return summary;
   });
 
