@@ -6,7 +6,10 @@ import { join } from "path";
  * the ElectronApplication and first window Page.
  *
  * Expects the app to be built first via `npm run build` (electron-vite build).
- * In CI, set EDISON_TEST_MODE=1 to skip real auth and backend calls.
+ * EDISON_DRY_RUN=1 short-circuits stdiod/detectord subprocess spawning so the
+ * app boots to the wizard without native daemons (see src/main/stdiod/controller.ts,
+ * src/main/detectord/controller.ts). --no-sandbox/--disable-gpu let Electron run
+ * headless under Xvfb (e.g. CI, or as root in a sandbox).
  */
 export const test = base.extend<{
   electronApp: ElectronApplication;
@@ -17,11 +20,11 @@ export const test = base.extend<{
     const mainPath = join(__dirname, "../out/main/index.js");
 
     const app = await electron.launch({
-      args: [mainPath],
+      args: [mainPath, "--no-sandbox", "--disable-gpu"],
       env: {
         ...process.env,
         NODE_ENV: "test",
-        EDISON_TEST_MODE: "1",
+        EDISON_DRY_RUN: "1",
       },
     });
 
