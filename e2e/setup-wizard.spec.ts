@@ -5,16 +5,16 @@ test.describe("Setup Wizard", () => {
     // The wizard should show the welcome step with Edison branding
     await expect(firstWindow.locator("text=Edison Watch")).toBeVisible({ timeout: 10000 });
 
-    // Step indicator should show step 1 as active
-    await expect(firstWindow.locator("text=Sign In")).toBeVisible();
-
-    // Sign in form should be present
-    await expect(firstWindow.locator('input[type="email"], input[placeholder*="email" i]')).toBeVisible();
+    // Step indicator should show step 1 ("Welcome") as active (see StepIndicator.tsx)
+    await expect(firstWindow.locator("text=Welcome")).toBeVisible();
   });
 
   test("Step 1 shows sign-in options", async ({ firstWindow }) => {
     // Wait for the welcome step to render
     await expect(firstWindow.locator("text=Edison Watch")).toBeVisible({ timeout: 10000 });
+
+    // The email form is behind the provider-select view - open it first (WelcomeStep.tsx)
+    await firstWindow.getByText("Continue with Email", { exact: false }).click();
 
     // Should show email input
     const emailInput = firstWindow.locator('input[type="email"], input[placeholder*="email" i]');
