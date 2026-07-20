@@ -37,6 +37,10 @@ import {
 import { showFeedbackWindow } from '../dialogs/feedbackWindow'
 import { restoreAllQuarantinedServers } from '../runtime/mcpConfigActions'
 import { applyAppIntegrations } from '../runtime/mcpConfigWriter'
+import {
+  reprovisionStdiodForActiveAccount,
+  teardownStdiodForSignOut
+} from '../stdiod/accountSwitch'
 import { registerMcpSubmitHandlers } from './ipcHandlersMcpSubmit'
 import { registerStdiodHandlers } from './ipcHandlersStdiod'
 import {
@@ -170,7 +174,10 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
     }
   })
 
-  ipcMain.handle('setup:reset', () => {
+  ipcMain.handle('setup:reset', async () => {
+    // In-app sign-out. Stop the daemon like the tray sign-out does, else it
+    // keeps tunneling under the old account.
+    await teardownStdiodForSignOut()
     markSetupIncomplete()
     return { ok: true }
   })
@@ -308,6 +315,10 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
         console.error('[accounts:switch] Failed to update MCP integrations:', err)
       }
     }
+
+    // Re-point the daemon at the new account (or stop it) so it doesn't keep
+    // tunneling under the old credentials.
+    await reprovisionStdiodForActiveAccount()
 
     return { ok: true }
   })
